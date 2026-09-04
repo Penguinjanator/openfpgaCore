@@ -112,7 +112,7 @@ static void boot_logo(const char *color) {
     of_term_puts("    /_/_/_/___\\___/_/ |_|\n");
     of_term_puts("   / __ \\/ __/\n");
     of_term_puts("  / /_/ /\\ \\\n");
-    of_term_puts("  \\____/___/  \033[93mv0.8.1\033[0m\n\n");
+    of_term_puts("  \\____/___/  \033[93mv0.8.3\033[0m\n\n");
 }
 
 static void status_ok(void) {
@@ -513,6 +513,53 @@ void os_main(void) {
     of_term_puts("  Syscall init...... ");
     status_ok();
 
+#ifdef OF_DEBUG_CONSOLE_HOLD
+    /* 90 MHz bring-up instrument: unconditionally reveal the console (no
+     * IRQ dependency, unlike the wall reveal) and measure vsync liveness
+     * by sampling the vblank counter across a 500 ms delay.  Held long
+     * enough for a remote screenshot.  Remove after bring-up. */
+    {
+        of_video_timing_t t0, t1;
+        of_video_get_timing(&t0);
+        of_timer_delay_ms(500);
+        of_video_get_timing(&t1);
+        of_term_printf("\033[93m  dbg vblank %u->%u (d=%u/500ms)\033[0m\n",
+                       t0.vblank_count, t1.vblank_count,
+                       t1.vblank_count - t0.vblank_count);
+#ifdef OF_TARGET_SUPPORTS_RELAUNCH
+        {   /* Raw HPS readback (MiSTer debug only): boot/ini/elf staging
+             * flags + delivered byte counts, straight from REGION_HPS. */
+            volatile uint32_t *hps = (volatile uint32_t *)0x49000000u;
+            of_term_printf("\033[93m  dbg HPS=%08x boot=%u ini=%u len=%u "
+                           "elf=%u len=%u\033[0m\n",
+                           hps[0],
+                           (unsigned)(hps[0] & 1u),
+                           (unsigned)((hps[0] >> 10) & 1u), (unsigned)hps[8],
+                           (unsigned)((hps[0] >> 11) & 1u), (unsigned)hps[9]);
+        }
+#endif
+        /* Repro probe: does an app-style mode set kill vsync (the 90 MHz
+         * mgl/Doom signature: scanout dead post-mode-set)?  Set Doom's
+         * mode, measure vsync, restore the console, measure again. */
+        {
+            of_video_mode_t doom_mode = { 320, 200, 320, 0 /* 8-bit */, 0 };
+            int rc = of_video_set_mode(&doom_mode);
+            of_video_get_timing(&t0);
+            of_timer_delay_ms(500);
+            of_video_get_timing(&t1);
+            of_term_printf("  dbg setmode rc=%d d=%u/500ms\n", rc,
+                           t1.vblank_count - t0.vblank_count);
+            of_video_console_reveal();
+            of_video_get_timing(&t0);
+            of_timer_delay_ms(500);
+            of_video_get_timing(&t1);
+            of_term_printf("  dbg postreveal d=%u/500ms\n",
+                           t1.vblank_count - t0.vblank_count);
+        }
+        for (int i = 0; i < 100; i++) of_timer_delay_ms(100);
+    }
+#endif
+
     /* MiSTer F-load instance model: the OSD/MGL F-loads a menu-picked .ini
      * into SDRAM staging, and that becomes this boot's os.ini (slot 2 is
      * served from staging while HPS_STATUS_INI_LOADED is set — see
@@ -552,6 +599,10 @@ void os_main(void) {
         }
         BOOT_STAMP(0xB0070002u,
                    ((uint32_t)of_file_instance_ready() << 31) | waited_ms);
+#ifdef OF_DEBUG_CONSOLE_HOLD
+        of_term_printf("\033[93m  dbg wait=%ums ready=%d\033[0m\n",
+                       waited_ms, of_file_instance_ready());
+#endif
     }
 #endif
 
@@ -729,6 +780,13 @@ void os_main(void) {
     /* Execute the app */
     os_textguard_check("before elf_exec");
     BOOT_STAMP(0xB0070006u, app_slot);
+#ifdef OF_DEBUG_CONSOLE_HOLD
+    /* Second hold: everything up to exec succeeded — say so visibly. */
+    of_term_printf("\033[93m  dbg exec slot %d %s\033[0m\n", (int)app_slot,
+                   (app_argc > 0 && app_argv[0]) ? app_argv[0] : "?");
+    of_video_console_reveal();
+    for (int i = 0; i < 50; i++) of_timer_delay_ms(100);
+#endif
     elf_exec(&app, app_argc, app_argv);
 
     /* Should never reach here */

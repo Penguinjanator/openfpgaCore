@@ -29,20 +29,10 @@
 DEFS := INCLUDE_HW_MIXER INCLUDE_TRANSLUC \
         INCLUDE_COLUMN_LIST INCLUDE_COMPACT_SPAN INCLUDE_PARAM_TRI \
         INCLUDE_VERT_TRI INCLUDE_PARAM_TRI_RECS \
-        MISTER_FB MISTER_FB_PALETTE
-# INCLUDE_CLK90 (90 MHz universal build) parked 2026-08-26: the VCO fix +
-# M2-fairness ride along ifdef'd/always-on respectively; re-add the macro to
-# resume that branch (see project memory mister-sdram-module-timing).
-#
-# INCLUDE_SDRAM_2T (typically together with NO_A12_DQM_MIRROR) — DE10
-# dual-chip 128MB module experiment: true 2T commands via a live registered
-# nCS (io_sdram.v Stage B; +1 cycle per command, 2x command+address setup).
-# Append to DEFS for the experiment build ONLY — do NOT commit it enabled;
-# the shipping build must stay 1T (zero netlist change without the macro).
-# Any DEFS change trips the seeds/mister.seed.src fingerprint: re-sweep
-# (`make sweep TARGET=mister`) before drawing any hardware conclusion.
-
-# MISTER_FB / MISTER_FB_PALETTE are framework macros, not INCLUDE_* feature
-# modules: they unlock the sys/ direct-framebuffer interface (emu FB_* ports
-# + ascal core palette) that the ddr3_fb pipeline drives.  They ride DEFS so
-# every quartus_map (build AND sweep) sees them uniformly.
+        MISTER_FB MISTER_FB_PALETTE \
+        INCLUDE_CLK90
+# mister90 — 90 MHz margin variant (DE10 module-compatibility): the shipping
+# mister variant + INCLUDE_CLK90 (PLL 90 MHz w/ VCO-1080 keepalive, CLK_HZ
+# 0xD4 = 90e6, refresh 660, audio K rescale).  ~12% more period on EVERY
+# SDRAM-facing path: address/command setup, strobes, write data, DQ read
+# capture.  Cost ≈ −10% CPU.  Experiment/compat build — not the default.

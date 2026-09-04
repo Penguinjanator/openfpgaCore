@@ -31,7 +31,7 @@ ROOT_DIR   = ../../../..
 # mirroring the Pocket.  seeds/mister.seed.src fingerprints the netlist it was
 # swept on so `build` can warn when it goes stale (tools/netlist_hash.sh).
 # Falls back to the qsf's own seed when the file is absent.
-SEED_FILE  = seeds/mister.seed
+SEED_FILE  = seeds/$(VARIANT).seed
 SEED       = $(shell [ -f $(SEED_FILE) ] && cat $(SEED_FILE) || \
                      awk '/^set_global_assignment -name SEED /{print $$NF}' $(PROJECT).qsf)
 
@@ -106,7 +106,21 @@ ABS_ROOT  = $(abspath $(ROOT_DIR))
 REL_DIR   = $(ABS_ROOT)/releases/mister
 REL_STAGE = $(ABS_ROOT)/build/mister/release
 CORE_VER  = $(shell python3 -c "import json;print(json.load(open('$(ABS_ROOT)/dist/core/core.json'))['core']['metadata']['version'])" 2>/dev/null || echo 0.0.0)
+# 90 MHz compatibility build.  Pluggable / dual-chip 128 MB SDRAM modules
+# (e.g. a stock DE10-Nano's) load the address+DQ bus heavily enough to miss
+# the 100 MHz read-capture window — HW-confirmed on 2026-09-04: the 100 MHz
+# core boots to a garbled "meta miss" (staging CRC fails on unstable reads),
+# the 90 MHz core boots clean.  Shipped as a MANUAL-INSTALL zip with its own
+# name and NO Downloader DB: the 100 MHz core stays the Downloader default so
+# the majority (soldered SDRAM) keep full speed, and only affected boards opt
+# into 90 MHz.  Same OpenfpgaOS.rbf filename inside — it is a drop-in swap.
+ifeq ($(VARIANT),mister90)
+CORE_KIND = compat90
+CORE_ZIP  = $(REL_DIR)/openfpgaos-core-compat90-v$(CORE_VER).zip
+else
+CORE_KIND = standard
 CORE_ZIP  = $(REL_DIR)/openfpgaos-core-v$(CORE_VER).zip
+endif
 # Downloader-DB generator lives in the SDK (not vendored here); overridable.
 MKDB     ?= $(abspath $(ROOT_DIR)/../openfpgaSDK)/src/sdk/platforms/mister/mkdb.py
 # Downloader DB. Hosted as GitHub RELEASE ASSETS, not a dist branch:
@@ -385,6 +399,29 @@ package:
 	@# installed game's idempotent setup.sh (and can install a boot hook).
 	@cp "$(ABS_ROOT)/dist/mister/scripts/openfpgaos_setup.sh" "$(REL_STAGE)/Scripts/openfpgaos_setup.sh"
 	@chmod +x "$(REL_STAGE)/Scripts/openfpgaos_setup.sh"
+ifeq ($(CORE_KIND),compat90)
+	@{ \
+		echo "openfpgaOS core for MiSTer  v$(CORE_VER)  (90 MHz compatibility build)"; \
+		echo ""; \
+		echo "USE THIS BUILD ONLY IF the standard core fails to boot on your"; \
+		echo "board — a flashing 'Loading / Memory check', a garbled screen, or"; \
+		echo "'OS reloaded (CRC)'.  That failure means your SDRAM cannot be read"; \
+		echo "reliably at 100 MHz; it is typical of a PLUGGABLE / dual-chip 128 MB"; \
+		echo "module (e.g. on a stock DE10-Nano).  This build clocks the SDRAM at"; \
+		echo "90 MHz for the extra timing margin those modules need.  Boards with"; \
+		echo "soldered SDRAM should use the standard (100 MHz) core for full speed."; \
+		echo ""; \
+		echo "It is a drop-in swap — same filenames, same games, same saves:"; \
+		echo "  1. Unzip into /media/fat/ (merge folders), overwriting the core:"; \
+		echo "       _Computer/OpenfpgaOS.rbf    the 90 MHz core bitstream"; \
+		echo "       games/OpenfpgaOS/boot.rom   the OS kernel (same as standard)"; \
+		echo "  2. Full power-cycle the board (not just a reset)."; \
+		echo "  3. Launch a game .mgl from the MiSTer menu."; \
+		echo ""; \
+		echo "To go back, reinstall the standard core over this one."; \
+		echo "Not offered through the Downloader — install it by hand."; \
+	} > "$(REL_STAGE)/INSTALL.txt"
+else
 	@{ \
 		echo "openfpgaOS core for MiSTer  v$(CORE_VER)"; \
 		echo ""; \
@@ -398,11 +435,19 @@ package:
 		echo "  2. Install a game package (e.g. Doom) into games/OpenfpgaOS/."; \
 		echo "  3. Launch a game .mgl from the MiSTer menu."; \
 		echo ""; \
+		echo "If the core fails to boot (flashing 'Memory check', garbled screen,"; \
+		echo "or 'OS reloaded (CRC)') your SDRAM may not run at 100 MHz — try the"; \
+		echo "90 MHz compatibility build (openfpgaos-core-compat90-*.zip)."; \
+		echo ""; \
 		echo "Or via MiSTer Downloader: add the [$(MISTER_DB_ID)] snippet from"; \
 		echo "openfpgaos.downloader.ini to /media/fat/downloader.ini and sync."; \
 	} > "$(REL_STAGE)/INSTALL.txt"
+endif
 	@cd "$(REL_STAGE)" && rm -f "$(CORE_ZIP)" && zip -rq "$(CORE_ZIP)" .
-	@printf "  $(C_OK)core zip$(C_RESET)       → releases/mister/openfpgaos-core-v$(CORE_VER).zip\n"
+	@printf "  $(C_OK)core zip$(C_RESET)       → releases/mister/$(notdir $(CORE_ZIP))\n"
+ifeq ($(CORE_KIND),compat90)
+	@printf "  $(C_DIM)[ ] Downloader DB skipped — 90 MHz compat build is manual-install only$(C_RESET)\n"
+else
 	@if [ -x "$(MKDB)" ]; then \
 		"$(MKDB)" --staging "$(REL_STAGE)" --sd-prefix "" \
 			--base-url "$(MISTER_DB_BASE_URL)" --url-mode flat --db-id "$(MISTER_DB_ID)" \
@@ -413,6 +458,7 @@ package:
 	else \
 		printf "  $(C_DIM)[ ] Downloader DB skipped — SDK mkdb.py not at $(MKDB)$(C_RESET)\n"; \
 	fi
+endif
 	@printf "$(C_OK)[package] Done$(C_RESET) → releases/mister/\n"
 
 # ── Release: publish the core zip (+ DB) to GitHub ───────────────────

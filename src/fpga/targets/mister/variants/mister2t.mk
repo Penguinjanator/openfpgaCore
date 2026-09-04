@@ -29,7 +29,8 @@
 DEFS := INCLUDE_HW_MIXER INCLUDE_TRANSLUC \
         INCLUDE_COLUMN_LIST INCLUDE_COMPACT_SPAN INCLUDE_PARAM_TRI \
         INCLUDE_VERT_TRI INCLUDE_PARAM_TRI_RECS \
-        MISTER_FB MISTER_FB_PALETTE
+        MISTER_FB MISTER_FB_PALETTE \
+        INCLUDE_SDRAM_2T
 # INCLUDE_CLK90 (90 MHz universal build) parked 2026-08-26: the VCO fix +
 # M2-fairness ride along ifdef'd/always-on respectively; re-add the macro to
 # resume that branch (see project memory mister-sdram-module-timing).
@@ -42,7 +43,8 @@ DEFS := INCLUDE_HW_MIXER INCLUDE_TRANSLUC \
 # Any DEFS change trips the seeds/mister.seed.src fingerprint: re-sweep
 # (`make sweep TARGET=mister`) before drawing any hardware conclusion.
 
-# MISTER_FB / MISTER_FB_PALETTE are framework macros, not INCLUDE_* feature
-# modules: they unlock the sys/ direct-framebuffer interface (emu FB_* ports
-# + ascal core palette) that the ddr3_fb pipeline drives.  They ride DEFS so
-# every quartus_map (build AND sweep) sees them uniformly.
+
+# mister2t — DE10 dual-chip-module EXPERIMENT variant: the shipping mister
+# variant + INCLUDE_SDRAM_2T (true 2T commands via registered nCS; +1 cycle
+# per command, 2x command+address setup at the chip).  Built only for the
+# module-compatibility test kit; never the shipping default.

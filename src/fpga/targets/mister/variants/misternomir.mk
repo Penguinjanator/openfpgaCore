@@ -29,20 +29,20 @@
 DEFS := INCLUDE_HW_MIXER INCLUDE_TRANSLUC \
         INCLUDE_COLUMN_LIST INCLUDE_COMPACT_SPAN INCLUDE_PARAM_TRI \
         INCLUDE_VERT_TRI INCLUDE_PARAM_TRI_RECS \
-        MISTER_FB MISTER_FB_PALETTE
-# INCLUDE_CLK90 (90 MHz universal build) parked 2026-08-26: the VCO fix +
-# M2-fairness ride along ifdef'd/always-on respectively; re-add the macro to
-# resume that branch (see project memory mister-sdram-module-timing).
+        MISTER_FB MISTER_FB_PALETTE \
+        NO_A12_DQM_MIRROR
+# misternomir — DE10 dual-chip-module EXPERIMENT: shipping mister variant with
+# NO_A12_DQM_MIRROR, i.e. the sub-word byte mask is driven ONLY on the
+# dedicated DQML/DQMH pins and A[12:11] are held 0 during writes.
 #
-# INCLUDE_SDRAM_2T (typically together with NO_A12_DQM_MIRROR) — DE10
-# dual-chip 128MB module experiment: true 2T commands via a live registered
-# nCS (io_sdram.v Stage B; +1 cycle per command, 2x command+address setup).
-# Append to DEFS for the experiment build ONLY — do NOT commit it enabled;
-# the shipping build must stay 1T (zero netlist change without the macro).
-# Any DEFS change trips the seeds/mister.seed.src fingerprint: re-sweep
-# (`make sweep TARGET=mister`) before drawing any hardware conclusion.
-
-# MISTER_FB / MISTER_FB_PALETTE are framework macros, not INCLUDE_* feature
-# modules: they unlock the sys/ direct-framebuffer interface (emu FB_* ports
-# + ascal core palette) that the ddr3_fb pipeline drives.  They ride DEFS so
-# every quartus_map (build AND sweep) sees them uniformly.
+# WHY: the MiSTer SDRAM pinout (A[12:0] + BA[1:0] + one nCS + x16 DQ) spans
+# exactly 64 MB = ONE chip, so a 128 MB module must decode its second chip
+# on-module from a high address bit — A[12]/A[11] being the only candidates.
+# openfpgaOS is unusual in byte-masking CONSTANTLY (bootloader font, GPU
+# column writes), so unlike classic cores it toggles those bits all the time;
+# on such a module that could steer writes at the wrong chip.
+#
+# ⚠ CANNOT be validated on the SuperStation One: its integrated SDRAM wires
+# DQM FROM A[12:11], so the SS1 NEEDS the mirror and garbles without it.
+# This build is a send-and-see experiment for a stock DE10 + pluggable
+# 128 MB module ONLY.  Never ship it as the default.

@@ -505,15 +505,55 @@ static int file_slot_lookup(const char *path) {
     while (*full == '/')
         full++;
     for (int i = 0; i < file_slot_count; i++) {
-        if (stricmp(full, file_slots[i].filename) == 0)
+        if (stricmp(full, file_slots[i].filename) == 0) {
+            char cur[FILE_SLOT_NAME_MAX];
+            cur[0] = '\0';
+            if (of_file_get_name(file_slots[i].slot_id, cur, sizeof(cur)) == 0 &&
+                cur[0] && stricmp(cur, file_slots[i].filename) != 0)
+                continue;   /* stale mapping — see the basename pass below */
             return (int)file_slots[i].slot_id;
+        }
+    }
+
+    /* A request that names a subdirectory ("HIPNOTIC/PAK0.PAK") must never
+     * degrade to a basename match — that silently opens a same-named file
+     * from ANOTHER directory (Quake mission packs got id1's pak0.pak).
+     * Before the basename pass, let the target HAL resolve the full
+     * relative path against its mounted volumes; targets without sub-path
+     * support just return -1 and nothing changes. */
+    int has_dir = 0;
+    for (const char *p = full; *p; p++)
+        if (*p == '/' || *p == '\\') { has_dir = 1; break; }
+    if (has_dir) {
+        int direct = of_file_resolve_name(full);
+        if (direct >= 0)
+            return direct;
     }
 
     const char *name = path_basename(path);
     for (int i = 0; i < file_slot_count; i++) {
-        if (stricmp(name, file_slots[i].filename) == 0)
+        if (stricmp(name, file_slots[i].filename) == 0) {
+            /* Registry entries can go stale: the FTAB is populated per
+             * mount/enumeration pass, but staggered S-mounts re-enumerate
+             * the target's dynamic table and REASSIGN ids (Wolfenstein: the
+             * registry said maphead.wl6 -> 20 from the S0-only pass; after
+             * S1 mounted, dyn id 20 became the saves tree's slot_0.sav and
+             * every data open read 256 KB of zeros).  Trust the hit only if
+             * the id's CURRENT name still matches; otherwise fall through
+             * to live resolution below. */
+            char cur[FILE_SLOT_NAME_MAX];
+            cur[0] = '\0';
+            if (of_file_get_name(file_slots[i].slot_id, cur, sizeof(cur)) == 0 &&
+                cur[0] && stricmp(path_basename(cur), name) != 0)
+                continue;
             return (int)file_slots[i].slot_id;
+        }
     }
+
+    /* Stale or absent registry entry — resolve the basename live. */
+    int live = of_file_resolve_name(name);
+    if (live >= 0)
+        return live;
     return -1;
 }
 
@@ -1021,7 +1061,18 @@ static void dir_probe_slots(void) {
             format_slot_name(name, slot);
         }
 
-        if (file_slot_lookup(name) < 0)
+        /* Registry-only duplicate check — file_slot_lookup now falls through
+         * to live HAL resolution, which at probe time would "find" the name
+         * on a dynamic slot and skip registering the FIXED id (breaking the
+         * nonvolatile write route for shared.cfg & friends). */
+        int dup = 0;
+        for (int i = 0; i < file_slot_count; i++) {
+            if (stricmp(name, file_slots[i].filename) == 0) {
+                dup = 1;
+                break;
+            }
+        }
+        if (!dup)
             file_slot_register(slot, name);
     }
 }
@@ -2508,7 +2559,7 @@ static long linux_dispatch(long n, long a0, long a1, long a2,
             VIDEO_SCALER_MODE = VIDEO_SCALER_SLOT_DEFAULT_320X240;
             TERM_FB_CTRL = 1;
             of_video_dbg_force_term_palette();
-            of_term_puts("\n==SYS_exit== code=");
+            of_term_puts("\n\033[93m==SYS_exit== code=");
             {
                 char rev[12], out[12];
                 int n = 0, m = 0;
@@ -2519,12 +2570,12 @@ static long linux_dispatch(long n, long a0, long a1, long a2,
                 of_term_puts(out);
             }
 #ifdef OF_TARGET_SUPPORTS_RELAUNCH
-            of_term_puts(os_menu_pending() ? " (relaunch pending; 3s hold)\n"
-                                           : " (halt)\n");
+            of_term_puts(os_menu_pending() ? " (relaunch pending; 8s hold)\033[0m\n"
+                                           : " (halt)\033[0m\n");
 #else
-            of_term_puts(" (halt)\n");
+            of_term_puts(" (halt)\033[0m\n");
 #endif
-            uint64_t dbg_dl = read_cycles() + 3ull * CPU_FREQ_HZ;
+            uint64_t dbg_dl = read_cycles() + 8ull * CPU_FREQ_HZ;
             while (read_cycles() < dbg_dl) {}
         }
 #endif

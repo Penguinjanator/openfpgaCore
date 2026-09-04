@@ -247,6 +247,60 @@ $(SDRAM_CONT_DIR)/V$(SDRAM_CONT_TOP): $(SDRAM_CONT_SRCS) $(SDRAM_CONT_CPP)
 		$(SDRAM_CONT_SRCS) $(SDRAM_CONT_CPP)
 
 # ============================================================
+# sdram-lock90 — MiSTer 90 MHz boot-freeze convergence (2026-08-25 HW:
+# bootloader alias test freezes under concurrent HPS staging DMA +
+# boot-console scanout + ddr3_fb frame copy; interleave-dependent).
+# One stage more complete than sdram-cont: the production video_burst_arb
+# (ddr3_fb.sv) sits between the scanout/frame-DMA clients and io_sdram's
+# burst port, exactly as emu.sv wires it.  Traffic is SHAPED to the HW
+# scenario (serialized CPU singles vs bridge 8x16 drains vs real-time
+# video) and the verdict is LIVENESS, not just byte-exactness.
+#   make sdram-lock90       REFRESH_INTERVAL=660 (the 90 MHz config)
+#   make sdram-lock90-100   REFRESH_INTERVAL=736 (100 MHz control)
+# ============================================================
+SDRAM_LOCK90_SRCS = \
+	tb_sdram_lock90.v \
+	sdram_model_full.v \
+	$(COMMON_DIR)/axi_sdram_arbiter.v \
+	$(COMMON_DIR)/axi_sdram_slave.v \
+	../targets/mister/synch_3.v \
+	../targets/mister/ddr3_fb.sv \
+	../targets/mister/hps_bridge.v \
+	io_sdram_test.v
+
+SDRAM_LOCK90_CPP = tb_sdram_lock90_main.cpp
+SDRAM_LOCK90_TOP = tb_sdram_lock90
+SDRAM_LOCK90_DIR = obj_dir_sdram_lock90
+SDRAM_LOCK90_100_DIR = obj_dir_sdram_lock90_100
+SDRAM_LOCK90_FLAGS = -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-CASEINCOMPLETE \
+                     -Wno-SYNCASYNCNET -Wno-UNUSEDSIGNAL -Wno-PINMISSING \
+                     -Wno-UNOPTFLAT -Wno-UNDRIVEN -Wno-UNUSEDPARAM \
+                     -Wno-MULTIDRIVEN -Wno-LATCH -Wno-CASEOVERLAP \
+                     --public-flat-rw
+
+sdram-lock90: $(SDRAM_LOCK90_DIR)/V$(SDRAM_LOCK90_TOP)
+	@printf "\n=== MiSTer 90 MHz boot-freeze convergence (REFRESH_INTERVAL=504) ===\n"
+	./$(SDRAM_LOCK90_DIR)/V$(SDRAM_LOCK90_TOP)
+
+sdram-lock90-100: $(SDRAM_LOCK90_100_DIR)/V$(SDRAM_LOCK90_TOP)
+	@printf "\n=== MiSTer boot-freeze control (REFRESH_INTERVAL=560) ===\n"
+	./$(SDRAM_LOCK90_100_DIR)/V$(SDRAM_LOCK90_TOP)
+
+$(SDRAM_LOCK90_DIR)/V$(SDRAM_LOCK90_TOP): $(SDRAM_LOCK90_SRCS) $(SDRAM_LOCK90_CPP)
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) $(SDRAM_LOCK90_FLAGS) \
+		-GREFRESH_INTERVAL=504 \
+		--top-module $(SDRAM_LOCK90_TOP) --Mdir $(SDRAM_LOCK90_DIR) \
+		-I$(COMMON_DIR) \
+		$(SDRAM_LOCK90_SRCS) $(SDRAM_LOCK90_CPP)
+
+$(SDRAM_LOCK90_100_DIR)/V$(SDRAM_LOCK90_TOP): $(SDRAM_LOCK90_SRCS) $(SDRAM_LOCK90_CPP)
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) $(SDRAM_LOCK90_FLAGS) \
+		-GREFRESH_INTERVAL=560 \
+		--top-module $(SDRAM_LOCK90_TOP) --Mdir $(SDRAM_LOCK90_100_DIR) \
+		-I$(COMMON_DIR) \
+		$(SDRAM_LOCK90_SRCS) $(SDRAM_LOCK90_CPP)
+
+# ============================================================
 # REAL gpu_core FB-write path through the MiSTer SDRAM stack under
 # multi-master contention.  Differential test: render an identical dense
 # FB-write scene with aggressors OFF (reference / Pocket-like) and ON
@@ -1330,6 +1384,23 @@ $(SDRAM_RDSCAN_DIR)/Vtb_sdram_rdscan: $(SDRAM_RDSCAN_SRCS) $(SDRAM_SYNCH) tb_sdr
 		-I$(COMMON_DIR) -I. \
 		$(SDRAM_RDSCAN_SRCS) $(SDRAM_SYNCH) tb_sdram_rdscan_main.cpp
 
+# 2T-commands variant (INCLUDE_SDRAM_2T experiment): same bench with the
+# macro-gated true-2T command path compiled IN (io_sdram drives nCS —
+# DESELECT on pin-cycle 1, decode on pin-cycle 2).  Separate obj_dir so the
+# 1T and 2T binaries coexist (the lock90/_100 pattern).  Expected checker
+# reading: sdram_chip.chk_cmd_setup0 == 0 STRICTLY (hold-through-stall).
+SDRAM_RDSCAN_2T_DIR = obj_dir_sdram_rdscan_2t
+
+sdram-rdscan-2t: $(SDRAM_RDSCAN_2T_DIR)/Vtb_sdram_rdscan
+	./$(SDRAM_RDSCAN_2T_DIR)/Vtb_sdram_rdscan
+
+$(SDRAM_RDSCAN_2T_DIR)/Vtb_sdram_rdscan: $(SDRAM_RDSCAN_SRCS) $(SDRAM_SYNCH) tb_sdram_rdscan_main.cpp
+	$(VERILATOR) $(VERILATOR_FLAGS) $(SDRAM_FLAGS) \
+		--top-module tb_sdram_rdscan --Mdir $(SDRAM_RDSCAN_2T_DIR) \
+		+define+INCLUDE_SDRAM_2T \
+		-I$(COMMON_DIR) -I. \
+		$(SDRAM_RDSCAN_SRCS) $(SDRAM_SYNCH) tb_sdram_rdscan_main.cpp
+
 # --- System bring-up over the REAL MiSTer SDRAM chain -----------------
 # tb_system with sdram_fast_model swapped for io_sdram (mister copy) +
 # sdram_model_full, plus scanout burst injection and a C++ R-beat data
@@ -1367,6 +1438,21 @@ $(SYSTEM_SDRAM_DIR)/V$(SYSTEM_TOP): $(SYSTEM_SDRAM_SRCS) $(VEXII_MISTER) $(SYSTE
 	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) $(SYSTEM_FLAGS) \
 		-CFLAGS -DSYSTEM_NO_REGFILE_PEEK \
 		--top-module $(SYSTEM_TOP) --Mdir $(SYSTEM_SDRAM_DIR) \
+		-I$(COMMON_DIR) -I$(TARGET_DIR) -I. \
+		$(SYSTEM_SDRAM_SRCS) $(VEXII_MISTER) $(SYSTEM_SDRAM_CPP)
+
+# 2T-commands variant of the full OS-boot repro (see sdram-rdscan-2t).
+SYSTEM_SDRAM_2T_DIR = obj_dir_system_sdram_2t
+
+system-sdram-2t: $(SYSTEM_SDRAM_2T_DIR)/V$(SYSTEM_TOP)
+	@printf "\n=== system bring-up under 2T commands (INCLUDE_SDRAM_2T) ===\n"
+	./$(SYSTEM_SDRAM_2T_DIR)/V$(SYSTEM_TOP)
+
+$(SYSTEM_SDRAM_2T_DIR)/V$(SYSTEM_TOP): $(SYSTEM_SDRAM_SRCS) $(VEXII_MISTER) $(SYSTEM_SDRAM_CPP)
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) $(SYSTEM_FLAGS) \
+		-CFLAGS -DSYSTEM_NO_REGFILE_PEEK \
+		--top-module $(SYSTEM_TOP) --Mdir $(SYSTEM_SDRAM_2T_DIR) \
+		+define+INCLUDE_SDRAM_2T \
 		-I$(COMMON_DIR) -I$(TARGET_DIR) -I. \
 		$(SYSTEM_SDRAM_SRCS) $(VEXII_MISTER) $(SYSTEM_SDRAM_CPP)
 

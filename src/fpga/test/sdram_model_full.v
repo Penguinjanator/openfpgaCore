@@ -149,6 +149,42 @@ reg        refresh_err_latched; // one error per gap (re-armed on AUTOREF)
 // Error counter
 integer errors;
 
+// ---- A/BA command-setup settle checker (observation-only; 2026-08 DE10
+// dual-chip module margin work).  At every decoded ADDRESS-CONSUMING command
+// edge (ACT/READ/WRITE/PRECHG/LMR — AUTOREF/NOP/BST are addressless) it
+// records how many chip-clock cycles the {ba, a} pins had already held their
+// present value ("settle"): 0 = the address changed on the very edge the
+// chip decodes it (the 1T status quo the controller's early-address-drive
+// change eliminates); 1 = one full pre-driven cycle, etc.  No behavioral
+// effect on the model.  public_flat_rw so harnesses read the counters
+// without Makefile flag changes, e.g.
+//   rootp->tb_sdram_rdscan__DOT__sdram_chip__DOT__chk_cmd_setup0
+// Expected: baseline chk_min_setup==0; after early address drive
+// chk_cmd_setup0==0 / chk_min_setup>=1 (permitted exceptions: mirror-build
+// masked back-to-back burst-write beats, and BANK_ROW_TRACK=0 runs); under
+// INCLUDE_SDRAM_2T chk_cmd_setup0==0 STRICTLY (hold-through-stall).
+integer chk_cmd_setup0  /* verilator public_flat_rw */;  // decode edges with settle == 0
+integer chk_cmd_total   /* verilator public_flat_rw */;  // address-consuming decode edges seen
+integer chk_min_setup   /* verilator public_flat_rw */;  // min settle over all decode edges
+integer chk_last_setup  /* verilator public_flat_rw */;  // settle at the most recent decode edge
+reg [12:0] chk_a_hold;   // {a, ba} as of the previous edge
+reg [1:0]  chk_ba_hold;
+integer    chk_settle;   // full cycles {a, ba} have held their current value
+wire       chk_addr_stable = (a == chk_a_hold) && (ba == chk_ba_hold);
+// Settle AT this edge: +1 full cycle if unchanged since the previous edge,
+// 0 if the value changed on this very edge.
+wire [31:0] chk_setup_now = chk_addr_stable ? (chk_settle + 32'd1) : 32'd0;
+
+initial begin
+    chk_cmd_setup0 = 0;
+    chk_cmd_total  = 0;
+    chk_min_setup  = 32'h7fffffff;   // "no decode edge seen yet"
+    chk_last_setup = 0;
+    chk_a_hold  = 13'h0;
+    chk_ba_hold = 2'h0;
+    chk_settle  = 0;
+end
+
 // Address calculation
 function [24:0] flat_addr;
     input [1:0]  bank;
@@ -310,6 +346,23 @@ always @(posedge clk) begin
                  $time, cmd, rd_bank, rd_row, rd_col);
         errors = errors + 1;
     end
+
+    // A/BA settle tracking (see the checker declarations above).  Sampled
+    // with THIS edge's comparison, so an address that changes on the decode
+    // edge itself counts as settle 0.  Saturate the free-running counter so
+    // the long boot idle cannot grow it unboundedly.
+    if (cke && !cs_n && (cmd == CMD_ACT || cmd == CMD_READ || cmd == CMD_WRITE
+                      || cmd == CMD_PRECHG || cmd == CMD_LMR)) begin
+        chk_cmd_total  <= chk_cmd_total + 1;
+        chk_last_setup <= chk_setup_now;
+        if (chk_setup_now == 32'd0)
+            chk_cmd_setup0 <= chk_cmd_setup0 + 1;
+        if (chk_setup_now < chk_min_setup)
+            chk_min_setup <= chk_setup_now;
+    end
+    chk_settle  <= (chk_setup_now > 32'd1000) ? 32'd1000 : chk_setup_now;
+    chk_a_hold  <= a;
+    chk_ba_hold <= ba;
 
     // Command decode
     if (cke && !cs_n) begin

@@ -649,7 +649,9 @@ reg  [32:0] audio_pace_acc /* synthesis preserve */;
 reg  [2:0]  audio_credits;
 wire        audio_pace_tick = audio_pace_acc[32];
 always @(posedge clk_cpu) begin
-	audio_pace_acc <= {1'b0, audio_pace_acc[31:0]} + 33'd2061584;
+	// K = round(48000 / f_cpu * 2^32): 2061584 @ 100 MHz, 2290649 @ 90 MHz.
+	audio_pace_acc <= {1'b0, audio_pace_acc[31:0]} +
+		`ifdef INCLUDE_CLK90 33'd2290649 `else 33'd2061584 `endif;
 	case ({audio_pace_tick && (audio_credits != 3'd7),
 	       mixer_sample_wr && (audio_credits != 3'd0)})
 		2'b10:   audio_credits <= audio_credits + 3'd1;
@@ -722,6 +724,10 @@ axi_periph_slave #(
 	// texture memory (no CRAM1 chip) — those two macros are NOT in the
 	// MiSTer include list, so INCLUDE_ANALOGIZER / INCLUDE_TEX_MEM resolve
 	// to 0.  This fixes the old HAS_CRAM1(1) vs tex_fast_size=0 inconsistency.
+	// Reduced-clock build: report the real CPU/RAM frequency in
+	// CLK_FREQ_HZ (0xD4) so os.bin re-derives its timers (pocket os20
+	// idiom; 100 MHz builds return 0 there and firmware falls back).
+	.CLK_HZ(`ifdef INCLUDE_CLK90 32'd90_000_000 `else 32'd100_000_000 `endif),
 	.INCLUDE_ANALOGIZER(`ifdef INCLUDE_ANALOGIZER 1 `else 0 `endif),
 	.INCLUDE_LINK(`ifdef INCLUDE_LINK 1 `else 0 `endif),
 	.INCLUDE_HW_MIXER(`ifdef INCLUDE_HW_MIXER 1 `else 0 `endif),
@@ -1570,21 +1576,39 @@ gpu_core #(
 
 // The MiSTer SDRAM module shares the Pocket's chip family/pinout; the
 // only extra pin is nCS, tied active (io_sdram idles with NOP commands).
-assign SDRAM_nCS = 1'b0;
+// INCLUDE_SDRAM_2T (DE10 dual-chip 128MB module experiment — see io_sdram.v
+// Stage B and variants/mister.mk): nCS becomes a LIVE registered pin —
+// io_sdram drives it HIGH for the first cycle of every command (DESELECT:
+// the chip ignores that edge) and LOW on the second, with cmd+addr held both
+// cycles — full 2x command AND address setup at +1 cycle per command.
+// mister.sdc already lists SDRAM_nCS in the output-delay port groups, so the
+// constraint goes live automatically; verify fit.rpt shows a Fast Output
+// Register on the pin or the experiment is invalid (fabric-registered nCS =
+// seed-dependent pin timing).
+wire sdram_ncs_w;
+`ifdef INCLUDE_SDRAM_2T
+assign SDRAM_nCS = sdram_ncs_w;
+`else
+assign SDRAM_nCS = 1'b0;          // shipping path
+`endif
 
 // SDRAM CK: DDIO-forwarded inverted controller clock — the standard MiSTer
 // core scheme (see any MiSTer-devel sdram.v).  The clock leaves through the
 // same IOB structure as the FAST_OUTPUT_REGISTER-packed data/control pins,
 // so clock-vs-data pin delay is matched by construction and the chip samples
-// half a period (5 ns) after the IOB launch edge.  Replaces forwarding the
-// raw PLL outclk_1 (6750 ps — the POCKET board's tuned phase) out as a data
-// signal, which needed per-board phase tuning the DDIO scheme does not.
+// half a period (5 ns) after the IOB launch edge.
+//
+// ⚠ 2026-08-25: do NOT re-phase this via clk_ram_chip without re-deriving
+// the DQ-read multicycle pairing from first principles.  A 1500 ps shift
+// (chip sampling at 6.5 ns, targeting more address setup for heavily-loaded
+// dual-chip modules) passed STA cleanly (out 1.59/1.65, CPU +0.135) and
+// FAILED ON SS1 HARDWARE with staging CRC x4 — the shipped mister.sdc
+// multicycle pairing was calibrated for THIS 5.0 ns relationship, and STA
+// happily verified the wrong edge pair.  If more output margin is needed
+// for loaded modules, prefer the 90 MHz build (margins scale everywhere)
+// or re-derive the pairing analytically and re-gate on SS1.
 // Validated on HW 2026-07-02 (boot, word/burst read+write, memtest-clean
-// module).  clk_ram_chip is now unused here.
-// (The late-2026-07-02 phase-sweep experiments that temporarily bypassed
-// this with raw PLL forwarding were retroactively invalidated: those
-// black boots were the kernel-layout boot lottery, not the clock scheme.
-// This DDIO structure is what the deployed, user-validated fits carry.)
+// module).  clk_ram_chip is unused here.
 altddio_out #(
 	.extend_oe_disable("OFF"),
 	.intended_device_family("Cyclone V"),
@@ -1610,7 +1634,17 @@ altddio_out #(
 
 wire unused_phy_clk;
 
-io_sdram isr0 (
+io_sdram #(
+`ifdef INCLUDE_CLK90
+	// Refresh divider, scaled so BOTH clocks refresh every ~5.6 us of real
+	// time (see io_sdram.v's REFRESH_INTERVAL comment for the derivation:
+	// the target is that even a WORST-CASE deferred gap stays inside tREFI,
+	// not merely the average).  504 x 11.11 ns = 5.60 us.
+	.REFRESH_INTERVAL(10'd504)
+`else
+	.REFRESH_INTERVAL(10'd560)   // 560 x 10 ns = 5.60 us
+`endif
+) isr0 (
 	.controller_clk ( clk_ram_controller ),
 	.chip_clk       ( clk_ram_chip ),
 	.clk_90         ( clk_ram_chip ),
@@ -1625,6 +1659,7 @@ io_sdram isr0 (
 	.phy_a          ( SDRAM_A ),
 	.phy_dq         ( SDRAM_DQ ),
 	.phy_dqm        ( {SDRAM_DQMH, SDRAM_DQML} ),
+	.phy_ncs        ( sdram_ncs_w ),
 
 	// Burst interface — video scanout + frame DMA via video_burst_arb
 	.burst_rd           ( arb_burst_rd ),

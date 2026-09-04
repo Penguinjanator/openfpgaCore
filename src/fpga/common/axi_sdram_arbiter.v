@@ -31,6 +31,20 @@
 // this guard, and an audio grant while the CPU is pending DOES bump the
 // deficit, so the guard can preempt a sustained audio burst (no starvation).
 //
+// Bridge fairness counter (2026-08-26): the same idiom one level down.
+// M2 (hps_bridge / APF bridge) sits at the bottom of the normal priority
+// chain with NOTHING bounding its wait: a master mix that keeps a request
+// pending on every ST_IDLE pass starves M2 indefinitely.  Proven in sim
+// with the production hps_bridge (tb_sdram_lock90: a saturating CPU froze
+// the boot.rom ioctl stream at 2/74020 words, S_BOOT_AW held forever,
+// ioctl_wait backpressuring MiSTer main) — the mechanism behind a stock-
+// DE10 "boot.rom NEVER ARRIVED" diag report.  Any non-M2 grant while M2
+// is pending bumps brg_deficit; at BRG_FAIR_THRESHOLD the bridge is
+// granted ahead of the normal arms (still below the CPU guard, whose own
+// deficit an M2 grant bumps, so the two guards alternate rather than
+// starve each other; audio overshoot is bounded by its sparseness and the
+// counter saturates rather than wraps).
+//
 // Single outstanding transaction at the SDRAM slave -- grants one master at a
 // time, holds until read completes (R.rlast) or write completes (B.bvalid).
 // M0 AW/W handshakes are decoupled from that grant by the posted queue.
@@ -39,6 +53,7 @@
 
 module axi_sdram_arbiter #(
     parameter [3:0] CPU_FAIR_THRESHOLD   = 4'd8, // Force CPU grant after this many non-CPU grants
+    parameter [3:0] BRG_FAIR_THRESHOLD   = 4'd12,// Force bridge grant after this many non-bridge grants
     parameter [3:0] GPU_WRITE_READ_BUDGET = 4'd4 // Max GPU reads while posted writes wait
 ) (
     input wire clk,
@@ -179,6 +194,14 @@ reg [2:0] gpuq_w_idx;          // beat index within that burst
 reg [3:0] gpu_deficit;
 wire cpu_pending = m1_arvalid | m1_awvalid;
 
+// Bridge (M2) fairness — see the header block.  Bumps on any non-M2 grant
+// while M2 is pending; resets on an M2 grant or when nothing is pending.
+// Saturating (not wrapping): a pathological streak of higher-priority
+// grants past the threshold must keep the guard TRIPPED, not un-trip it.
+reg [3:0] brg_deficit;
+wire brg_pending = m2_arvalid | m2_awvalid;
+wire [3:0] brg_deficit_inc = (brg_deficit == 4'hF) ? 4'hF : brg_deficit + 4'd1;
+
 // Audio fairness is provided by the fixed 2nd-priority audio grant below (the
 // unconditional `else if (audio_pending)` arm), which bounds AudioMix latency
 // to one in-flight transaction — no deficit counter needed.
@@ -315,6 +338,7 @@ always @(posedge clk or posedge reset) begin
         active_gpuq_awlen <= 3'd0;
         gpuq_w_idx <= 3'd0;
         gpu_deficit <= 4'd0;
+        brg_deficit <= 4'd0;
         gpu_wq_rd_ptr <= {GPU_WQ_PTR_W{1'b0}};
         gpu_wq_wr_ptr <= {GPU_WQ_PTR_W{1'b0}};
         gpu_wq_count <= 4'd0;
@@ -369,6 +393,18 @@ always @(posedge clk or posedge reset) begin
                 active_wr_gpuq <= 1'b0;
                 gpu_deficit <= 4'd0;
                 arb_state <= m1_arvalid ? ST_RD : ST_WR;
+                if (brg_pending) brg_deficit <= brg_deficit_inc;
+            end else if (brg_pending && brg_deficit >= BRG_FAIR_THRESHOLD) begin
+                // Bridge-starvation guard (see header).  Below the CPU
+                // guard: an M2 grant bumps gpu_deficit, so a saturating
+                // CPU still gets service every CPU_FAIR_THRESHOLD grants
+                // while the bridge is bounded at BRG_FAIR_THRESHOLD —
+                // the two guards alternate instead of starving each other.
+                grant <= 2'd2;
+                active_wr_gpuq <= 1'b0;
+                brg_deficit <= 4'd0;
+                arb_state <= m2_awvalid ? ST_WR : ST_RD;
+                if (cpu_pending) gpu_deficit <= gpu_deficit + 4'd1;
             end else if (audio_pending) begin
                 // AudioMix promoted to 2nd-highest (just under the CPU-starvation
                 // guard, ABOVE GPU/CPU-normal/Bridge). It is a tiny (~192 KB/s) but
@@ -385,6 +421,7 @@ always @(posedge clk or posedge reset) begin
                 active_wr_gpuq <= 1'b0;
                 arb_state <= ST_RD;
                 if (cpu_pending) gpu_deficit <= gpu_deficit + 4'd1;
+                if (brg_pending) brg_deficit <= brg_deficit_inc;
             end else if (m0_arvalid && !gpu_wq_should_drain) begin
                 grant <= 2'd0;
                 active_wr_gpuq <= 1'b0;
@@ -394,6 +431,7 @@ always @(posedge clk or posedge reset) begin
                 else
                     gpu_reads_since_write <= 4'd0;
                 if (cpu_pending) gpu_deficit <= gpu_deficit + 4'd1;
+                if (brg_pending) brg_deficit <= brg_deficit_inc;
             end else if (gpu_wq_head_ready) begin
                 grant <= 2'd0;
                 active_wr_gpuq <= 1'b1;
@@ -402,36 +440,43 @@ always @(posedge clk or posedge reset) begin
                 arb_state <= ST_WR;
                 gpu_reads_since_write <= 4'd0;
                 if (cpu_pending) gpu_deficit <= gpu_deficit + 4'd1;
+                if (brg_pending) brg_deficit <= brg_deficit_inc;
             end else if (m0_arvalid) begin
                 grant <= 2'd0;
                 active_wr_gpuq <= 1'b0;
                 arb_state <= ST_RD;
                 gpu_reads_since_write <= 4'd0;
                 if (cpu_pending) gpu_deficit <= gpu_deficit + 4'd1;
+                if (brg_pending) brg_deficit <= brg_deficit_inc;
             end else if (m1_arvalid) begin
                 grant <= 2'd1;
                 active_wr_gpuq <= 1'b0;
                 arb_state <= ST_RD;
                 gpu_deficit <= 4'd0;
+                if (brg_pending) brg_deficit <= brg_deficit_inc;
             end else if (m1_awvalid) begin
                 grant <= 2'd1;
                 active_wr_gpuq <= 1'b0;
                 arb_state <= ST_WR;
                 gpu_deficit <= 4'd0;
+                if (brg_pending) brg_deficit <= brg_deficit_inc;
             end else if (m2_awvalid || m2_arvalid) begin
                 // Bridge AW preferred over AR within the arm; the bridge
                 // FSM is single-transaction so both are never pending at
                 // once in practice.
                 grant <= 2'd2;
                 active_wr_gpuq <= 1'b0;
+                brg_deficit <= 4'd0;
                 arb_state <= m2_awvalid ? ST_WR : ST_RD;
                 if (cpu_pending) gpu_deficit <= gpu_deficit + 4'd1;
             end else if (m3_arvalid) begin
                 grant <= 2'd3;
                 active_wr_gpuq <= 1'b0;
                 arb_state <= ST_RD;
+                if (brg_pending) brg_deficit <= brg_deficit_inc;
             end else begin
                 gpu_deficit <= 4'd0;
+                brg_deficit <= 4'd0;
             end
         end
 

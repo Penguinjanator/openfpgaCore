@@ -135,6 +135,11 @@ static const uint8_t vol_order_osini[2] = { 1, 0 };
 
 typedef struct {
     uint32_t slot_id;
+    uint16_t rel_off;    /* offset of the search-root-relative name in path:
+                          * "0:/Quake/common/HIPNOTIC/PAK0.PAK" -> rel is
+                          * "HIPNOTIC/PAK0.PAK" (may contain '/').  Flat
+                          * entries point at the basename, so all existing
+                          * comparisons keep their meaning. */
     char     path[DYN_NAME_MAX];
 } dyn_slot_t;
 
@@ -148,8 +153,9 @@ static int dyn_enumerated;
 static int dyn_vol_start;
 
 /* Overflow name slots (see OVF_SLOT_FIRST above).  path[0]=='\0' = free;
- * id = OVF_SLOT_FIRST + index. */
+ * id = OVF_SLOT_FIRST + index.  ovf_rel mirrors dyn_slot_t.rel_off. */
 static char ovf_paths[OVF_SLOT_COUNT][DYN_NAME_MAX];
+static uint16_t ovf_rel[OVF_SLOT_COUNT];
 static int  ovf_count;
 
 /* By-name config slots (hal/file.h of_file_config_slot): per-game settings
@@ -298,13 +304,14 @@ static int dyn_register(const char *dir, const char *name) {
     if (dyn_slot_count >= (int)(sizeof(dyn_slots) / sizeof(dyn_slots[0])))
         return -1;
 
-    /* Cross-volume shadow: a basename already registered by an earlier
+    /* Cross-volume shadow: a relative name already registered by an earlier
      * (higher-priority) volume wins; the duplicate is not re-registered
      * and does not consume a dyn slot.  Same-volume duplicates (across
      * /, /assets/, /config/) keep the historical no-dedup behavior so a
-     * legacy single-volume image enumerates byte-identically. */
+     * legacy single-volume image enumerates byte-identically.  (name may
+     * carry a subdirectory: "HIPNOTIC/PAK0.PAK".) */
     for (int i = 0; i < dyn_vol_start; i++) {
-        if (name_ieq(stored_basename(dyn_slots[i].path), name))
+        if (name_ieq(dyn_slots[i].path + dyn_slots[i].rel_off, name))
             return 0;
     }
 
@@ -328,6 +335,7 @@ static int dyn_register(const char *dir, const char *name) {
     uint32_t pos = 0;
     for (const char *p = dir; *p && pos < DYN_NAME_MAX - 2; p++)
         d->path[pos++] = *p;
+    d->rel_off = (uint16_t)pos;
     for (const char *p = name; *p && pos < DYN_NAME_MAX - 1; p++)
         d->path[pos++] = *p;
     d->path[pos] = '\0';
@@ -500,6 +508,14 @@ static void ensure_enumerated(void) {
             const char *dir = read_search_dir(vol, d, dirbuf, sizeof(dirbuf));
             if (!dir)
                 break;
+            /* Flat enumeration only.  Sub-paths ("HIPNOTIC/PAK0.PAK") do NOT
+             * need registering: resolve_name_body's fallback probe joins the
+             * search dir with the requested name and f_stats it, so a slashed
+             * name binds an overflow id on demand (and keeps its full name,
+             * see ovf_rel — that is what stops ROGUE/PAK0.PAK matching
+             * HIPNOTIC's).  An earlier attempt to enumerate one subdirectory
+             * level recursively overflowed the kernel boot stack; the probe
+             * path makes it unnecessary. */
             enumerate_dir(dir);
         }
     }
@@ -712,15 +728,17 @@ static int resolve_name_body(const char *name) {
 
     ensure_enumerated();
 
-    /* Already held by a dynamic slot? */
+    /* Already held by a dynamic slot?  Relative names carry sub-paths
+     * ("HIPNOTIC/PAK0.PAK"), so a slashed request can only match its own
+     * directory's file — never a same-basename sibling. */
     for (int i = 0; i < dyn_slot_count; i++) {
-        if (name_ieq(stored_basename(dyn_slots[i].path), name))
+        if (name_ieq(dyn_slots[i].path + dyn_slots[i].rel_off, name))
             return (int)dyn_slots[i].slot_id;
     }
     /* Already bound to an overflow slot?  Ids must stay stable — fds and
      * the kernel io cache key on them — so a name never binds twice. */
     for (int i = 0; i < ovf_count; i++) {
-        if (name_ieq(stored_basename(ovf_paths[i]), name))
+        if (name_ieq(ovf_paths[i] + ovf_rel[i], name))
             return (int)(OVF_SLOT_FIRST + (uint32_t)i);
     }
 
@@ -745,6 +763,7 @@ static int resolve_name_body(const char *name) {
                 break;
             uint32_t pos = 0;
             while (buf[pos]) pos++;
+            ovf_rel[ovf_count] = (uint16_t)pos;
             for (uint32_t k = 0; name[k] && pos < DYN_NAME_MAX - 1u; k++)
                 buf[pos++] = name[k];
             buf[pos] = '\0';
@@ -1257,12 +1276,26 @@ int of_file_get_name(uint32_t slot_id, char *name_out, uint32_t name_max) {
     } else {
         mister_fs_enter();
         const char *path = slot_path(slot_id, pathbuf, sizeof(pathbuf));
+        /* dyn/overflow slots publish their search-root-RELATIVE name (which
+         * may carry a subdirectory: "HIPNOTIC/PAK0.PAK") so the kernel
+         * registry holds the full disambiguating name, matching the Pocket
+         * contract.  Everything else keeps the basename. */
+        int rel = -1;
+        for (int i = 0; i < dyn_slot_count; i++)
+            if (dyn_slots[i].slot_id == slot_id) { rel = dyn_slots[i].rel_off; break; }
+        if (rel < 0 && slot_id >= OVF_SLOT_FIRST &&
+            slot_id < OVF_SLOT_FIRST + (uint32_t)ovf_count)
+            rel = ovf_rel[slot_id - OVF_SLOT_FIRST];
         mister_fs_exit();
         if (!path)
             return -1;
-        base = path;
-        for (const char *p = path; *p; p++)
-            if (*p == '/') base = p + 1;
+        if (rel >= 0) {
+            base = path + rel;
+        } else {
+            base = path;
+            for (const char *p = path; *p; p++)
+                if (*p == '/') base = p + 1;
+        }
     }
 
     uint32_t i;

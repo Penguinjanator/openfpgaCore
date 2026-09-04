@@ -121,7 +121,15 @@ module tb_gpu_wrpath #(
     // ---- Diagnostics ----
     output wire [4:0]  dbg_gpu_wq_count,
     output wire [1:0]  dbg_arb_state,
-    output wire [1:0]  dbg_grant
+    output wire [1:0]  dbg_grant,
+    // Word-write stream tap (test-only, 2026-09-01): every command the slave
+    // hands the controller, so the reference and contention runs can be
+    // diffed op-by-op to localize the +1-column FB displacement.
+    output wire        tap_wr_fire,
+    output wire [23:0] tap_wr_addr,
+    output wire [31:0] tap_wr_data,
+    output wire [3:0]  tap_wr_strb,
+    output wire [3:0]  tap_wr_blen
 );
 
 // ============================================================
@@ -447,6 +455,12 @@ sdram_model_full sdram_chip (
     .bd_we(bd_we), .bd_word_addr(bd_addr), .bd_wdata(bd_wdata),
     .bd_rd_word_addr(bd_rd_addr), .bd_rd_data(bd_rd_data)
 );
+
+assign tap_wr_fire = ram1_word_wr;
+assign tap_wr_addr = ram1_word_addr;
+assign tap_wr_data = ram1_word_data;
+assign tap_wr_strb = ram1_word_wstrb;
+assign tap_wr_blen = ram1_word_burst_wr_len;
 
 assign dbg_gpu_wq_count = sdram_arb.gpu_wq_count;
 

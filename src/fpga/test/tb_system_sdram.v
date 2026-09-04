@@ -513,6 +513,7 @@ wire        phy_cke, phy_clk, phy_cas, phy_ras, phy_we;
 wire [1:0]  phy_ba;
 wire [12:0] phy_a;
 wire [1:0]  phy_dqm;
+wire        phy_ncs;    // constant 0 in 1T builds; live under INCLUDE_SDRAM_2T
 wire [15:0] ctrl_dq_out;
 wire        ctrl_dq_oe;     // unused (split-DQ shim drives port directly)
 wire [15:0] model_dq_out;
@@ -530,6 +531,7 @@ io_sdram sdram_ctrl (
     .phy_dq_out_port(ctrl_dq_out),
     .phy_dq_oe_port(ctrl_dq_oe),
     .phy_dqm(phy_dqm),
+    .phy_ncs(phy_ncs),
     .burst_rd(inj_burst_rd), .burst_addr(inj_burst_addr),
     .burst_len(inj_burst_len), .burst_32bit(1'b1),
     .burst_data(inj_burst_data), .burst_data_valid(inj_burst_data_valid),
@@ -549,7 +551,7 @@ io_sdram sdram_ctrl (
 );
 
 sdram_model_full sdram_chip (
-    .clk(phy_clk), .cke(phy_cke), .cs_n(1'b0),
+    .clk(phy_clk), .cke(phy_cke), .cs_n(phy_ncs),
     .ras_n(phy_ras), .cas_n(phy_cas), .we_n(phy_we),
     .ba(phy_ba), .a(phy_a),
     .dq_in(ctrl_dq_out),

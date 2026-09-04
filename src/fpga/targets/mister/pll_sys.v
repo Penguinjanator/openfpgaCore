@@ -61,12 +61,38 @@ module pll_sys_0002 (
         .reference_clock_frequency("50.0 MHz"),
         .operation_mode("normal"),
         .number_of_clocks(5),
+`ifdef INCLUDE_CLK90
+        // 90 MHz build: extra period everywhere (address/command setup into
+        // heavily-loaded pluggable SDRAM modules included).
+        //
+        // outclk_1 (216 MHz) exists ONLY to force a legal VCO.  Q17's
+        // auto-derive works on the POST-PRUNE netlist: with outclk_1
+        // dangling it derived M=36/N=5 = VCO 360 MHz from the 90 MHz
+        // output alone — far below the Cyclone V 600 MHz floor.  It locks
+        // and clk_sys runs, but the SDRAM read path dies (HW 2026-08-26:
+        // reads return all-zeros, black boot).  Requesting 216 here is not
+        // enough — the counter must SURVIVE pruning, hence the noprune
+        // keepalive FF below.  With it, auto-derive picks M=108/N=5 =
+        // VCO 1080 (C=12 -> 90, C=5 -> 216), mid-band legal (600-1300).
+        // 180 MHz would NOT work even kept (LCM(90,180)=360 again).
+        // (Isolated-fit matrix, bld/plltest, 2026-08-25.  Baseline note:
+        // the 100 MHz config auto-derives VCO 500 — also sub-floor, like
+        // canonical MiSTer's pll_hdmi 445/pll_audio 418, and field-proven
+        // regardless; 360 is where real silicon stopped delivering.)
+        .output_clock_frequency0("90.000000 MHz"),
+        .phase_shift0("0 ps"),
+        .duty_cycle0(50),
+        .output_clock_frequency1("216.000000 MHz"),
+        .phase_shift1("0 ps"),
+        .duty_cycle1(50),
+`else
         .output_clock_frequency0("100.000000 MHz"),
         .phase_shift0("0 ps"),
         .duty_cycle0(50),
         .output_clock_frequency1("100.000000 MHz"),
         .phase_shift1("6750 ps"),
         .duty_cycle1(50),
+`endif
         .output_clock_frequency2("0 MHz"),
         .phase_shift2("0 ps"),
         .duty_cycle2(50),
@@ -86,6 +112,16 @@ module pll_sys_0002 (
         .fbclk  (1'b0),
         .refclk (refclk)
     );
+
+`ifdef INCLUDE_CLK90
+    // VCO keepalive: outclk_1's one real load.  Without it the fitter
+    // prunes the general[1] counter and re-derives the VCO from 90 MHz
+    // alone = an illegal 360 MHz (see the parameter comment above).  One
+    // FF, no fanout; sys_top.sdc's derive_pll_clocks constrains the
+    // resulting 216 MHz domain (self-loop only, trivially met).
+    reg vco_keepalive /* synthesis noprune */;
+    always @(posedge outclk_1) vco_keepalive <= ~vco_keepalive;
+`endif
 
 endmodule
 

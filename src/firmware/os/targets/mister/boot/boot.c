@@ -188,6 +188,236 @@ static void boot_fb_clear_row(int row) {
         fb[row * 8 * 320 + i] = 0;
 }
 
+
+/* ===================================================================== *
+ * OF_SDRAM_DIAG — board bring-up diagnostic (temporary; not shipped).
+ *
+ * A stock DE10-Nano with a pluggable dual-chip 128 MB module fails to
+ * boot (staging->VMA copy fails CRC x3) while a SuperStation One with
+ * soldered SDRAM is fine.  Two candidate faults look identical from a
+ * distance: (a) byte masking dead -> sub-word writes land full width,
+ * (b) read capture wrong -> everything read back is garbage.  This
+ * prints enough to tell them apart from one photograph.
+ *
+ * The normal glyph writer stores ONE BYTE PER PIXEL, so it is unreadable
+ * under fault (a) — that is exactly why the reporter's screen is
+ * garbled.  Everything here renders with 32-bit stores instead.
+ * ===================================================================== */
+/* #define OF_SDRAM_DIAG 1 */ /* TEMP: 90 MHz + VCO-1080 SDRAM table (comment out
+                          * for normal boot; `make firmware` = MIF patch,
+                          * no refit, either way) */
+#ifdef OF_SDRAM_DIAG
+
+/* defined further down; the diagnostic needs it for the staging check */
+__attribute__((section(".text.boot")))
+static uint32_t boot_crc32_uncached(uint32_t cached_base, uint32_t len);
+
+__attribute__((section(".text.boot")))
+static void diag_putchar_w(int col, int row, char c) {
+    if ((unsigned)col >= TERM_COLS || (unsigned)row >= TERM_ROWS) return;
+    volatile uint32_t *fb = (volatile uint32_t *)TERM_FB_BASE;
+    const uint8_t *glyph = &font8x8[(unsigned)(uint8_t)c * 8];
+    int px = col * 8, py = row * 8;
+    for (int y = 0; y < 8; y++) {
+        uint8_t bits = glyph[y];
+        uint32_t w0 = 0, w1 = 0;
+        for (int x = 0; x < 4; x++)
+            w0 |= (uint32_t)((bits & (0x80u >> x)) ? 15u : 0u) << (8 * x);
+        for (int x = 0; x < 4; x++)
+            w1 |= (uint32_t)((bits & (0x08u >> x)) ? 15u : 0u) << (8 * x);
+        uint32_t idx = ((uint32_t)(py + y) * 320u + (uint32_t)px) >> 2;
+        fb[idx]     = w0;      /* 8 pixels = 2 aligned words, no byte stores */
+        fb[idx + 1] = w1;
+    }
+}
+
+__attribute__((section(".text.boot")))
+static void diag_puts(int col, int row, const char *s) {
+    while (*s && col < TERM_COLS) diag_putchar_w(col++, row, *s++);
+}
+
+__attribute__((section(".text.boot")))
+static void diag_hex32(int col, int row, uint32_t v) {
+    /* Arithmetic, NOT a lookup table: a static const char[] is not reliably
+     * readable this early (it rendered blank on HW), and the hex readings are
+     * the whole point of this screen. */
+    for (int i = 0; i < 8; i++) {
+        uint32_t nib = (v >> (28 - 4 * i)) & 0xFu;
+        diag_putchar_w(col + i, row,
+                       (char)(nib < 10u ? ('0' + nib) : ('a' + nib - 10u)));
+    }
+}
+
+__attribute__((section(".text.boot")))
+static void diag_dec(int col, int row, uint32_t v) {
+    char b[10]; int n = 0;
+    if (!v) { diag_putchar_w(col, row, '0'); return; }
+    while (v && n < 10) { b[n++] = (char)('0' + (v % 10)); v /= 10; }
+    for (int i = 0; i < n; i++) diag_putchar_w(col + i, row, b[n - 1 - i]);
+}
+
+__attribute__((section(".text.boot")))
+static void boot_sdram_diag(void) {
+    volatile uint32_t *fb = (volatile uint32_t *)TERM_FB_BASE;
+    for (int i = 0; i < (320 * 240) / 4; i++) fb[i] = 0;
+
+    diag_puts(0, 1, "openfpgaOS SDRAM diagnostic");
+
+    /* ---- 1. byte-lane / DQM test ------------------------------------
+     * 44332211 = byte masking works.  44444444 (or any repeated byte)
+     * = DQM never reaches the chip, sub-word writes land full width. */
+    volatile uint32_t *w = (volatile uint32_t *)
+        boot_sdram_uncached_addr((void *)(uintptr_t)(SDRAM_BASE + 0x01000000u));
+    volatile uint8_t *b = (volatile uint8_t *)w;
+    *w = 0x00000000u;
+    __asm__ volatile("fence" ::: "memory");
+    b[0] = 0x11; b[1] = 0x22; b[2] = 0x33; b[3] = 0x44;
+    __asm__ volatile("fence" ::: "memory");
+    uint32_t lanes = *w;
+    diag_puts(0, 3, "byte lanes  :");
+    diag_hex32(14, 3, lanes);
+    diag_puts(23, 3, lanes == 0x44332211u ? "OK" : "BAD");
+
+    /* ---- 2. ALIASING: write ALL first, then read ALL back ------------
+     * A dual-chip / mis-sized module can fold high addresses onto low
+     * ones.  Writing then immediately reading each address would still
+     * pass, so the writes must all land BEFORE any read. */
+    /* NB: 0x00300000 is the terminal framebuffer and 0x03300000 is the
+     * os.bin staging window — writing either destroys what we are trying
+     * to display or the image we are about to check. */
+    const uint32_t addrs[6] = { SDRAM_BASE + 0x00100000u, SDRAM_BASE + 0x00800000u,
+                                SDRAM_BASE + 0x01000000u, SDRAM_BASE + 0x01800000u,
+                                SDRAM_BASE + 0x02000000u, SDRAM_BASE + 0x02800000u };
+    for (int i = 0; i < 6; i++)
+        *(volatile uint32_t *)boot_sdram_uncached_addr(
+            (void *)(uintptr_t)addrs[i]) = 0xA5A50000u + (uint32_t)i;
+    __asm__ volatile("fence" ::: "memory");
+    uint32_t alias_bad = 0, alias_first = 0;
+    for (int i = 0; i < 6; i++) {
+        uint32_t got = *(volatile uint32_t *)boot_sdram_uncached_addr(
+            (void *)(uintptr_t)addrs[i]);
+        if (got != 0xA5A50000u + (uint32_t)i) {
+            if (!alias_bad) alias_first = got;
+            alias_bad++;
+        }
+    }
+    diag_puts(0, 4, "alias 6addr :");
+    if (alias_bad) { diag_puts(14, 4, "BAD got="); diag_hex32(23, 4, alias_first); }
+    else diag_puts(14, 4, "OK (no fold)");
+
+    /* ---- 3. VOLUME: 64K words (256 KB), comparable to a real os.bin --- */
+    volatile uint32_t *bp = (volatile uint32_t *)
+        boot_sdram_uncached_addr((void *)(uintptr_t)(SDRAM_BASE + 0x01100000u));
+    for (uint32_t i = 0; i < 65536u; i++) bp[i] = 0xC0DE0000u ^ (i * 2654435761u);
+    __asm__ volatile("fence" ::: "memory");
+    /* v2 recorder: read ONCE into a local — v1 re-read bp[i] when
+     * recording, and the transient had passed (photos showed got==exp).
+     * Also classify the error TYPE: XOR popcount 1-2 = DQ-capture bit
+     * flips; a got that equals the expected pattern of a DIFFERENT index
+     * = wrong-address capture (the 2T/addr-margin class). */
+    uint32_t bad = 0, first_idx = 0, first_got = 0, first_exp = 0;
+    uint32_t bits1 = 0, bitsN = 0, wrongaddr = 0;
+    for (uint32_t i = 0; i < 65536u; i++) {
+        uint32_t exp = 0xC0DE0000u ^ (i * 2654435761u);
+        uint32_t got = bp[i];
+        if (got != exp) {
+            if (!bad) { first_idx = i; first_got = got; first_exp = exp; }
+            bad++;
+            uint32_t x = got ^ exp;
+            /* popcount via Kernighan, bounded */
+            uint32_t n = 0, v = x;
+            while (v && n < 3) { v &= v - 1u; n++; }
+            if (n <= 2) bits1++;
+            else {
+                bitsN++;
+                /* wrong-address check: does got match the pattern for
+                 * SOME index?  Invert: idx = (got^0xC0DE0000)*inverse.
+                 * 2654435761 * 244002641 == 1 (mod 2^32). */
+                uint32_t cand = (got ^ 0xC0DE0000u) * 244002641u;
+                if (cand < 65536u &&
+                    got == (0xC0DE0000u ^ (cand * 2654435761u)))
+                    wrongaddr++;
+            }
+        }
+    }
+    diag_puts(0, 5, "64Kword bad :");
+    diag_dec(14, 5, bad);
+    if (bad) {
+        diag_puts(0, 6, "  exp"); diag_hex32(6, 6, first_exp);
+        diag_puts(15, 6, "got"); diag_hex32(19, 6, first_got);
+        diag_puts(0, 10, "  xor"); diag_hex32(6, 10, first_exp ^ first_got);
+        diag_puts(15, 10, "i"); diag_hex32(17, 10, first_idx);
+        /* error-class counters: 1-2 bit flips / multi-bit / of those,
+         * exact other-index pattern hits */
+        diag_puts(0, 14, "  b12/1oN/wadr:");
+        diag_dec(16, 14, bits1);
+        diag_dec(22, 14, bitsN);
+        diag_dec(28, 14, wrongaddr);
+    }
+
+    /* ---- 4. STABILITY: re-read the SAME word 3x --------------------
+     * Differing values across reads = READ capture is unstable.  Same
+     * wrong value every time = the WRITE (or addressing) is at fault.
+     * That distinction picks the fix, so it must be measured. */
+    volatile uint32_t *sp = &bp[12345];
+    uint32_t r1 = *sp, r2 = *sp, r3 = *sp;
+    diag_puts(0, 7, "reread x3   :");
+    diag_hex32(14, 7, r1); diag_hex32(23, 7, r2);
+    diag_puts(0, 8, "            :");
+    diag_hex32(14, 8, r3);
+    diag_puts(23, 8, (r1 == r2 && r2 == r3) ? "STABLE" : "UNSTABLE");
+
+    /* ---- 5. cached (cache-line burst) read of the same region -------- */
+    volatile uint32_t *cp = (volatile uint32_t *)(uintptr_t)(SDRAM_BASE + 0x01100000u);
+    boot_dcache_inval_range((void *)cp, 65536u * 4u);
+    uint32_t cbad = 0;
+    for (uint32_t i = 0; i < 65536u; i++)
+        if (cp[i] != (0xC0DE0000u ^ (i * 2654435761u))) cbad++;
+    diag_puts(0, 9, "cached  bad :");
+    diag_dec(14, 9, cbad);
+
+    /* ---- 6. THE ACTUAL FAILING PATH: HPS -> staging -------------------
+     * boot.rom is DMA'd into staging by the HPS, NOT by the CPU, so none
+     * of the above exercises the path that really breaks.  Wait for the
+     * image, then CRC it IN PLACE twice: two different CRCs means reads
+     * are unstable; one stable CRC that still mismatches means the image
+     * arrived corrupt (or was written wrong). */
+    diag_puts(0, 11, "waiting for boot.rom...");
+    unsigned int t0 = SYS_CYCLE_LO;
+    while (!(HPS_STATUS & HPS_STATUS_BOOT_LOADED) &&
+           (SYS_CYCLE_LO - t0) <= BOOT_ROM_WAIT_CYCLES) { }
+    if (!(HPS_STATUS & HPS_STATUS_BOOT_LOADED)) {
+        diag_puts(0, 11, "boot.rom NEVER ARRIVED  ");
+    } else {
+        uint32_t len = HPS_BOOT_LEN;
+        uint32_t stage_cached = OF_TARGET_CRAM0_BASE + OF_TARGET_CRAM0_OS_OFFSET;
+        if (len < 16u || len > (2u * 1024u * 1024u)) len = 148040u;
+        uint32_t c1 = boot_crc32_uncached(stage_cached, len - 8u);
+        uint32_t c2 = boot_crc32_uncached(stage_cached, len - 8u);
+        volatile const uint32_t *tr = (volatile const uint32_t *)
+            boot_sdram_uncached_addr((void *)(uintptr_t)(stage_cached + len - 8u));
+        uint32_t want = tr[1];
+        diag_puts(0, 11, "stage len   :"); diag_hex32(14, 11, len);
+        diag_puts(0, 12, "stage crc   :"); diag_hex32(14, 12, c1);
+        diag_hex32(23, 12, c2);
+        diag_puts(0, 13, "want crc    :"); diag_hex32(14, 13, want);
+        diag_puts(23, 13, (c1 != c2) ? "READ UNSTABLE"
+                                     : (c1 == want ? "MATCH" : "IMAGE BAD"));
+    }
+
+    /* Table painted; staging untouched (CRC'd in place).  RETURN so the
+     * normal boot continues with boot-console scanout still armed — that
+     * makes every later boot message (CRC retries, ABI banner, kernel
+     * shell) visible on screen/screenshot, which a normal black-boot
+     * hides. */
+    /* HALT here: a remote tester has to photograph this table, and letting
+     * the boot continue repaints/scrolls it away.  (Flip to a return if you
+     * want the diag as a pre-boot banner on a board you can watch live.) */
+    diag_puts(0, 15, "photograph this screen");
+    while (1) { }
+}
+#endif /* OF_SDRAM_DIAG */
+
 /* os_finalize_memory() lives in BRAM .fasttext.  It only zeroes .bss. */
 extern void os_finalize_memory(void *bss_start, void *bss_end);
 
@@ -411,6 +641,9 @@ int main(void) {
         for (int i = 0; i < (320 * 240) / 4; i++) p[i] = 0;
     }
 
+#ifdef OF_SDRAM_DIAG
+    boot_sdram_diag();          /* never returns */
+#endif
     boot_fb_puts(0, 0, "Waiting for boot.rom...");
 
     /* Wait for the HPS to deliver boot.rom.  The MiSTer main process
