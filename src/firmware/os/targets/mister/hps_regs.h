@@ -69,4 +69,19 @@
 #define HPS_INI_LEN         REG32(HPS_BASE + 0x20)  /* instance-ini (F-load) bytes */
 #define HPS_ELF_LEN         REG32(HPS_BASE + 0x24)  /* app.elf (F-load) bytes */
 
+/* Self-tuning clock (INCLUDE_CLK_AUTOTUNE cores; reads 0 = feature absent).
+ * Read: status bits below.  Write: HPS_CLK_REQ_MAGIC requests the one-shot
+ * 100 -> 90 MHz fallback switch (bridge pause + warm reset + PLL C-counter
+ * rewrite; the CPU re-enters the boot ROM at the new clock).  The request
+ * is honored once per power-up/core load; OSD soft resets don't clear it. */
+#define HPS_CLK_CTRL        REG32(HPS_BASE + 0x28)
+#define   HPS_CLK_PRESENT          (1u << 0)  /* autotune hardware exists */
+#define   HPS_CLK_ATTEMPTED        (1u << 1)  /* a switch was performed */
+#define   HPS_CLK_IS_90            (1u << 2)  /* running at 90 MHz (confirmed) */
+#define   HPS_CLK_SWITCH_FAILED    (1u << 3)  /* rewrite done, 90 never confirmed */
+#define   HPS_CLK_REQ_MAGIC        0x436C6B39u /* "Clk9" */
+/* Measured clk_sys frequency in Hz (hardware meter, updates every ~1 ms
+ * asynchronously — read twice until two reads agree). */
+#define HPS_CLK_FREQ        REG32(HPS_BASE + 0x2C)
+
 #endif /* OFOS_MISTER_HPS_REGS_H */

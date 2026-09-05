@@ -68,7 +68,14 @@ io_sdram_mister_test.v: ../targets/mister/io_sdram.v
 	  -e "s/assign          phy_dq = phy_dq_oe ? phy_dq_out : 16'bZZZZZZZZZZZZZZZZ;/assign phy_dq_out_port = phy_dq_out;\nassign phy_dq_oe_port = phy_dq_oe;/" \
 	  -e 's/phy_dq_latched <= phy_dq;/phy_dq_latched <= phy_dq_in;/' \
 	  -e 's/phy_dq_neg <= phy_dq;/phy_dq_neg <= phy_dq_in;/' \
+	  -e '/input   wire            refresh_i504,/d' \
+	  -e "s/refresh_i504 ?/1'b0 ?/g" \
 	  $< > $@
+# refresh_i504 (the INCLUDE_CLK_AUTOTUNE runtime refresh rescale) is
+# STRIPPED from the twin: both twins keep identical portlists so every
+# bench compiles against either; refresh cadence is bench-swept via the
+# REFRESH_INTERVAL -G parameter, which stays the production path when
+# the tie is low.
 
 # ============================================================
 # SRAM
@@ -498,6 +505,27 @@ HPSBRG_CPP = tb_hps_bridge_main.cpp
 HPSBRG_TOP = tb_hps_bridge
 HPSBRG_DIR = obj_dir_hps_bridge
 HPSBRG_FLAGS = -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-CASEINCOMPLETE -Wno-UNUSEDSIGNAL -Wno-PINCONNECTEMPTY
+
+# ============================================================
+# MiSTer clk_autotune — self-tuning clock FSM against the REAL
+# altera_pll_reconfig IP (sys/pll_cfg).  Vendor RTL: warnings relaxed
+# hard; the two vendor externals are stubbed (altera_reconfig_stubs.v).
+# ============================================================
+CLKAT_SRCS = \
+	tb_clk_autotune.v \
+	altera_reconfig_stubs.v \
+	$(MISTER_DIR)/clk_autotune.v \
+	$(MISTER_DIR)/sys/pll_cfg/pll_cfg.v \
+	$(MISTER_DIR)/sys/pll_cfg/altera_pll_reconfig_top.v \
+	$(MISTER_DIR)/sys/pll_cfg/altera_pll_reconfig_core.v
+
+CLKAT_CPP = tb_clk_autotune_main.cpp
+CLKAT_TOP = tb_clk_autotune
+CLKAT_DIR = obj_dir_clk_autotune
+CLKAT_FLAGS = -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-CASEINCOMPLETE \
+	-Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCONNECTEMPTY \
+	-Wno-SYNCASYNCNET -Wno-BLKANDNBLK -Wno-MULTIDRIVEN -Wno-LATCH \
+	-Wno-UNOPTFLAT -Wno-CASEX -Wno-CASEOVERLAP -Wno-INITIALDLY
 
 # ============================================================
 # MiSTer hps_mouse — framework mouse → input-hub slot 3 encoder.
@@ -1318,6 +1346,17 @@ $(HPSBRG_DIR)/V$(HPSBRG_TOP): $(HPSBRG_SRCS) $(HPSBRG_CPP)
 		--top-module $(HPSBRG_TOP) --Mdir $(HPSBRG_DIR) \
 		-I$(COMMON_DIR) -I$(MISTER_DIR) \
 		$(HPSBRG_SRCS) $(HPSBRG_CPP)
+
+# --- MiSTer clk_autotune ---
+clk-autotune: $(CLKAT_DIR)/V$(CLKAT_TOP)
+	@printf "\n=== MiSTer clk_autotune (self-tuning clock FSM + reconfig IP) ===\n"
+	./$(CLKAT_DIR)/V$(CLKAT_TOP)
+
+$(CLKAT_DIR)/V$(CLKAT_TOP): $(CLKAT_SRCS) $(CLKAT_CPP)
+	$(VERILATOR) $(VERILATOR_FLAGS) $(CLKAT_FLAGS) \
+		--top-module $(CLKAT_TOP) --Mdir $(CLKAT_DIR) \
+		-I$(COMMON_DIR) -I$(MISTER_DIR) \
+		$(CLKAT_SRCS) $(CLKAT_CPP)
 
 # --- MiSTer hps_mouse ---
 hps-mouse: $(HPSMOUSE_DIR)/V$(HPSMOUSE_TOP)

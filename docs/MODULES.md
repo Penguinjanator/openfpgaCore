@@ -113,6 +113,7 @@ perspective + edge core + z-test/write; SoC: CPU core, SDRAM, scanout, save-slot
 | Analogizer / SNAC | `ANALOGIZER` | analog video + SNAC raster (pocket) | 3 | [file] |
 | Link cable | `LINK` | serial/link — **stubbed everywhere** (no live HW; advertised on MiSTer only) | 2 | stub |
 | 4-player input | `4PLAYER` | **pocket** controller expansion (`ifndef` gate, core_top.v:2603); dead macro on MiSTer | *new* | [gen] |
+| Self-tuning clock | `CLK_AUTOTUNE` | **MiSTer**: Reconfigurable VCO-900 `pll_sys` + `clk_autotune.v` — boot-ROM SDRAM probe drops the core 100→90 MHz at runtime on marginal modules (one C-counter rewrite, no relock; bridge paused, warm reset, frequency-meter confirmed).  Regs `HPS_CLK_CTRL`/`HPS_CLK_FREQ` @ 0x49000028/2C; one-shot per power-up.  Supersedes shipping a separate `mister90` compat build once HW-gated. | — | [gen]→[file] |
 
 ---
 

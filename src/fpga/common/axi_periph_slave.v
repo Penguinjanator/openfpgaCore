@@ -180,6 +180,17 @@ module axi_periph_slave #(
     input wire [31:0]  hps_ini_len,      // instance-ini (F-load) byte count
     input wire [31:0]  hps_elf_len,      // app.elf (F-load) byte count
 
+    // Self-tuning clock (MiSTer INCLUDE_CLK_AUTOTUNE; tie the inputs to
+    // 0 elsewhere — 0x28 reading 0 = "no autotune HW", firmware skips).
+    // HPS_CLK_CTRL (0x28) read: {..., failed[3], is90[2], attempted[1],
+    // present[0]}; write: strobed out for emu.sv to magic-check.
+    // HPS_CLK_FREQ (0x2C) read: measured clk_sys Hz (read twice until
+    // equal — the meter updates it asynchronously every 1 ms).
+    input wire [31:0]  hps_clk_ctrl,
+    input wire [31:0]  hps_clk_freq,
+    output reg         hps_clkreq_wr,    // one-cycle: CPU wrote 0x28
+    output reg  [31:0] hps_clkreq_wdata,
+
     // Bridge write drain status (for pacing DMA reads)
     input wire         bridge_wr_idle,
 
@@ -1831,7 +1842,12 @@ always @(*) begin
             6'd50: sysreg_rdata = {21'b0, save_dt_word_mode, save_dt_word};  // SAVE_DT_WORD + armed flag (diagnostic)
             // Display timing live readback.
             6'd55: sysreg_rdata = {22'b0, vrr_v_total};
-`ifdef INCLUDE_CLK90
+`ifdef INCLUDE_CLK_AUTOTUNE
+            // CLK_FREQ_HZ (0xD4), self-tuning build: runtime-selected.
+            // hps_clk_ctrl[2] = "running at 90 MHz" from clk_autotune
+            // (quasi-static long before os.bin reads this).
+            6'd53: sysreg_rdata = hps_clk_ctrl[2] ? 32'd90_000_000 : CLK_HZ;
+`elsif INCLUDE_CLK90
             6'd53: sysreg_rdata = CLK_HZ;   // CLK_FREQ_HZ (0xD4), 90 MHz build
 `elsif INCLUDE_CLK96
             // CLK_FREQ_HZ (0xD4).  Emitted ONLY for reduced-clock builds so
@@ -2047,6 +2063,8 @@ wire [31:0] hps_rdata = (req_addr[5:2] == 4'd0) ? hps_status :
                         (req_addr[5:2] == 4'd7) ? hps_img2_size[63:32] :
                         (req_addr[5:2] == 4'd8) ? hps_ini_len :
                         (req_addr[5:2] == 4'd9) ? hps_elf_len :
+                        (req_addr[5:2] == 4'd10) ? hps_clk_ctrl :
+                        (req_addr[5:2] == 4'd11) ? hps_clk_freq :
                                                   32'd0;
 
 wire beat_is_last = (burst_count == burst_len);
@@ -2194,6 +2212,10 @@ always @(posedge clk or posedge reset) begin
         audio_sample_wr   <= 1'b0;
         audio_sample_data <= 32'd0;
 
+        // Self-tuning clock request strobe (HPS_CLK_CTRL write)
+        hps_clkreq_wr    <= 1'b0;
+        hps_clkreq_wdata <= 32'd0;
+
     end else begin
         // Defaults: deassert single-cycle pulses.  rvalid and bvalid
         // are NOT here — they are held until their corresponding
@@ -2213,6 +2235,7 @@ always @(posedge clk or posedge reset) begin
         mix_voice_wr     <= 1'b0;   // one-cycle pulse
         mix_irq_clear_wr <= 1'b0;   // one-cycle pulse
         audio_sample_wr  <= 1'b0;   // one-cycle pulse (CPU PCM push)
+        hps_clkreq_wr    <= 1'b0;   // one-cycle pulse (HPS_CLK_CTRL write)
 
         case (state)
 
@@ -2398,6 +2421,13 @@ always @(posedge clk or posedge reset) begin
                     gpu_reg_wr    <= 1'b1;
                     gpu_reg_addr  <= req_addr[5:2];
                     gpu_reg_wdata <= req_wdata;
+                end
+                /* HPS_CLK_CTRL @ 0x49000028: strobe the write out for the
+                 * target glue to magic-check (self-tuning clock request).
+                 * The rest of REGION_HPS stays read-only / write-no-op. */
+                if (req_is_hps && req_addr[5:2] == 4'd10) begin
+                    hps_clkreq_wr    <= 1'b1;
+                    hps_clkreq_wdata <= req_wdata;
                 end
                 if (req_is_mixer) begin
                     if (req_addr[11] == 1'b0) begin

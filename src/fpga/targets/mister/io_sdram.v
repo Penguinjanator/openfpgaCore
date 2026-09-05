@@ -43,6 +43,13 @@ input   wire            chip_clk,
 input   wire            clk_90,
 input   wire            reset_n,
 
+// Runtime refresh rescale (INCLUDE_CLK_AUTOTUNE; tie low otherwise —
+// constant-folds to the parameter value).  When the self-tuning clock
+// drops the controller to 90 MHz, the interval shortens 560 -> 504 so
+// real-time refresh cadence stays ~5.6 us (same scaling emu.sv applies
+// at build time for the fixed 90 MHz variant).
+input   wire            refresh_i504,
+
 output  reg             phy_cke,
 output  wire            phy_clk,
 output  wire            phy_cas,
@@ -1347,17 +1354,18 @@ always @(posedge controller_clk) begin
     end
 
     // autorefresh generator
-    // every REFRESH_INTERVAL cycles; see the declaration comment for the
+    // every REFRESH_INTERVAL cycles (504 when the runtime clock dropped
+    // to 90 MHz — refresh_i504); see the declaration comment for the
     // spec margin.
     refresh_count <= refresh_count + 1'b1;
-    if(refresh_count == REFRESH_INTERVAL - 1)
+    if(refresh_count == (refresh_i504 ? 10'd504 : REFRESH_INTERVAL) - 1)
         refresh_count <= 0;
     // A refresh tick (counter wrap) increments the pending count; issuing one
     // in ST_REFRESH_0 decrements it.  Combined into a single assignment so a
     // simultaneous tick+issue nets correctly — the old single flag dropped the
     // second tick in that case.
     refresh_pending <= refresh_pending
-                     + ((refresh_count == REFRESH_INTERVAL - 1) ? 3'd1 : 3'd0)
+                     + ((refresh_count == (refresh_i504 ? 10'd504 : REFRESH_INTERVAL) - 1) ? 3'd1 : 3'd0)
                      - ((state == ST_REFRESH_0) ? 3'd1 : 3'd0);
 
     if(~reset_n_s) begin

@@ -307,6 +307,8 @@ int main(int argc, char **argv) {
     tb->reset_n = 0;
     tb->sd_ack = 0;
     tb->m1_rready = 0;
+    tb->pause_req = 0;
+    tb->fabric_reset_n = 1;
     ticks(10);
     tb->reset_n = 1;
     ticks(10);
@@ -794,6 +796,108 @@ int main(int argc, char **argv) {
     {
         CHECK(inv_multibit == 0, "sd_rd/sd_wr always one-hot");
         CHECK(inv_lba_nonzero == 0, "inactive sd_lba elements held at 0");
+    }
+
+
+    // ── clk_autotune pause/drain (INCLUDE_CLK_AUTOTUNE switch window) ──
+    printf("test_pause_mid_stream:\n");
+    {
+        static uint8_t boot3[4096];
+        for (uint32_t i = 0; i < sizeof(boot3); i++)
+            boot3[i] = (uint8_t)(i * 31u + 5u);
+        tb->ioctl_index = 0;
+        tb->ioctl_download = 1;
+        ticks(4);
+        // Pause at a 16-bit-odd point so a dangling low half is latched
+        // (boot_have_lo=1) — quiet must still be reachable.
+        const uint32_t half = 2050;
+        for (uint32_t a = 0; a < half; a += 2) {
+            int guard = 0;
+            while (tb->ioctl_wait && guard++ < 10000) tick();
+            tb->ioctl_dout = (uint16_t)(boot3[a] | (boot3[a + 1] << 8));
+            tb->ioctl_wr = 1; tick();
+            tb->ioctl_wr = 0; tick();
+        }
+        // Autotune FSM asserts the pause mid-stream.
+        tb->pause_req = 1;
+        ticks(2);
+        CHECK(tb->ioctl_wait, "ioctl_wait forced by pause");
+        int g = 0;
+        while (!tb->pause_quiet && g++ < 8000) tick();
+        CHECK(tb->pause_quiet, "bridge drains to quiet under pause");
+        // Fabric blackout = the warm-reset window: arbiter+slave+model
+        // reset while the bridge (unreset, paused) holds all state.
+        tb->fabric_reset_n = 0;
+        bool wait_held = true, quiet_held = true, no_axi = true;
+        for (int i = 0; i < 300; i++) {
+            tick();
+            if (!tb->ioctl_wait)   wait_held = false;
+            if (!tb->pause_quiet)  quiet_held = false;
+        }
+        CHECK(wait_held,  "ioctl_wait held through fabric blackout");
+        CHECK(quiet_held, "bridge stays quiet through fabric blackout");
+        (void)no_axi;
+        tb->fabric_reset_n = 1;
+        ticks(50);
+        tb->pause_req = 0;
+        ticks(4);
+        // Main resumes the stream where it stalled.
+        for (uint32_t a = half; a < sizeof(boot3); a += 2) {
+            int guard = 0;
+            while (tb->ioctl_wait && guard++ < 10000) tick();
+            tb->ioctl_dout = (uint16_t)(boot3[a] | (boot3[a + 1] << 8));
+            tb->ioctl_wr = 1; tick();
+            tb->ioctl_wr = 0; tick();
+        }
+        int guard = 0;
+        while (tb->ioctl_wait && guard++ < 10000) tick();
+        tb->ioctl_download = 0;
+        ticks(400);
+        CHECK(tb->boot_loaded, "boot loaded after paused stream");
+        CHECK(tb->hps_boot_len == sizeof(boot3),
+              "length exact across the pause");
+        CHECK(sdram_check(0x03300000u, boot3, sizeof(boot3), "pause"),
+              "staged bytes intact across pause + fabric blackout");
+    }
+
+    printf("test_pause_deferred_download_start:\n");
+    {
+        // A download STARTING during the pause: the START edge is
+        // deferred (ioctl_download_d frozen) and Main's first word is
+        // backpressured, so nothing is lost and nothing moves during
+        // the switch window.
+        static uint8_t boot4[512];
+        for (uint32_t i = 0; i < sizeof(boot4); i++)
+            boot4[i] = (uint8_t)(i * 11u + 0x33u);
+        tb->pause_req = 1;
+        ticks(3);
+        tb->ioctl_index = 0;
+        tb->ioctl_download = 1;    // Main begins during the pause
+        ticks(10);
+        CHECK(tb->ioctl_wait, "new download sees forced wait");
+        int g = 0;
+        while (!tb->pause_quiet && g++ < 8000) tick();
+        CHECK(tb->pause_quiet, "quiet with a deferred download pending");
+        tb->fabric_reset_n = 0; ticks(200);
+        tb->fabric_reset_n = 1; ticks(50);
+        tb->pause_req = 0;
+        ticks(4);
+        for (uint32_t a = 0; a < sizeof(boot4); a += 2) {
+            int guard = 0;
+            while (tb->ioctl_wait && guard++ < 10000) tick();
+            tb->ioctl_dout = (uint16_t)(boot4[a] | (boot4[a + 1] << 8));
+            tb->ioctl_wr = 1; tick();
+            tb->ioctl_wr = 0; tick();
+        }
+        int guard = 0;
+        while (tb->ioctl_wait && guard++ < 10000) tick();
+        tb->ioctl_download = 0;
+        ticks(400);
+        CHECK(tb->boot_loaded, "deferred-start download completes");
+        CHECK(tb->hps_boot_len == sizeof(boot4),
+              "deferred-start length exact");
+        CHECK(sdram_check(0x03300000u, boot4, sizeof(boot4), "defer"),
+              "deferred-start bytes intact");
     }
 
     printf("\n=== Results: %d passed, %d failed ===\n", tests_passed, tests_failed);

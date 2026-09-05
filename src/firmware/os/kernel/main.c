@@ -112,7 +112,7 @@ static void boot_logo(const char *color) {
     of_term_puts("    /_/_/_/___\\___/_/ |_|\n");
     of_term_puts("   / __ \\/ __/\n");
     of_term_puts("  / /_/ /\\ \\\n");
-    of_term_puts("  \\____/___/  \033[93mv0.8.3\033[0m\n\n");
+    of_term_puts("  \\____/___/  \033[93mv0.9.0\033[0m\n\n");
 }
 
 static void status_ok(void) {
@@ -486,6 +486,13 @@ void os_main(void) {
     of_term_puts("  HAL init.......... ");
     status_ok();
 
+    /* Clock banner: the runtime CPU/RAM frequency the HAL derived from
+     * CLK_FREQ_HZ (0xD4).  On a self-tuning (CLK_AUTOTUNE) core this is
+     * the one persistent on-screen proof of which clock the board chose
+     * — a marginal-module board that dropped to 90 MHz shows it here,
+     * which is exactly what a field photo needs to say. */
+    of_term_printf("  Clock.............  %u MHz\n",
+                   (unsigned)((CPU_FREQ_HZ + 500000u) / 1000000u));
 
     /* Disk backend banner: SD = production (green), UART = service
      * host attached (yellow), none = file I/O will fail (red).

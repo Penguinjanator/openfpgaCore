@@ -573,6 +573,10 @@ axi_periph_slave periph (
     .hps_img2_size       (64'd0),
     .hps_ini_len         (32'd0),
     .hps_elf_len         (32'd0),
+    .hps_clk_ctrl        (32'd0),
+    .hps_clk_freq        (32'd0),
+    .hps_clkreq_wr       (),
+    .hps_clkreq_wdata    (),
     .bridge_wr_idle      (bridge_wr_idle),
     .bridge_dbg_wcnt     (32'd0),
 

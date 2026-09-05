@@ -435,9 +435,11 @@ else
 		echo "  2. Install a game package (e.g. Doom) into games/OpenfpgaOS/."; \
 		echo "  3. Launch a game .mgl from the MiSTer menu."; \
 		echo ""; \
-		echo "If the core fails to boot (flashing 'Memory check', garbled screen,"; \
-		echo "or 'OS reloaded (CRC)') your SDRAM may not run at 100 MHz — try the"; \
-		echo "90 MHz compatibility build (openfpgaos-core-compat90-*.zip)."; \
+		echo "SDRAM speed is handled automatically: the core probes SDRAM at boot"; \
+		echo "and runs at 100 MHz, or drops itself to 90 MHz on boards whose"; \
+		echo "modules need the extra timing margin (typical of pluggable dual-chip"; \
+		echo "128 MB modules on a stock DE10-Nano).  The boot screen shows which"; \
+		echo "('Clock ..... 100 MHz' or '90 MHz').  No separate build needed."; \
 		echo ""; \
 		echo "Or via MiSTer Downloader: add the [$(MISTER_DB_ID)] snippet from"; \
 		echo "openfpgaos.downloader.ini to /media/fat/downloader.ini and sync."; \

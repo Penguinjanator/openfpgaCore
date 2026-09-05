@@ -129,6 +129,19 @@ module hps_bridge #(
     output reg  [2:0]  target_dataslot_err,
     output wire        bridge_wr_idle,
 
+    // ── clk_autotune pause handshake (INCLUDE_CLK_AUTOTUNE; tie
+    //    pause_req low otherwise — zero behavior change) ──────────────
+    // pause_req is a quasi-static level (2-FF synced in emu.sv).  While
+    // high: ioctl_wait is forced (Main stalls between words), download
+    // START/END edges are deferred (recognized after unpause), and
+    // S_IDLE dispatches nothing new — pending words/skid still DRAIN so
+    // the bridge goes fully static.  pause_quiet reports that state:
+    // safe to glitch the clock / warm-reset the fabric around us.  ALL
+    // stream state (offsets, lengths, half-words, flags) is preserved,
+    // so a paused mid-flight ini/elf/boot download resumes losslessly.
+    input  wire        pause_req,
+    output wire        pause_quiet,
+
     // ── HPS status block (REGION_HPS read-back) ─────────────────────
     output wire [31:0] hps_status,
     output wire [63:0] hps_img_size,    // disk 0 (S0) — legacy 0x04/0x08 view
@@ -304,8 +317,30 @@ wire ini_start  = dl_start && !boot_index && !elf_index;  // else     = instance
 wire boot_end   = !ioctl_download && ioctl_download_d && boot_active;
 
 // Throttle the HPS while a posted word drains (the skid gives one
-// word of slack on top of this).
-assign ioctl_wait = boot_word_pending;
+// word of slack on top of this).  pause_req forces the throttle
+// combinationally — the level is stable through the whole switch
+// window, so this output cannot glitch with the clock.
+assign ioctl_wait = boot_word_pending | pause_req;
+
+// Pause quiesce detector.  Quiet requires: FSM idle, word pipeline
+// drained (a dangling LOW HALF is allowed — Main stalled between the
+// two 16-bit halves of a word; boot_have_lo is static state and feeds
+// no AXI activity), and a stretch of ioctl silence long enough to
+// cover Main's wait-observation latency (~2 in-flight words).
+// img_mounted pulses could still arrive mid-window in principle, but
+// they are human-timescale OSD actions; the calibration window is
+// ~100 us on the first boot.
+reg [7:0] ioctl_quiet_cnt;
+initial ioctl_quiet_cnt = 8'd0;
+always @(posedge clk) begin
+    if (ioctl_wr)                   ioctl_quiet_cnt <= 8'd0;
+    else if (!(&ioctl_quiet_cnt))   ioctl_quiet_cnt <= ioctl_quiet_cnt + 8'd1;
+end
+
+assign pause_quiet = pause_req && (state == S_IDLE) &&
+                     !boot_word_pending && !boot_skid_full &&
+                     (&ioctl_quiet_cnt) &&
+                     !target_dataslot_ack && !m_awvalid && !m_arvalid;
 
 assign boot_rom_loaded = boot_loaded_r;
 assign hps_boot_len    = boot_len_r;
@@ -528,7 +563,12 @@ always @(posedge clk or negedge reset_n) begin
         // dispatch, when no transfer is in flight (all acks low), so the
         // history bit can never mix two disks' acks.
         sd_ack_d <= sd_ack_cur;
-        ioctl_download_d <= ioctl_download;
+        // Download START/END edges are deferred while paused: the edge
+        // stays pending in the un-updated history bit and fires after
+        // unpause, so no boot_start/ini_start/elf_start/boot_end state
+        // change can land inside the clock-switch window.
+        if (!pause_req)
+            ioctl_download_d <= ioctl_download;
 
         // ── boot.rom ingest.  This block is the SINGLE writer of
         //    boot_word/boot_word_pending/boot_skid — the FSM only signals
@@ -659,11 +699,13 @@ always @(posedge clk or negedge reset_n) begin
             wd_count <= 28'd0;
 
             if (boot_word_pending) begin
+                // NOT gated on pause_req: pending/skid words must DRAIN
+                // so the pause can reach its quiet point.
                 m_awvalid <= 1'b1;
                 m_awaddr  <= boot_wr_addr;
                 m_awlen   <= 8'd0;
                 state     <= S_BOOT_AW;
-            end else if (ds_cmd_read || ds_cmd_write) begin
+            end else if (!pause_req && (ds_cmd_read || ds_cmd_write)) begin
                 target_dataslot_ack <= 1'b1;
                 op_is_write    <= ds_cmd_write;
                 op_disk        <= req_disk;

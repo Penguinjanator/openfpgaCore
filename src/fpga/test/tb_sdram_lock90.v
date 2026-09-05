@@ -312,6 +312,8 @@ hps_bridge u_bridge (
     .target_dataslot_done(),
     .target_dataslot_err(),
     .bridge_wr_idle(),
+    .pause_req(1'b0),
+    .pause_quiet(),
 
     .hps_status(), .hps_img_size(), .hps_img1_size(), .hps_img2_size(),
     .hps_boot_len(), .hps_ini_len(), .hps_elf_len(),

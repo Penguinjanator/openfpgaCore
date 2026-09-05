@@ -68,6 +68,13 @@ module tb_hps_bridge (
     output wire [2:0]  ds_err,
     output wire        wr_idle,
 
+    // ── clk_autotune pause model (drive from C++) ───────────────────
+    // fabric_reset_n blacks out arbiter+slave+model (the warm-reset
+    // domain) while the bridge stays powered — the switch-window shape.
+    input  wire        pause_req,
+    output wire        pause_quiet,
+    input  wire        fabric_reset_n,
+
     output wire [31:0] hps_status,
     output wire [63:0] hps_img_size,
     output wire [63:0] hps_img1_size,
@@ -160,6 +167,8 @@ hps_bridge #(
     .target_dataslot_done(ds_done),
     .target_dataslot_err(ds_err),
     .bridge_wr_idle(wr_idle),
+    .pause_req(pause_req),
+    .pause_quiet(pause_quiet),
     .hps_status(hps_status),
     .hps_img_size(hps_img_size),
     .hps_img1_size(hps_img1_size),
@@ -203,7 +212,7 @@ wire        arb_wcont;
 
 axi_sdram_arbiter arb (
     .clk(clk),
-    .reset_n(1'b1),
+    .reset_n(fabric_reset_n),
     .m0_arvalid(1'b0), .m0_arready(),
     .m0_araddr(32'd0), .m0_arlen(8'd0),
     .m0_rvalid(), .m0_rdata(), .m0_rresp(), .m0_rlast(),
@@ -289,7 +298,7 @@ axi_sdram_slave #(
     .MAX_NATIVE_WRITE_BURST_LEN(8'd15)
 ) slave (
     .clk(clk),
-    .reset_n(1'b1),
+    .reset_n(fabric_reset_n),
     .s_axi_arvalid(arb_arvalid), .s_axi_arready(arb_arready),
     .s_axi_araddr(arb_araddr),   .s_axi_arlen(arb_arlen),
     .s_axi_rvalid(arb_rvalid),   .s_axi_rready(arb_rready),
@@ -349,7 +358,7 @@ end
 
 sdram_fast_model sdram_mem (
     .clk(clk),
-    .reset_n(reset_n),
+    .reset_n(reset_n & fabric_reset_n),
     .word_rd(word_rd_sd),
     .word_wr(word_wr_sd),
     .word_addr(word_addr_sd),

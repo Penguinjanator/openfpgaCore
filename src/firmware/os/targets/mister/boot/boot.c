@@ -418,6 +418,97 @@ static void boot_sdram_diag(void) {
 }
 #endif /* OF_SDRAM_DIAG */
 
+/* ===================================================================== *
+ * Self-tuning clock (INCLUDE_CLK_AUTOTUNE cores; HPS_CLK_CTRL reads 0 and
+ * this whole path self-gates on every other core).
+ *
+ * A marginal pluggable SDRAM module (the DE10 dual-chip 128 MB class)
+ * corrupts reads at 100 MHz but is clean at 90 (HW-proven, 2026-09-04).
+ * This code runs FROM BRAM, so it stays trustworthy on exactly the boards
+ * whose SDRAM is failing: probe SDRAM first thing; on failure write the
+ * request magic — the fabric pauses the HPS bridge, warm-resets this
+ * domain (including this CPU), rewrites the PLL to 90 MHz, and re-enters
+ * this boot ROM, which re-probes and carries on.  One-shot per power-up.
+ *
+ * The probe is the diag's 64K-word recorder shape (the pattern that
+ * discriminated the failing class on the DE10 photos): pseudorandom
+ * sweep at +0x01100000 (off the terminal FB at +0x00300000 and the
+ * staging window at +0x03300000), uncached write pass, TWO uncached read
+ * passes plus one cached (burst) pass — ~0.2%/word transient flips give
+ * ~hundreds of hits per pass, so detection is certain.
+ * ===================================================================== */
+__attribute__((section(".text.boot")))
+static int boot_sdram_probe_ok(void) {
+    volatile uint32_t *bp = (volatile uint32_t *)
+        boot_sdram_uncached_addr((void *)(uintptr_t)(SDRAM_BASE + 0x01100000u));
+    for (uint32_t i = 0; i < 65536u; i++)
+        bp[i] = 0xC0DE0000u ^ (i * 2654435761u);
+    __asm__ volatile("fence" ::: "memory");
+
+    uint32_t bad = 0;
+    for (int pass = 0; pass < 2; pass++)
+        for (uint32_t i = 0; i < 65536u; i++)
+            if (bp[i] != (0xC0DE0000u ^ (i * 2654435761u)))
+                bad++;
+
+    /* Cached pass: exercises the burst-read path. */
+    volatile uint32_t *cp =
+        (volatile uint32_t *)(uintptr_t)(SDRAM_BASE + 0x01100000u);
+    boot_dcache_inval_range((void *)(uintptr_t)cp, 65536u * 4u);
+    for (uint32_t i = 0; i < 65536u; i++)
+        if (cp[i] != (0xC0DE0000u ^ (i * 2654435761u)))
+            bad++;
+
+    return bad == 0;
+}
+
+__attribute__((section(".text.boot")))
+static void boot_clk_request_switch(void) {
+    /* Nothing after this write is reached: the fabric warm-resets this
+     * CPU and restarts the boot ROM at 90 MHz. */
+    HPS_CLK_CTRL = HPS_CLK_REQ_MAGIC;
+    while (1) { }
+}
+
+/* #define OF_CLK_AUTOTUNE_FORCE 1 */ /* TEMP: force the 90 MHz switch on a
+                          * HEALTHY board (validates the fallback path on
+                          * the SS1 without a marginal module).  Enable +
+                          * `make firmware` = MIF patch, no refit.  Ships
+                          * DISABLED. */
+
+__attribute__((section(".text.boot")))
+static void boot_clk_autotune(void) {
+    uint32_t ctrl = HPS_CLK_CTRL;
+    if (!(ctrl & HPS_CLK_PRESENT))
+        return;                       /* core lacks the feature: 0 read */
+
+#ifdef OF_CLK_AUTOTUNE_FORCE
+    if (!(ctrl & HPS_CLK_ATTEMPTED))
+        boot_clk_request_switch();    /* unconditional: exercise the path */
+#endif
+
+    if (boot_sdram_probe_ok()) {
+        /* Healthy at the current clock.  If that clock is the fallback,
+         * leave a visible note (kernel console repaints later). */
+        if (ctrl & HPS_CLK_IS_90)
+            boot_fb_puts(0, 2, "SDRAM: 90 MHz (auto)");
+        else if (ctrl & HPS_CLK_SWITCH_FAILED)
+            boot_fb_puts(0, 2, "clock switch failed");
+        return;
+    }
+
+    if (!(ctrl & HPS_CLK_ATTEMPTED))
+        boot_clk_request_switch();    /* marginal at 100: drop to 90 */
+
+    /* Already at the fallback and STILL failing: this is a hardware
+     * fault no clock can fix.  Say so and stop (the message may render
+     * imperfectly on a byte-lane-broken board, but any text beats the
+     * old silent black screen). */
+    boot_fb_puts(0, 0, "SDRAM unstable even at 90 MHz");
+    boot_fb_puts(0, 1, "hardware fault: check module seating");
+    while (1) { }
+}
+
 /* os_finalize_memory() lives in BRAM .fasttext.  It only zeroes .bss. */
 extern void os_finalize_memory(void *bss_start, void *bss_end);
 
@@ -644,6 +735,14 @@ int main(void) {
 #ifdef OF_SDRAM_DIAG
     boot_sdram_diag();          /* never returns */
 #endif
+
+    /* Self-tuning clock: probe SDRAM BEFORE anything depends on it.  On
+     * an autotune core with a marginal module this never returns from
+     * the first call (the fabric restarts us at 90 MHz); everywhere
+     * else it costs ~40 ms.  Runs after the FB clear so its "90 MHz"
+     * note isn't wiped. */
+    boot_clk_autotune();
+
     boot_fb_puts(0, 0, "Waiting for boot.rom...");
 
     /* Wait for the HPS to deliver boot.rom.  The MiSTer main process
@@ -671,6 +770,16 @@ int main(void) {
 
     uint32_t os_size = boot_os_image_size();
     (void)boot_load_os(os_size);
+
+    /* Backstop for the autotune probe: the bulk staging->VMA copy is the
+     * heaviest SDRAM read pattern in the boot; if it exhausted its CRC
+     * retries at 100 MHz on an autotune core, drop to 90 and redo the
+     * whole boot (staging is intact — the copy never modifies it). */
+    if (os_load_crc_retries >= OS_LOAD_MAX_ATTEMPTS) {
+        uint32_t cc = HPS_CLK_CTRL;
+        if ((cc & HPS_CLK_PRESENT) && !(cc & HPS_CLK_ATTEMPTED))
+            boot_clk_request_switch();   /* never returns */
+    }
 
     /* Refuse to run an os.bin whose memory map differs from this baked
      * bootloader (wrong target / stale mif): it would pass the content CRC

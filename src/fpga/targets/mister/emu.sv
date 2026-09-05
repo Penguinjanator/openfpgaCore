@@ -105,6 +105,22 @@ wire pll_locked = pll_sys_locked & pll_vid_locked;
 
 // Two PLLs: 100 MHz pair is integer-mode, 24.576 MHz needs its own
 // fractional VCO (no legal shared VCO with 100 MHz — see pll_sys.v).
+`ifdef INCLUDE_CLK_AUTOTUNE
+// Self-tuning build: pll_sys is the Reconfigurable-subtype VCO-900
+// configuration (100 MHz default / 90 MHz runtime fallback) driven by
+// clk_autotune through this reconfig bus.  See clk_autotune.v for the
+// full protocol and the autotune glue block below for the wiring.
+wire [63:0] autotune_to_pll, autotune_from_pll;
+pll_sys pll (
+	.refclk   (CLK_50M),
+	.rst      (0),
+	.outclk_0 (clk_cpu),
+	.outclk_1 (clk_ram_chip),
+	.reconfig_to_pll   (autotune_to_pll),
+	.reconfig_from_pll (autotune_from_pll),
+	.locked   (pll_sys_locked)
+);
+`else
 pll_sys pll (
 	.refclk   (CLK_50M),
 	.rst      (0),
@@ -112,6 +128,7 @@ pll_sys pll (
 	.outclk_1 (clk_ram_chip),
 	.locked   (pll_sys_locked)
 );
+`endif
 
 pll_vid pllv (
 	.refclk   (CLK_50M),
@@ -156,7 +173,18 @@ always @(posedge clk_cpu) begin
 end
 wire ini_reset = (ini_reset_cnt != 8'd0);
 
-wire reset_n = ~RESET & ~status[0] & ~mount_reset & ~ini_reset & pll_locked;
+// Self-tuning clock warm reset (INCLUDE_CLK_AUTOTUNE): folds into the
+// core reset like RESET/status[0] (async-assert into the per-domain
+// synchronizers below).  hps_bridge deliberately does NOT see this
+// reset — it is PAUSED and static through the switch instead, so all
+// staging/stream state survives (same principle as ini_reset).
+`ifdef INCLUDE_CLK_AUTOTUNE
+wire autotune_warm_reset;
+`else
+wire autotune_warm_reset = 1'b0;
+`endif
+wire reset_n = ~RESET & ~status[0] & ~mount_reset & ~ini_reset & pll_locked
+             & ~autotune_warm_reset;
 
 // clk_cpu-domain reset replicas (same split as core_top.v so fitter
 // placement is not constrained by one monolithic reset tree).
@@ -182,6 +210,71 @@ always @(posedge clk_vid or negedge reset_n) begin
 	else
 		reset_vid_sync <= {reset_vid_sync[0], 1'b1};
 end
+
+///////////////////////  SELF-TUNING CLOCK  //////////////////////////
+
+// INCLUDE_CLK_AUTOTUNE: one bitstream, 100 MHz default with a runtime
+// 90 MHz SDRAM-margin fallback (the DE10 dual-chip-module class).  The
+// boot ROM probes SDRAM from BRAM at 100 first thing; on failure it
+// writes the magic below to HPS_CLK_CTRL (0x49000028) and clk_autotune
+// pauses hps_bridge, warm-resets the core domain, rewrites the PLL C
+// counters to /10, confirms 90 MHz on a hardware frequency meter, and
+// releases — the CPU re-enters the boot ROM at 90.  Sticky until the
+// core is reloaded; OSD soft resets do not touch it.
+wire        hps_clkreq_wr;
+wire [31:0] hps_clkreq_wdata;
+wire        bridge_pause_quiet;   // hps_bridge drained+static (pause ack)
+`ifdef INCLUDE_CLK_AUTOTUNE
+localparam [31:0] AUTOTUNE_REQ_MAGIC = 32'h436C6B39;   // "Clk9"
+reg         autotune_req;
+always @(posedge clk_cpu) begin
+	if (!reset_n_cpu_core)
+		autotune_req <= 1'b0;   // consumed by the warm reset it causes
+	else if (hps_clkreq_wr && hps_clkreq_wdata == AUTOTUNE_REQ_MAGIC)
+		autotune_req <= 1'b1;
+end
+
+wire autotune_pause;
+wire autotune_is90, autotune_attempted, autotune_failed;
+wire [31:0] autotune_freq_hz;
+
+clk_autotune autotune (
+	.clk50             (CLK_50M),
+	.clk_sys           (clk_cpu),
+	.pll_locked        (pll_sys_locked),
+	.reconfig_to_pll   (autotune_to_pll),
+	.reconfig_from_pll (autotune_from_pll),
+	.req_switch        (autotune_req),
+	.bridge_pause      (autotune_pause),
+	.bridge_quiet      (bridge_pause_quiet),
+	.warm_reset        (autotune_warm_reset),
+	.clk_is_90         (autotune_is90),
+	.attempted         (autotune_attempted),
+	.switch_failed     (autotune_failed),
+	.freq_hz           (autotune_freq_hz)
+);
+
+// clk_sys-domain views of the quasi-static clk50-domain levels.
+reg [1:0] at_pause_sync, at_is90_sync, at_att_sync, at_fail_sync;
+always @(posedge clk_cpu) begin
+	at_pause_sync <= {at_pause_sync[0], autotune_pause};
+	at_is90_sync  <= {at_is90_sync[0],  autotune_is90};
+	at_att_sync   <= {at_att_sync[0],   autotune_attempted};
+	at_fail_sync  <= {at_fail_sync[0],  autotune_failed};
+end
+wire        autotune_pause_sys = at_pause_sync[1];
+wire        autotune_is90_sys  = at_is90_sync[1];
+// HPS_CLK_CTRL read: {failed[3], is90[2], attempted[1], present[0]}.
+wire [31:0] hps_clk_ctrl_val = {28'd0, at_fail_sync[1], autotune_is90_sys,
+                                at_att_sync[1], 1'b1};
+`else
+// Feature absent: HPS_CLK_CTRL reads 0 ("no autotune HW") and firmware
+// skips the probe; every tie below constant-folds to today's netlist.
+wire        autotune_pause_sys = 1'b0;
+wire        autotune_is90_sys  = 1'b0;
+wire [31:0] hps_clk_ctrl_val   = 32'd0;
+wire [31:0] autotune_freq_hz   = 32'd0;
+`endif
 
 ///////////////////////   HPS IO   ///////////////////////////////
 
@@ -432,6 +525,10 @@ hps_bridge #(
 	.target_dataslot_done       (target_dataslot_done),
 	.target_dataslot_err        (target_dataslot_err),
 	.bridge_wr_idle             (bridge_wr_idle),
+	// Self-tuning clock pause handshake (constant-folds when the
+	// autotune feature is absent: pause_req 0, quiet unused).
+	.pause_req                  (autotune_pause_sys),
+	.pause_quiet                (bridge_pause_quiet),
 
 	.hps_status      (hps_status),
 	.hps_img_size    (hps_img_size),
@@ -650,8 +747,14 @@ reg  [2:0]  audio_credits;
 wire        audio_pace_tick = audio_pace_acc[32];
 always @(posedge clk_cpu) begin
 	// K = round(48000 / f_cpu * 2^32): 2061584 @ 100 MHz, 2290649 @ 90 MHz.
+	// Self-tuning build: runtime-selected on the live clock (the mixer
+	// is idle across the switch — the whole domain is in warm reset).
 	audio_pace_acc <= {1'b0, audio_pace_acc[31:0]} +
+`ifdef INCLUDE_CLK_AUTOTUNE
+		(autotune_is90_sys ? 33'd2290649 : 33'd2061584);
+`else
 		`ifdef INCLUDE_CLK90 33'd2290649 `else 33'd2061584 `endif;
+`endif
 	case ({audio_pace_tick && (audio_credits != 3'd7),
 	       mixer_sample_wr && (audio_credits != 3'd0)})
 		2'b10:   audio_credits <= audio_credits + 3'd1;
@@ -797,6 +900,11 @@ axi_periph_slave #(
 	.hps_img2_size(hps_img2_size),
 	.hps_ini_len(hps_ini_len),
 	.hps_elf_len(hps_elf_len),
+	// Self-tuning clock (HPS_CLK_CTRL 0x28 / HPS_CLK_FREQ 0x2C)
+	.hps_clk_ctrl(hps_clk_ctrl_val),
+	.hps_clk_freq(autotune_freq_hz),
+	.hps_clkreq_wr(hps_clkreq_wr),
+	.hps_clkreq_wdata(hps_clkreq_wdata),
 	// Display control
 	.color_mode(color_mode),
 	.fb_display_addr(fb_display_addr),
@@ -1648,7 +1756,14 @@ io_sdram #(
 	.controller_clk ( clk_ram_controller ),
 	.chip_clk       ( clk_ram_chip ),
 	.clk_90         ( clk_ram_chip ),
-	.reset_n        ( 1'b1 ),
+	// Deliberately NOT the general reset (io_sdram must keep serving
+	// scanout through OSD/mount/ini soft resets).  The self-tuning
+	// warm reset is the one exception: the controller must sit in
+	// ST_RESET (CKE low, NOP) through the PLL counter rewrite, then
+	// re-run the full JEDEC init on the new clock.  Constant-folds to
+	// 1'b1 when the autotune feature is absent.
+	.reset_n        ( ~autotune_warm_reset ),
+	.refresh_i504   ( autotune_is90_sys ),
 
 	.phy_cke        ( SDRAM_CKE ),
 	.phy_clk        ( unused_phy_clk ),

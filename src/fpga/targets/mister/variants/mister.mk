@@ -29,10 +29,23 @@
 DEFS := INCLUDE_HW_MIXER INCLUDE_TRANSLUC \
         INCLUDE_COLUMN_LIST INCLUDE_COMPACT_SPAN INCLUDE_PARAM_TRI \
         INCLUDE_VERT_TRI INCLUDE_PARAM_TRI_RECS \
-        MISTER_FB MISTER_FB_PALETTE
-# INCLUDE_CLK90 (90 MHz universal build) parked 2026-08-26: the VCO fix +
-# M2-fairness ride along ifdef'd/always-on respectively; re-add the macro to
-# resume that branch (see project memory mister-sdram-module-timing).
+        MISTER_FB MISTER_FB_PALETTE \
+        INCLUDE_CLK_AUTOTUNE
+# INCLUDE_CLK_AUTOTUNE (v0.9, the SHIPPING config): self-tuning clock —
+# Reconfigurable VCO-900 pll_sys (C0 /9 = 100 MHz default, runtime /10 =
+# 90 MHz) + clk_autotune.v + the boot-ROM SDRAM probe.  A board whose
+# SDRAM fails the probe at 100 MHz (marginal PLUGGABLE dual-chip modules,
+# e.g. stock DE10-Nano + 128 MB module) drops ITSELF to 90 MHz — one C-
+# counter rewrite, no relock, bridge paused, warm reset, frequency-meter
+# confirmed; the boot console prints the chosen clock.  Replaces the
+# separate mister90/compat90 manual-install build (variant kept for
+# experiments).  STA closes at 100 MHz; the 90 mode is the same placement
+# 11% slower (mister90 HW-proved the 90 MHz physics on SS1 + DE10; the
+# runtime switch HW-validated on the SS1 2026-09-05, forced + ear/screen).
+#
+# INCLUDE_CLK90 (fixed 90 MHz build) parked 2026-08-26: the VCO fix +
+# M2-fairness ride along ifdef'd/always-on respectively; superseded by
+# CLK_AUTOTUNE above (see project memory mister-sdram-module-timing).
 #
 # INCLUDE_SDRAM_2T (typically together with NO_A12_DQM_MIRROR) — DE10
 # dual-chip 128MB module experiment: true 2T commands via a live registered

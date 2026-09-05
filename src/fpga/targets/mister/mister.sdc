@@ -32,8 +32,19 @@ set_clock_groups -asynchronous \
 # FAILED on SS1 hardware (staging CRC x4) — the DQ multicycle pairing
 # below is calibrated for the 5.0 ns relationship and STA verified the
 # wrong edges after the shift.  Re-derive the pairing before any re-phase.
+# The C0 divclk pin path differs by PLL subtype: General (fixed-clock
+# builds) vs Reconfigurable (INCLUDE_CLK_AUTOTUNE — clk_autotune.v).
+# SDC can't see Verilog macros, so probe for whichever exists.  Note the
+# autotune build's STA describes the 100 MHz (compile-time) mode only —
+# the runtime 90 MHz mode is the same placement 11% slower (every
+# constraint window widens; the mister90 variant proved the 90 MHz
+# physics on HW).
+set _pll_c0 [get_pins -nowarn {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}]
+if {[get_collection_size $_pll_c0] == 0} {
+  set _pll_c0 [get_pins {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}]
+}
 create_generated_clock -name sdram_clk_pin \
-  -source [get_pins {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
+  -source $_pll_c0 \
   -invert \
   [get_ports {SDRAM_CLK}]
 
