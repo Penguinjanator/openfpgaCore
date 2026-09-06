@@ -39,6 +39,7 @@ static void tick() {
 
 static void reset_sequence() {
     tb->reset_n = 0;
+    tb->mixer_ready = 1;
     tb->s_axi_arvalid = 0;
     tb->s_axi_rready  = 0;
     tb->s_axi_awvalid = 0;
@@ -332,6 +333,8 @@ static void test_gpu_write_split_aw_w(void) {
     printf("  %d AXI writes issued, %u gpu_reg_wr pulses seen\n",
            N - submit_fail, g_gpu_wr_pulses);
     check_eq("gpu-ring-data-pulses-split", g_gpu_wr_pulses, (uint32_t)(N - submit_fail));
+    check_eq("gpu-ring-data-address-split", g_gpu_last_addr, (GPU_RING_DATA >> 2) & 15);
+    check_eq("gpu-ring-data-value-split", g_gpu_last_wdata, 0x5A5A0000u | (N - 1));
 }
 
 // Writes to GPU_RING_WRPTR interleaved with GPU_RING_DATA — mimics
@@ -1485,6 +1488,107 @@ static void test_hps_region_decode() {
     check_eq("hps-region-16-word-decode", ok, 1);
 }
 
+static void test_read_burst_after_fixed_write() {
+    printf("test_read_burst_after_fixed_write:\n");
+    tb->s_axi_awburst = 0;
+    check_eq("fixed-write-completes", axi_write_single(0x4A000008u, 0x12345678u), 1);
+    tb->s_axi_awburst = 1;
+    std::vector<uint32_t> r;
+    const uint32_t expected[] = {0x125, 0x33334444, 0x11112222, 0xABC00};
+    check_eq("read-burst-completes", axi_read_burst(0x49000000u, 3, r, 0xA), 1);
+    for (size_t i = 0; i < r.size() && i < 4; ++i)
+        check_eq("read-burst-address-after-fixed-write", r[i], expected[i]);
+}
+
+static void test_write_response_backpressure() {
+    printf("test_write_response_backpressure:\n");
+    reset_sequence();
+    tb->s_axi_awvalid = 1;
+    tb->s_axi_awaddr = 0x4A000008u;
+    tb->s_axi_awlen = 0;
+    tb->s_axi_wvalid = 1;
+    tb->s_axi_wdata = 0x11111111u;
+    tb->s_axi_wstrb = 15;
+    tb->s_axi_wlast = 1;
+    bool aw_done = false, w_done = false;
+    for (int i = 0; i < 50 && !(aw_done && w_done); ++i) {
+        tb->eval();
+        aw_done |= tb->s_axi_awvalid && tb->s_axi_awready;
+        w_done |= tb->s_axi_wvalid && tb->s_axi_wready;
+        tick();
+        if (aw_done) tb->s_axi_awvalid = 0;
+        if (w_done) tb->s_axi_wvalid = 0;
+    }
+    check_eq("first-write-handshakes", aw_done && w_done, 1);
+    for (int i = 0; i < 20 && !tb->s_axi_bvalid; ++i) tick();
+    check_eq("first-response-present", tb->s_axi_bvalid, 1);
+
+    // Offer another write while the first response remains unconsumed.
+    tb->s_axi_awvalid = 1;
+    tb->s_axi_wvalid = 1;
+    tb->s_axi_wdata = 0x22222222u;
+    int early_accepts = 0;
+    for (int i = 0; i < 20; ++i) {
+        tb->eval();
+        early_accepts += tb->s_axi_awready || tb->s_axi_wready;
+        tick();
+    }
+    check_eq("held-response-backpressures-next-write", early_accepts, 0);
+
+    tb->s_axi_bready = 1;
+    aw_done = false; w_done = false;
+    int responses = 0;
+    for (int i = 0; i < 100 && responses < 2; ++i) {
+        tb->eval();
+        aw_done |= tb->s_axi_awvalid && tb->s_axi_awready;
+        w_done |= tb->s_axi_wvalid && tb->s_axi_wready;
+        responses += tb->s_axi_bvalid && tb->s_axi_bready;
+        tick();
+        if (aw_done) tb->s_axi_awvalid = 0;
+        if (w_done) tb->s_axi_wvalid = 0;
+    }
+    check_eq("one-response-per-write", responses, 2);
+    reset_sequence();
+}
+
+static void test_mixer_queue_backpressure() {
+    printf("test_mixer_queue_backpressure:\n");
+    for (int field : {4, 6}) {
+        reset_sequence();
+        tb->mixer_ready = 0;
+        tb->s_axi_awaddr = 0x48000000u + 31*64 + field*4;
+        tb->s_axi_awlen = 0;
+        tb->s_axi_awvalid = 1;
+        tb->s_axi_wdata = 0x12345u;
+        tb->s_axi_wstrb = 15;
+        tb->s_axi_wlast = 1;
+        tb->s_axi_wvalid = 1;
+        tb->s_axi_bready = 1;
+        bool aw = false, w = false;
+        int writes = 0, responses = 0;
+        bool early = false;
+        for (int cycle = 0; cycle < 160; ++cycle) {
+            tb->mixer_ready = cycle >= 100;
+            tb->eval();
+            aw |= tb->s_axi_awvalid && tb->s_axi_awready;
+            w |= tb->s_axi_wvalid && tb->s_axi_wready;
+            if (tb->mixer_write) {
+                ++writes;
+                check_eq("mixer-delayed-data", tb->mixer_write_data, 0x12345u);
+            }
+            responses += tb->s_axi_bvalid && tb->s_axi_bready;
+            if (cycle < 100) early |= tb->mixer_write || tb->s_axi_bvalid;
+            tick();
+            if (aw) tb->s_axi_awvalid = 0;
+            if (w) tb->s_axi_wvalid = 0;
+        }
+        check_eq("mixer-full-queue-waits", early, 0);
+        check_eq("mixer-write-exactly-once", writes, 1);
+        check_eq("mixer-response-exactly-once", responses, 1);
+    }
+    reset_sequence();
+}
+
 int main(int argc, char **argv) {
     Verilated::commandArgs(argc, argv);
     tb = new Vtb_axi_periph;
@@ -1527,6 +1631,9 @@ int main(int argc, char **argv) {
     // GPU MMIO read addressing — caught the registered-rdata off-by-one.
     test_gpu_read_addressing();
     test_mixer_pos_read_registered_boundary();
+    test_read_burst_after_fixed_write();
+    test_write_response_backpressure();
+    test_mixer_queue_backpressure();
 
     printf("\n=== Results: %d passed, %d failed ===\n", passes, fails);
     delete tb;

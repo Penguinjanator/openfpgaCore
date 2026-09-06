@@ -72,9 +72,10 @@ src/fpga/targets/*/output_files/seed_*_sta.log
 src/fpga/targets/*/output_files/seed_map.log
 src/fpga/targets/*/output_files/*.jdi
 src/fpga/targets/*/simulation/
-# Regenerated per-build artifacts (Quartus STA dump + build_id PRE_FLOW MIF)
+# Quartus reports and generated metadata (Pocket uses a fixed source MIF).
 src/fpga/targets/*/sta_output.log
 src/fpga/targets/*/apf/build_id.mif
+!src/fpga/targets/pocket/apf/build_id.mif
 
 # SignalTap captures
 *.stp

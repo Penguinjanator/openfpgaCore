@@ -724,49 +724,16 @@ wire [23:0] cpu_pal_data;
 wire        cpu_pal_commit;
 wire        cpu_pal_busy;
 
-// Mixer sample pacing.  audio_mixer paces itself against the Pocket's I2S
-// dcfifo fill level (it starts a new sample whenever level < 768, and the
-// FIFO drains at 48 kHz).  MiSTer has no FIFO — sys_top samples AUDIO_L/R
-// directly — so a hardwired level of 0 lets the mixer free-run at FSM speed
-// (heard as SFX/music playing far too fast).  Emulate the backpressure with
-// a CREDIT pacer: a 48 kHz phase-accumulator strobe grants one sample
-// credit (small saturating pool so the mixer can catch up after SDRAM
-// stalls, like the real FIFO's slack); each produced sample consumes one.
-// The emulated level reads "room" only while a credit is available — and
-// mixer_sample_wr is folded in COMBINATIONALLY so the cycle a sample
-// completes cannot double-start against a credit whose decrement is still
-// one flop away (the documented one-per-tick off-by-one, 2026-07-02).
-// All-register and boot-inert: with mixer_enable=0 the mixer never starts
-// regardless of this logic.  The tick is the CARRY OUT of a 32-bit
-// accumulator sampled every cycle, so rate = K / 2^32 * 100 MHz and
-// K = round(48000 / 100e6 * 2^32) = 2061584 → 47.99999 kHz.  (The first
-// deployment used the 2^33-scaled K from an older half-rate strobe design
-// and paced the mixer at 96 kHz — music/SFX at exactly double speed.)
-reg  [32:0] audio_pace_acc /* synthesis preserve */;
-reg  [2:0]  audio_credits;
-wire        audio_pace_tick = audio_pace_acc[32];
-always @(posedge clk_cpu) begin
-	// K = round(48000 / f_cpu * 2^32): 2061584 @ 100 MHz, 2290649 @ 90 MHz.
-	// Self-tuning build: runtime-selected on the live clock (the mixer
-	// is idle across the switch — the whole domain is in warm reset).
-	audio_pace_acc <= {1'b0, audio_pace_acc[31:0]} +
+// The output FIFO renders ahead and presents samples on a regular 48 kHz
+// tick. Mixer completion latency must not set the time each sample is held.
+wire audio_clk_is90 =
 `ifdef INCLUDE_CLK_AUTOTUNE
-		(autotune_is90_sys ? 33'd2290649 : 33'd2061584);
+	autotune_is90_sys;
 `else
-		`ifdef INCLUDE_CLK90 33'd2290649 `else 33'd2061584 `endif;
+	`ifdef INCLUDE_CLK90 1'b1 `else 1'b0 `endif;
 `endif
-	case ({audio_pace_tick && (audio_credits != 3'd7),
-	       mixer_sample_wr && (audio_credits != 3'd0)})
-		2'b10:   audio_credits <= audio_credits + 3'd1;
-		2'b01:   audio_credits <= audio_credits - 3'd1;
-		default: ;   // both or neither: net zero
-	endcase
-end
-wire audio_have_credit = (audio_credits != 3'd0) &&
-                         !((audio_credits == 3'd1) && mixer_sample_wr);
-// Raw pacing wires for the MIXER only; level>=768 ([9:8]==2'b11) = hold.
-wire [9:0]  audio_fifo_level = audio_have_credit ? 10'd0 : 10'd1023;
-wire        audio_fifo_full  = ~audio_have_credit;
+wire [9:0] audio_fifo_level;
+wire       audio_fifo_full;
 // REGISTERED copies for the periph slave's MMIO readback mux — the raw
 // wires reach deep into audio_mixer placement and must stay out of the
 // periph's combinational rdata cone (see 2026-07-02 campaign notes).
@@ -779,6 +746,7 @@ end
 
 wire        mixer_enable_mmio;
 wire        mixer_voice_wr_mmio;
+wire        mixer_voice_ready_mmio;
 wire [4:0]  mixer_voice_sel_mmio;
 wire [3:0]  mixer_voice_field_mmio;
 wire [31:0] mixer_voice_wdata_mmio;
@@ -940,6 +908,7 @@ axi_periph_slave #(
 	// Hardware mixer MMIO
 	.mix_enable             (mixer_enable_mmio),
 	.mix_voice_wr           (mixer_voice_wr_mmio),
+	.mix_voice_ready        (mixer_voice_ready_mmio),
 	.mix_voice_sel          (mixer_voice_sel_mmio),
 	.mix_voice_field        (mixer_voice_field_mmio),
 	.mix_voice_wdata        (mixer_voice_wdata_mmio),
@@ -1543,6 +1512,7 @@ audio_mixer audio_mixer_inst (
 	.reset_n          (reset_n_cpu_media),
 	.mixer_enable     (mixer_enable_mmio),
 	.voice_wr         (mixer_voice_wr_mmio),
+	.voice_wr_ready   (mixer_voice_ready_mmio),
 	.voice_field      (mixer_voice_field_mmio),
 	.voice_sel        (mixer_voice_sel_mmio),
 	.voice_sel_rd     (mixer_voice_sel_rd_mmio),
@@ -1573,17 +1543,14 @@ audio_mixer audio_mixer_inst (
 	.voice_active_mask(mixer_active_mask)
 );
 
-// Latch the 48 kHz stereo pair for sys_top's audio chain (it handles
-// the clock crossing; AUDIO_S=1 marks the samples signed).
-reg [15:0] audio_l_reg, audio_r_reg;
-always @(posedge clk_cpu) begin
-	if (mixer_sample_wr) begin
-		audio_l_reg <= mixer_sample_data[31:16];
-		audio_r_reg <= mixer_sample_data[15:0];
-	end
-end
-assign AUDIO_L = audio_l_reg;
-assign AUDIO_R = audio_r_reg;
+// sys_top handles the crossing to its audio clock; AUDIO_S=1 is signed PCM.
+mister_audio_output audio_output_inst (
+	.clk(clk_cpu), .reset_n(reset_n_cpu_media),
+	.mixer_enable(mixer_enable_mmio), .clk_is90(audio_clk_is90),
+	.sample_wr(mixer_sample_wr), .sample_data(mixer_sample_data),
+	.fifo_level(audio_fifo_level), .fifo_full(audio_fifo_full),
+	.audio_l(AUDIO_L), .audio_r(AUDIO_R)
+);
 
 ///////////////////////  GPU  ////////////////////////////////////
 

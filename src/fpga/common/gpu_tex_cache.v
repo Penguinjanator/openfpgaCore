@@ -11,10 +11,8 @@
 // Default SET_BITS=10 = 16 KB (the Pocket geometry, unchanged); MiSTer
 // passes 11 = 32 KB (no CRAM1 fast-tex chip there, so every texel and
 // cmap read is SDRAM-backed through this cache).
-// M10K sizing caveat: the dual-read data RAM is REPLICATED by the fitter
-// (one full copy per read port), so block cost grows at 2x the logical
-// bits — 10=~36 blocks, 11=~70, 12=~140 (the 64 KB point overflowed the
-// MiSTer A6 alongside a 256 KB D$: 632/553 blocks).
+// The fill write shares port A with the texture read; port B serves
+// colormaps. Two physical addresses allow one true-dual-port RAM copy.
 // Single tag + data RAM, inferred as M10K with TDP read access (Cyclone V).
 //
 // Two consumer ports:
@@ -36,20 +34,13 @@
 //                      that was at stage 1 last cycle (i.e. now at stage 2).
 //                      Combinational hit detect, register resp_valid/resp_data.
 //
-// Latency: 1 cycle from req_valid+req_ready to resp_valid (cache hit),
-// per port, independent.  Both ports can hit on the same cycle: the M10K
-// is configured TDP at 32 b × 256 entries (same M10K count as the prior
-// SDP geometry; Cyclone V supports the dual-read pattern at no block
-// cost).
-//
-// Throughput: 1 hit/port/cycle.  Miss handling serializes through one
-// shared AXI fill machine — fixed-priority A on tie, B on the next
-// quiescent cycle.  During a fill, the *issuing* port is stalled until
-// S_FILL_OUT.  The *other* port can continue serving hits via the second
-// M10K read port; only its req_ready drops while the FSM is in S_FILL_*
-// (uniform across ports — keeps the handshake symmetric and avoids
-// races between the second port's mid-fill accept and the fill's
-// data_mem write).
+// Latency: one cycle from request acceptance to a hit response. Both
+// ports can hit concurrently; port B holds responses until resp_pop_b.
+// Throughput: one hit per port per cycle. Misses share one AXI fill
+// machine, with port A taking priority on a tie. New requests on both
+// ports pause during a fill; an already-buffered hit on the other port
+// can still complete. Fill writes share port A's RAM address and never
+// overlap a consumed port-A read.
 //
 
 `default_nettype none
@@ -110,17 +101,16 @@ localparam TAG_BITS   = 26 - TAG_LO;
 localparam LINE_WORDS = 4;
 
 // ---- Storage ----
-// Inferred M10K, dual-port read (port A + port B).  Cyclone V infers
-// TDP altsyncram from the two-always-block pattern below: each port has
-// its own (clk, addr, [we], dout) triplet; the synthesizer recognises
-// the pattern and emits a TDP block with the same M10K count as the
-// prior SDP layout.  data_mem and tagv_mem keep their write side on
-// port A only (only the fill machine writes; reads via either port).
+// Each memory has one read/write port A and one read-only port B. Keeping
+// the port-A address shared avoids a third logical port, which would make
+// Quartus duplicate the entire memory to provide both reads during writes.
+// The state machine separates fills from reads, so no read-during-write
+// value is consumed and no_rw_check can disable collision bypass logic.
 //
 // Valid is packed into the tag word so the 1024x1 valid array does not
 // consume a whole M10K on its own.  Layout: {valid, tag[TAG_BITS-1:0]}.
-(* ramstyle = "M10K" *) reg [TAG_BITS:0]    tagv_mem  [0:SETS-1];
-(* ramstyle = "M10K" *) reg [31:0]          data_mem  [0:SETS*LINE_WORDS-1];
+(* ramstyle = "M10K, no_rw_check" *) reg [TAG_BITS:0]    tagv_mem  [0:SETS-1];
+(* ramstyle = "M10K, no_rw_check" *) reg [31:0]          data_mem  [0:SETS*LINE_WORDS-1];
 
 // ---- FSM ----
 // S_INIT       : walk sets 0..SETS-1 writing tagv_mem.valid=0 (entered on reset
@@ -307,10 +297,30 @@ wire [SET_BITS-1:0] read_set_b  = prime_b ? lat_set  : addr_set_b;
 wire [1:0]          read_word_b = prime_b ? lat_word : addr_word_b;
 wire                read_en_b   = accept_b || prime_b;
 
+// Reads and fills occupy disjoint FSM states. Multiplex the fill address
+// onto port A so each memory has two physical ports, rather than inferring
+// an independent write port plus two read ports (which duplicates the RAM).
+// no_rw_check is safe: neither read enable can assert during S_INIT or
+// S_FILL_DATA, the only writer states. It also lets Quartus select the
+// native TDP read-during-write mode instead of replicating SDP memories
+// to implement OLD_DATA for a collision that cannot occur.
+wire data_write = reset_n && (state == S_FILL_DATA) && axi_rvalid;
+wire tag_write = reset_n && ((state == S_INIT) || (data_write && axi_rlast));
+wire [SET_BITS-1:0] tag_address_a = tag_write
+    ? ((state == S_INIT) ? init_counter : lat_set) : read_set_a;
+wire [SET_BITS+1:0] data_address_a = data_write
+    ? {lat_set, fill_beat} : {read_set_a, read_word_a};
+wire [TAG_BITS:0] tag_write_data = (state == S_INIT)
+    ? {(TAG_BITS+1){1'b0}} : {1'b1, lat_tag};
+
 always @(posedge clk) begin
+    if (tag_write)
+        tagv_mem[tag_address_a] <= tag_write_data;
+    if (data_write)
+        data_mem[data_address_a] <= axi_rdata;
     if (read_en_a) begin
-        {rd_valid_a, rd_tag_a} <= tagv_mem[read_set_a];
-        rd_data_a  <= data_mem[{read_set_a, read_word_a}];
+        {rd_valid_a, rd_tag_a} <= tagv_mem[tag_address_a];
+        rd_data_a  <= data_mem[data_address_a];
     end
 end
 
@@ -445,7 +455,6 @@ always @(posedge clk) begin
         // 1024 cycles ≈ 10 µs at 100 MHz — negligible at boot/flush.
         // ----------------------------------------------------------------
         S_INIT: begin
-            tagv_mem[init_counter] <= {1'b0, {TAG_BITS{1'b0}}};
             if (init_counter == {SET_BITS{1'b1}}) begin
                 state <= S_PIPE;
                 flush_pending <= 1'b0;  // walk-clear done, clear pending
@@ -549,11 +558,9 @@ always @(posedge clk) begin
 
         S_FILL_DATA: begin
             if (axi_rvalid) begin
-                data_mem[{lat_set, fill_beat}] <= axi_rdata;
                 if (fill_beat == lat_word) fill_target_word <= axi_rdata;
                 fill_beat <= fill_beat + 2'd1;
                 if (axi_rlast) begin
-                    tagv_mem[lat_set]    <= {1'b1, lat_tag};
                     if (lat_port == 1'b0) fill_resp_valid_a <= 1;
                     else fill_resp_valid_b <= 1;
                     state                <= S_FILL_OUT;

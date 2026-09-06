@@ -5,7 +5,7 @@
 //------------------------------------------------------------------------------
 //
 // gpu_cram1_tex_adapter — lets the GPU texture cache fill its lines from CRAM1
-// using the chip's SYNC-BURST engine (BCR 0x641F).  Unlike the CRAM0 async
+// using the chip's SYNC-BURST engine (BCR 0x241F).  Unlike the CRAM0 async
 // path, CRAM1 is dedicated to textures, so it can run sync-burst (the mode that
 // hangs CRAM0's shared async/save reads).  A 16-byte line fill = one burst.
 //

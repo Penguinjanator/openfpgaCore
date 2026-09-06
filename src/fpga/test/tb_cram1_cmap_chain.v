@@ -30,7 +30,12 @@
 //`timescale 1ns/1ps
 `default_nettype none
 
-module tb_cram1_cmap_chain;
+`timescale 1ns/1ps
+module tb_cram1_cmap_chain #(
+    parameter EXTRA_REFRESH_CYCLES = 0,
+    parameter real RETURN_DELAY_NS = 0.0,
+    parameter real RETURN_WAIT_DELAY_NS = RETURN_DELAY_NS
+);
     reg clk = 0; always #5 clk = ~clk;   // 100 MHz
     reg reset_n = 0;
 
@@ -56,8 +61,24 @@ module tb_cram1_cmap_chain;
     // ---- controller <-> chip pins ----
     wire [21:16] cram_a;
     wire [15:0]  cram_ctrl_dq_out; wire cram_ctrl_dq_oe; wire [15:0] cram_chip_dq_out;
-    wire [15:0]  cram_dq_to_ctrl = cram_ctrl_dq_oe ? cram_ctrl_dq_out : cram_chip_dq_out;
+    wire [15:0] cram_dq_to_ctrl;
     wire cram_wait, cram_clk, cram_adv_n, cram_cre, cram_ce0_n, cram_ce1_n, cram_oe_n, cram_we_n, cram_ub_n, cram_lb_n;
+    wire cram_wait_raw;
+    // Divide the path delay into four sections, each shorter than a beat.
+    // One inertial delay longer than a beat would filter out the burst;
+    // this chain preserves every word without overlapping delayed tasks.
+    wire [15:0] raw_return = cram_ctrl_dq_oe ? cram_ctrl_dq_out : cram_chip_dq_out;
+    generate if (RETURN_DELAY_NS == 0.0) begin : no_return_delay
+        assign cram_dq_to_ctrl = raw_return;
+    end else begin : delayed_return
+        wire [15:0] path [0:4];
+        assign path[0] = raw_return;
+        for (genvar d = 0; d < 4; d = d + 1) begin : section
+            assign #(RETURN_DELAY_NS / 4.0) path[d+1] = path[d];
+        end
+        assign cram_dq_to_ctrl = path[4];
+    end endgenerate
+    assign #(RETURN_WAIT_DELAY_NS) cram_wait = cram_wait_raw;
 
     // ---- CPU word path (unused here; tied off) ----
     reg         word_rd = 0, word_wr = 0;
@@ -100,7 +121,7 @@ module tb_cram1_cmap_chain;
         .word_q(word_q), .word_busy(word_busy), .word_q_valid(word_q_valid),
         .burst_rd(burst_rd), .burst_addr(burst_addr), .burst_len(burst_len),
         .burst_q(burst_q), .burst_q_valid(burst_q_valid), .burst_busy(burst_busy),
-        .config_en(config_en), .config_data(16'h641F), .config_bank_sel(config_bank_sel),
+        .config_en(config_en), .config_data(16'h241F), .config_bank_sel(config_bank_sel),
         .raw_busy(raw_busy), .bcr_init_done(bcr_init_done),
         .cram_a(cram_a), .cram_dq_out(cram_ctrl_dq_out), .cram_dq_oe(cram_ctrl_dq_oe),
         .cram_dq_in(cram_dq_to_ctrl), .cram_wait(cram_wait), .cram_clk(cram_clk),
@@ -110,12 +131,12 @@ module tb_cram1_cmap_chain;
         .cram_ub_n(cram_ub_n), .cram_lb_n(cram_lb_n)
     );
 
-    cram_chip_model #(.POWERUP_CYCLES(8'd4)) chip (
-        .clk(clk), .cram_clk(clk), .reset_n(reset_n),
+    cram_chip_model #(.POWERUP_CYCLES(8'd4), .CHECK_AS1C_TIMING(1), .REFRESH_EXTRA_CYCLES(EXTRA_REFRESH_CYCLES)) chip (
+        .clk(clk), .cram_clk(cram_clk), .reset_n(reset_n),
         .cram_a(cram_a),
         .cram_dq_in(cram_ctrl_dq_oe ? cram_ctrl_dq_out : 16'h0),
         .cram_dq_out(cram_chip_dq_out), .cram_dq_oe(cram_ctrl_dq_oe),
-        .cram_wait_out(cram_wait),
+        .cram_wait_out(cram_wait_raw),
         .cram_adv_n(cram_adv_n), .cram_cre(cram_cre),
         .cram_ce0_n(cram_ce0_n), .cram_ce1_n(cram_ce1_n),
         .cram_oe_n(cram_oe_n), .cram_we_n(cram_we_n),
@@ -125,7 +146,7 @@ module tb_cram1_cmap_chain;
         .error_count(cram_errors)
     );
 
-    // ---- BCR-init FSM: pulse config_en per die (sync burst 0x641F) ----
+    // ---- BCR-init FSM: pulse config_en per die (sync burst 0x241F) ----
     reg [3:0] bcr_st = 0; integer warm = 0;
     localparam B_WAIT=0, B_P0=1, B_B0=2, B_I0=3, B_P1=4, B_B1=5, B_I1=6, B_DONE=7;
     always @(posedge clk or negedge reset_n) begin
@@ -315,7 +336,7 @@ module tb_cram1_cmap_chain;
             if (acc_now) begin
                 if (n_cnt >= QD) begin
                     $display("TB-BUG: accept overflowed outstanding queue (n_cnt=%0d) at cyc=%0t", n_cnt, $time);
-                    $finish;
+                    $fatal(1, "CRAM1 response ordering failure");
                 end
                 pendB_valid <= 1'b0;
                 q_valid[n_cnt] <= 1'b1;
@@ -514,20 +535,20 @@ module tb_cram1_cmap_chain;
             && cram_errors == 16'd0 && distinct_count > 1) begin
             $display("RESULT: PASS  (%0d colormap bytes byte-exact via CRAM1 sync-burst PORT B; port A %0d byte-exact concurrently; ordering ok; chip_err=0; varies)",
                      served_b, served_a);
-            $display("CONCLUSION: port-B data path through the REAL cram1 chain is SOUND. The wrong-palette bug is NOT in gpu_tex_cache port B + adapter + cram1_controller. Next step: route tb_gpu's real-gpu_core fills through the cram1 chain.");
+            $display("CRAM1 memory-chain regression passed.");
         end else begin
             $display("RESULT: FAIL  (served_b=%0d/%0d errors_b=%0d errors_a=%0d chip_err=%0d distinct=%0d)",
                      served_b, NB, errors_b, errors_a, cram_errors, distinct_count);
             if (errors_b != 0)
                 $display("CONCLUSION: REPRODUCED wrong-byte on PORT B through the real cram1 chain (see [B] FAIL lines for failing addresses / class above).");
+            $fatal(1, "CRAM1 colormap mismatch");
         end
         $finish;
     end
 
     initial begin
         #6000000;
-        $display("RESULT: FAIL (global timeout served_b=%0d/%0d bcr_done=%0b)", served_b, NB, bcr_init_done);
-        $finish;
+        $fatal(1, "RESULT: FAIL (global timeout served_b=%0d/%0d bcr_done=%0b)", served_b, NB, bcr_init_done);
     end
 endmodule
 

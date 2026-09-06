@@ -5,7 +5,7 @@
 //
 // Two paths proven:
 //   A. Backdoor-preloaded texels -> GPU tex fill (sync-burst read) -> correct texel.
-//   B. CPU upload via word_wr (async write, chip in BCR 0x641F sync-burst) ->
+//   B. CPU upload via word_wr (async write, chip in BCR 0x241F sync-burst) ->
 //      GPU tex fill of those words -> correct texel.  Proves async-write and
 //      sync-burst-read coexist on the same chip (the whole point of CRAM1).
 //
@@ -77,7 +77,7 @@ module tb_cram1_tex_chain;
         .word_q(word_q), .word_busy(word_busy), .word_q_valid(word_q_valid),
         .burst_rd(burst_rd), .burst_addr(burst_addr), .burst_len(burst_len),
         .burst_q(burst_q), .burst_q_valid(burst_q_valid), .burst_busy(burst_busy),
-        .config_en(config_en), .config_data(16'h641F), .config_bank_sel(config_bank_sel),
+        .config_en(config_en), .config_data(16'h241F), .config_bank_sel(config_bank_sel),
         .raw_busy(raw_busy), .bcr_init_done(bcr_init_done),
         .cram_a(cram_a), .cram_dq_out(cram_ctrl_dq_out), .cram_dq_oe(cram_ctrl_dq_oe),
         .cram_dq_in(cram_dq_to_ctrl), .cram_wait(cram_wait), .cram_clk(cram_clk),
@@ -87,8 +87,8 @@ module tb_cram1_tex_chain;
         .cram_ub_n(cram_ub_n), .cram_lb_n(cram_lb_n)
     );
 
-    cram_chip_model #(.POWERUP_CYCLES(8'd4)) chip (
-        .clk(clk), .cram_clk(clk), .reset_n(reset_n),
+    cram_chip_model #(.POWERUP_CYCLES(8'd4), .CHECK_AS1C_TIMING(1)) chip (
+        .clk(clk), .cram_clk(cram_clk), .reset_n(reset_n),
         .cram_a(cram_a),
         .cram_dq_in(cram_ctrl_dq_oe ? cram_ctrl_dq_out : 16'h0),
         .cram_dq_out(cram_chip_dq_out), .cram_dq_oe(cram_ctrl_dq_oe),
@@ -102,7 +102,7 @@ module tb_cram1_tex_chain;
         .error_count(cram_errors)
     );
 
-    // ---- BCR-init FSM: pulse config_en per die (sync burst 0x641F) ----
+    // ---- BCR-init FSM: pulse config_en per die (sync burst 0x241F) ----
     reg [3:0] bcr_st = 0; integer warm = 0;
     localparam B_WAIT=0, B_P0=1, B_B0=2, B_I0=3, B_P1=4, B_B1=5, B_I1=6, B_DONE=7;
     always @(posedge clk or negedge reset_n) begin
@@ -254,7 +254,7 @@ module tb_cram1_tex_chain;
         @(posedge clk);
         if (!word_busy) begin
             $display("RESULT: FAIL (word_busy low right after mid-burst word_wr pulse — pend capture broken)");
-            $finish;
+            $fatal(1, "CRAM1 upload lost");
         end
         while (word_busy) @(posedge clk);
         // Driver fetches vector 13 (the just-uploaded word) and 14; C2 is
@@ -264,10 +264,10 @@ module tb_cram1_tex_chain;
         if (served == NT_ALL && errors == 0 && cram_errors == 16'd0)
             $display("RESULT: PASS  (%0d texels byte-exact via CRAM1 sync-burst; backdoor+word_wr upload; mid-burst interleave lossless; chip_err=0)", served);
         else
-            $display("RESULT: FAIL  (served=%0d/%0d errors=%0d chip_err=%0d)", served, NT_ALL, errors, cram_errors);
+            $fatal(1, "RESULT: FAIL (served=%0d/%0d errors=%0d chip_err=%0d)", served, NT_ALL, errors, cram_errors);
         $finish;
     end
-    initial begin #2000000 $display("RESULT: FAIL (timeout served=%0d bcr_done=%0b)", served, bcr_init_done); $finish; end
+    initial begin #2000000 $fatal(1, "RESULT: FAIL (timeout served=%0d bcr_done=%0b)", served, bcr_init_done); end
 endmodule
 
 `default_nettype wire

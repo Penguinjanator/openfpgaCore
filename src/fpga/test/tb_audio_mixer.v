@@ -35,6 +35,14 @@ module tb_audio_mixer (
 
     /* MMIO write port — same shape as audio_mixer's expected inputs */
     input  wire        voice_wr,
+    output wire        voice_wr_ready,
+    input  wire        stall_sdram,
+    input  wire [15:0] sdram_latency,
+    input  wire        mister_output_enable,
+    input  wire        mister_clk_is90,
+    output wire [15:0] mister_audio_l,
+    output wire [15:0] mister_audio_r,
+    output wire        read_pending,
     input  wire [3:0]  voice_field,
     input  wire [4:0]  voice_sel,
     input  wire [4:0]  voice_sel_rd,
@@ -87,8 +95,10 @@ module tb_audio_mixer (
     reg [31:0] rd_data;
     reg [9:0]  rd_addr;
     reg [7:0]  rd_remaining;
+    reg [15:0] rd_delay;
     assign m_arready = !rd_pending;
-    assign m_rvalid  = rd_pending;
+    assign m_rvalid  = rd_pending && !stall_sdram && (rd_delay == 0);
+    assign read_pending = rd_pending;
     assign m_rdata   = rd_data;
     assign m_rresp   = 2'b00;
     assign m_rlast   = (rd_remaining == 8'd0);
@@ -111,13 +121,17 @@ module tb_audio_mixer (
         if (!reset_n) begin
             rd_pending <= 1'b0;
             rd_data    <= 32'd0;
+            rd_delay   <= 16'd0;
         end else begin
+            if (rd_delay != 0)
+                rd_delay <= rd_delay - 16'd1;
             if (m_arvalid && m_arready) begin
                 /* Word-aligned address; treat lower bits as a 1 KB ring */
                 rd_addr      <= m_araddr[11:2];
                 rd_data      <= sdram_mem[m_araddr[11:2]];
                 rd_remaining <= m_arlen;
                 rd_pending   <= 1'b1;
+                rd_delay     <= sdram_latency;
             end else if (m_rvalid && m_rready) begin
                 if (rd_remaining != 8'd0) begin
                     rd_addr      <= rd_addr + 10'd1;
@@ -130,12 +144,21 @@ module tb_audio_mixer (
         end
     end
 
+    wire [9:0] mister_fifo_level;
+    mister_audio_output mister_output (
+        .clk(clk), .reset_n(reset_n), .mixer_enable(mister_output_enable),
+        .clk_is90(mister_clk_is90), .sample_wr(sample_wr), .sample_data(sample_data),
+        .fifo_level(mister_fifo_level), .fifo_full(),
+        .audio_l(mister_audio_l), .audio_r(mister_audio_r)
+    );
+
     /* ---------- DUT ---------- */
     audio_mixer dut (
         .clk                (clk),
         .reset_n            (reset_n),
         .mixer_enable       (1'b1),
         .voice_wr           (voice_wr),
+        .voice_wr_ready     (voice_wr_ready),
         .voice_field        (voice_field),
         .voice_sel          (voice_sel),
         .voice_sel_rd       (voice_sel_rd),
@@ -157,7 +180,7 @@ module tb_audio_mixer (
         .m_rready           (m_rready),
         .sample_wr          (sample_wr),
         .sample_data        (sample_data),
-        .fifo_level         (10'd0),       /* always have headroom */
+        .fifo_level         (mister_output_enable ? mister_fifo_level : 10'd0),
         .pos_readback       (pos_readback),
         .irq_clear_wr       (irq_clear_wr),
         .irq_clear          (irq_clear),

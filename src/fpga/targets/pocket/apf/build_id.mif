@@ -1,0 +1,11 @@
+-- SPDX-License-Identifier: Apache-2.0
+-- SPDX-FileCopyrightText: (c) 2026, ThinkElastic <Think@Elastic.com>
+-- Fixed metadata, matching the previous missing-file zero initialization.
+-- Zero date/time/ID denotes an unspecified build identity. Keep deterministic.
+DEPTH = 1024;
+WIDTH = 32;
+ADDRESS_RADIX = HEX;
+DATA_RADIX = HEX;
+CONTENT BEGIN
+    [000..3FF] : 00000000;
+END;

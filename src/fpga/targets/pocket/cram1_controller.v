@@ -3,7 +3,7 @@
 // READ PATHS — both go through the chip's sync-burst engine because
 // the CRAM0 history (project note: cram_async_in_sync_bcr) proved
 // async ADV#/OE# reads HANG when the chip's BCR is set to sync-burst
-// mode (0x641F) at 100 MHz.  Two read entry points share one FSM:
+// mode (0x241F) at 100 MHz.  Two read entry points share one FSM:
 //
 //   word_rd   — single 32-bit word (saves, sample loader, AXI cache fill)
 //               → internally a 1-word sync burst; result lands on word_q
@@ -12,7 +12,7 @@
 //
 // WRITE PATH — async two-phase (LO halfword then HI halfword) on
 // word_wr.  Writes don't have the same sync-burst requirement; the
-// existing async write path works fine in BCR=0x641F mode.
+// existing async write path works fine in BCR=0x241F mode.
 //
 // CONFIG — config_en / config_data / config_bank_sel pass through to
 // the PHY so a core_top BCR-init FSM can program the chip to sync-burst
@@ -53,7 +53,7 @@ module cram1_controller #(
     // BCR config write — single-cycle pulse on config_en with the BCR
     // value on config_data and the target die on config_bank_sel.
     // core_top's BCR-init FSM pulses config_en twice (once per die) to
-    // program sync-burst mode (0x641F) into both halves of the chip.
+    // program sync-burst mode (0x241F) into both halves of the chip.
     // raw_busy mirrors the PHY's busy directly so the external FSM can
     // edge-detect each chip-side write completing; bcr_init_done rises
     // sticky after the controller observes busy fall (handy for callers
@@ -286,7 +286,7 @@ always @(posedge clk or negedge reset_n) begin
                     else
                         state <= ST_WR_LO;
                 end else if (word_rd_pend) begin
-                    /* Async word_rd hangs in BCR=0x641F mode.  Route
+                    /* Async word_rd hangs in BCR=0x241F mode.  Route
                      * single-word reads through the sync-burst path
                      * with words_rem=1.  is_burst_op=0 steers the
                      * assembled 32-bit word back to word_q in

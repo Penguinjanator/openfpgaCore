@@ -270,6 +270,7 @@ module axi_periph_slave #(
     //   addr[11]=1, [7]=1      = per-voice POS_INT readback
     output reg         mix_enable,
     output reg         mix_voice_wr,
+    input  wire        mix_voice_ready,
     output reg  [4:0]  mix_voice_sel,    // derived per-write from addr[10:6]
     output reg  [3:0]  mix_voice_field,  // derived per-write from addr[5:2]
     output reg  [31:0] mix_voice_wdata,
@@ -2012,11 +2013,9 @@ reg [31:0] req_wdata;
 reg [3:0]  req_wstrb;
 reg [7:0]  burst_len;
 reg [7:0]  burst_count;
-// awburst latched at AW handshake.  00 = FIXED → req_addr is held for
-// every beat of the burst (target one MMIO register repeatedly).
-// 01 = INCR → req_addr += 4 per beat.
-reg [1:0]  awburst_latched;
-wire       burst_is_fixed = (awburst_latched == 2'b00);
+// Only writes support FIXED bursts. Reads on this interface are always
+// INCR and must not inherit the preceding write's burst type.
+reg burst_is_fixed;
 
 // Region ID latched on accept.  A single decoded field keeps the read/write
 // FSM from carrying a bank of parallel one-hot region registers through every
@@ -2178,7 +2177,7 @@ always @(posedge clk or posedge reset) begin
         req_wstrb <= 0;
         burst_len <= 0;
         burst_count <= 0;
-        awburst_latched <= 2'b01;  // INCR by default
+        burst_is_fixed <= 1'b0;
 
         req_region <= REGION_NONE;
         gpu_reg_wr <= 0;
@@ -2250,6 +2249,7 @@ always @(posedge clk or posedge reset) begin
                 req_addr <= ar_addr;
                 burst_len <= s_axi_arlen;
                 burst_count <= 0;
+                burst_is_fixed <= 1'b0;
 
                 req_region <= ar_region;
 
@@ -2273,12 +2273,12 @@ always @(posedge clk or posedge reset) begin
                     end
                 end
 
-            end else if (s_axi_awvalid) begin
+            end else if (s_axi_awvalid && (!s_axi_bvalid || s_axi_bready)) begin
                 s_axi_awready <= 1;
                 req_addr <= aw_addr;
                 burst_len <= s_axi_awlen;
                 burst_count <= 0;
-                awburst_latched <= s_axi_awburst;
+                burst_is_fixed <= (s_axi_awburst == 2'b00);
 
                 req_region <= aw_region;
 
@@ -2393,79 +2393,87 @@ always @(posedge clk or posedge reset) begin
         // Peripheral write
         // ============================================
         S_PERIPH_WR: begin
-            if (|req_wstrb) begin
-                if (req_is_sysreg)
-                    sysreg_wr_fire <= 1'b1;
-                /* AUDIO_PCM_SAMPLE @ 0x4C + 0x04 (req_addr[4:2]==3'd1):
-                 * a SW mixer on the CPU pushes one finished stereo sample
-                 * {left[31:16], right[15:0]} into audio_output's FIFO.
-                 * One-cycle strobe; req_wdata holds this beat's data.
-                 * 0x00 (status) and other offsets remain read-only / no-op,
-                 * so legacy probes don't raise a bus fault. */
-                if (req_is_audio && req_addr[4:2] == 3'd1) begin
-                    audio_sample_wr   <= 1'b1;
-                    audio_sample_data <= req_wdata;
-                end
-                if (req_is_cram0 && req_addr[3:2] == 2'd0)
-                    cram0_mode <= req_wdata[0];
-                if (req_is_link) begin
-                    link_reg_wr    <= 1'b1;
-                    link_reg_addr  <= req_addr[6:2];
-                    link_reg_wdata <= req_wdata;
-                end
-                if (req_is_uart && req_addr[3:2] == 2'b01) begin
-                    uart_tx_fifo_din <= req_wdata[7:0];
-                    uart_tx_fifo_we  <= 1'b1;
-                end
-                if (req_is_gpu) begin
-                    gpu_reg_wr    <= 1'b1;
-                    gpu_reg_addr  <= req_addr[5:2];
-                    gpu_reg_wdata <= req_wdata;
-                end
-                /* HPS_CLK_CTRL @ 0x49000028: strobe the write out for the
-                 * target glue to magic-check (self-tuning clock request).
-                 * The rest of REGION_HPS stays read-only / write-no-op. */
-                if (req_is_hps && req_addr[5:2] == 4'd10) begin
-                    hps_clkreq_wr    <= 1'b1;
-                    hps_clkreq_wdata <= req_wdata;
-                end
-                if (req_is_mixer) begin
-                    if (req_addr[11] == 1'b0) begin
-                        mix_voice_wr    <= 1'b1;
-                        mix_voice_sel   <= req_addr[10:6];
-                        mix_voice_field <= req_addr[5:2];
-                        mix_voice_wdata <= req_wdata;
-                    end else if (req_addr[7] == 1'b0) begin
-                        case (req_addr[6:2])
-                            5'h00: mix_master_vol         <= req_wdata[7:0];
-                            5'h01: mix_group_vol_0        <= req_wdata[7:0];
-                            5'h02: mix_group_vol_1        <= req_wdata[7:0];
-                            5'h03: mix_group_vol_2        <= req_wdata[7:0];
-                            5'h04: mix_group_vol_3        <= req_wdata[7:0];
-                            5'h05: mix_voice_group_packed[31:0]  <= req_wdata;
-                            5'h06: mix_voice_group_packed[63:32] <= req_wdata;
-                            5'h08: mix_enable             <= req_wdata[0];
-                            5'h09: begin
-                                mix_irq_clear    <= req_wdata;
-                                mix_irq_clear_wr <= 1'b1;
-                            end
-                            default: ;
-                        endcase
+            // POS_INT and VOL_LR share the mixer's deferred-write queue.
+            // Reserve a slot before issuing the registered one-cycle pulse.
+            // This FSM issues at most one write every three clocks, so no
+            // second pulse can consume the reserved slot in between.
+            if (!(INCLUDE_HW_MIXER && req_is_mixer && !req_addr[11]
+                  && (req_addr[5:2] == 4'd4 || req_addr[5:2] == 4'd6)
+                  && (|req_wstrb) && !mix_voice_ready)) begin
+                if (|req_wstrb) begin
+                    if (req_is_sysreg)
+                        sysreg_wr_fire <= 1'b1;
+                    /* AUDIO_PCM_SAMPLE @ 0x4C + 0x04 (req_addr[4:2]==3'd1):
+                     * a SW mixer on the CPU pushes one finished stereo sample
+                     * {left[31:16], right[15:0]} into audio_output's FIFO.
+                     * One-cycle strobe; req_wdata holds this beat's data.
+                     * 0x00 (status) and other offsets remain read-only / no-op,
+                     * so legacy probes don't raise a bus fault. */
+                    if (req_is_audio && req_addr[4:2] == 3'd1) begin
+                        audio_sample_wr   <= 1'b1;
+                        audio_sample_data <= req_wdata;
+                    end
+                    if (req_is_cram0 && req_addr[3:2] == 2'd0)
+                        cram0_mode <= req_wdata[0];
+                    if (req_is_link) begin
+                        link_reg_wr    <= 1'b1;
+                        link_reg_addr  <= req_addr[6:2];
+                        link_reg_wdata <= req_wdata;
+                    end
+                    if (req_is_uart && req_addr[3:2] == 2'b01) begin
+                        uart_tx_fifo_din <= req_wdata[7:0];
+                        uart_tx_fifo_we  <= 1'b1;
+                    end
+                    if (req_is_gpu) begin
+                        gpu_reg_wr    <= 1'b1;
+                        gpu_reg_addr  <= req_addr[5:2];
+                        gpu_reg_wdata <= req_wdata;
+                    end
+                    /* HPS_CLK_CTRL @ 0x49000028: strobe the write out for the
+                     * target glue to magic-check (self-tuning clock request).
+                     * The rest of REGION_HPS stays read-only / write-no-op. */
+                    if (req_is_hps && req_addr[5:2] == 4'd10) begin
+                        hps_clkreq_wr    <= 1'b1;
+                        hps_clkreq_wdata <= req_wdata;
+                    end
+                    if (req_is_mixer) begin
+                        if (req_addr[11] == 1'b0) begin
+                            mix_voice_wr    <= 1'b1;
+                            mix_voice_sel   <= req_addr[10:6];
+                            mix_voice_field <= req_addr[5:2];
+                            mix_voice_wdata <= req_wdata;
+                        end else if (req_addr[7] == 1'b0) begin
+                            case (req_addr[6:2])
+                                5'h00: mix_master_vol         <= req_wdata[7:0];
+                                5'h01: mix_group_vol_0        <= req_wdata[7:0];
+                                5'h02: mix_group_vol_1        <= req_wdata[7:0];
+                                5'h03: mix_group_vol_2        <= req_wdata[7:0];
+                                5'h04: mix_group_vol_3        <= req_wdata[7:0];
+                                5'h05: mix_voice_group_packed[31:0]  <= req_wdata;
+                                5'h06: mix_voice_group_packed[63:32] <= req_wdata;
+                                5'h08: mix_enable             <= req_wdata[0];
+                                5'h09: begin
+                                    mix_irq_clear    <= req_wdata;
+                                    mix_irq_clear_wr <= 1'b1;
+                                end
+                                default: ;
+                            endcase
+                        end
                     end
                 end
-            end
 
-            burst_count <= burst_count + 1;
-            if (beat_is_last) begin
-                s_axi_bvalid <= 1;
-                s_axi_bresp <= 2'b00;
-                state <= S_IDLE;
-            end else begin
-                // Keep req_addr stable through the next cycle so the delayed
-                // sysreg_wr_fire pulse is observed with the address/data for
-                // this beat.  S_WR_NEXT advances req_addr when it accepts the
-                // following W beat.
-                state <= S_WR_NEXT;
+                burst_count <= burst_count + 1;
+                if (beat_is_last) begin
+                    s_axi_bvalid <= 1;
+                    s_axi_bresp <= 2'b00;
+                    state <= S_IDLE;
+                end else begin
+                    // Keep req_addr stable through the next cycle so the delayed
+                    // sysreg_wr_fire pulse is observed with the address/data for
+                    // this beat.  S_WR_NEXT advances req_addr when it accepts the
+                    // following W beat.
+                    state <= S_WR_NEXT;
+                end
             end
         end
 
@@ -2484,7 +2492,9 @@ always @(posedge clk or posedge reset) begin
                     state <= S_BRAM_WR;
                 end else begin
                     state <= S_PERIPH_WR;
-                    if (!burst_is_fixed)
+                    // AW may arrive before the first W beat. Advance only
+                    // after a preceding beat has actually been written.
+                    if (!burst_is_fixed && (burst_count != 8'd0))
                         req_addr <= req_addr_plus4;
                 end
             end

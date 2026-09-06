@@ -50,7 +50,7 @@ module cram1_phy #(
     parameter MAX_ACCESS_TIME_FROM_ADV = 70, // Maximum time (ns) for valid data to appear after adv_n goes low
 
     // -- Sync burst --
-    parameter SYNC_LATENCY = 4  // Fixed latency count; WAIT gating handles row boundary crossings only
+    parameter SYNC_LATENCY = 4  // Variable-latency code 4; WAIT also covers refresh stalls
 ) (
     input wire clk,
 
@@ -83,7 +83,7 @@ module cram1_phy #(
     output wire        cram_dq_oe,
     input  wire [15:0] cram_dq_in,
     input wire cram_wait,
-    output reg cram_clk = 0,
+    output wire cram_clk,
     output reg cram_adv_n = 1,
     output reg cram_cre = 0,
     output reg cram_ce0_n = 1,
@@ -93,6 +93,34 @@ module cram1_phy #(
     output reg cram_ub_n = 1,
     output reg cram_lb_n = 1
 );
+
+  // Launch external command/address/DQ/OE on the falling edge. The
+  // forwarded clock reaches the chip later than the internal clock; this
+  // half-cycle shift gives the external receiver both setup and hold margin.
+  reg [21:16] cram_a_q;
+  reg cram_adv_n_q = 1;
+  reg cram_cre_q = 0;
+  reg cram_ce0_n_q = 1;
+  reg cram_ce1_n_q = 1;
+  reg cram_oe_n_q = 1;
+  reg cram_we_n_q = 1;
+  reg cram_ub_n_q = 1;
+  reg cram_lb_n_q = 1;
+  reg [15:0] cram_data_io;
+  reg data_out_en_io = 0;
+  always @(negedge clk) begin
+    cram_a <= cram_a_q;
+    cram_adv_n <= cram_adv_n_q;
+    cram_cre <= cram_cre_q;
+    cram_ce0_n <= cram_ce0_n_q;
+    cram_ce1_n <= cram_ce1_n_q;
+    cram_oe_n <= cram_oe_n_q;
+    cram_we_n <= cram_we_n_q;
+    cram_ub_n <= cram_ub_n_q;
+    cram_lb_n <= cram_lb_n_q;
+    cram_data_io <= cram_data;
+    data_out_en_io <= data_out_en;
+  end
 
   localparam PERIOD = 1000.0 / CLOCK_SPEED;  // In nanoseconds
 
@@ -211,31 +239,52 @@ module cram1_phy #(
   reg        saw_wait_high;
   initial    saw_wait_high = 0;
 
-  assign cram_dq_out = cram_data;
-  assign cram_dq_oe  = data_out_en;
+  assign cram_dq_out = cram_data_io;
+  assign cram_dq_oe  = data_out_en_io;
 
-  // Posedge IOB capture registers for sync burst read data.
-  // FAST_INPUT_REGISTER in QSF guarantees IOB placement on posedge.
-  reg [15:0] cram_dq_r;
-  reg cram_wait_r;
+  // The memory requires a static CLK during async writes in burst mode.
+  // DDR output hardware forwards complete clock pulses only during reads;
+  // enabling/disabling at the rising edge cannot produce a runt pulse.
+  reg burst_clock_enable = 1'b0;
+  altddio_out #(.width(1), .intended_device_family("Cyclone V"),
+                .power_up_high("OFF")) burst_clock_out (
+      .outclock(clk), .outclocken(1'b1),
+      .datain_h(burst_clock_enable), .datain_l(1'b0),
+      .aclr(1'b0), .aset(1'b0), .sclr(1'b0), .sset(1'b0),
+      .oe(1'b1), .dataout(cram_clk), .oe_out()
+  );
+
+  // The forwarded clock's output delay plus memory access and input delay
+  // puts returning data after the next rising edge. Capture on the following
+  // falling edge, then use the I/O cell's hardened falling-to-rising retime.
+  // DQ and WAIT must use the identical capture phase. The corresponding SDC
+  // edge pairing checks both setup and hold against the returning stream.
+  wire [16:0] cram_input_r;
+`ifdef ALTERA_RESERVED_QIS
+  wire [16:0] cram_input_h_unused;
+  altddio_in #(.width(17), .intended_device_family("Cyclone V"),
+               .invert_input_clocks("OFF"), .power_up_high("OFF")) read_capture (
+      .datain({cram_wait, cram_dq_in}), .inclock(clk), .inclocken(1'b1),
+      .dataout_l(cram_input_r), .dataout_h(cram_input_h_unused),
+      .aclr(1'b0), .aset(1'b0), .sclr(1'b0), .sset(1'b0)
+  );
+`else
+  reg [16:0] cram_input_neg, cram_input_retimed;
+  always @(negedge clk) cram_input_neg <= {cram_wait, cram_dq_in};
   always @(posedge clk) begin
-    cram_dq_r <= cram_dq_in;
-    cram_wait_r <= cram_wait;  // WAIT active HIGH (BCR bit10=1), during delay (bit8=0): HIGH=invalid, LOW=valid
+    cram_input_retimed <= cram_input_neg;
   end
+  assign cram_input_r = cram_input_retimed;
+`endif
 
-  // Fabric pipeline registers for sync burst data path.
-  // WAIT and DQ both transition on the same PSRAM CLK edge, but have different
-  // output delays (tCW vs tCKD, both 2-5.5ns).  The gap from PSRAM CLK edge
-  // to the next FPGA posedge is only ~3.8ns (9524ps - 5714ps phase).  When
-  // tCW < 3.8ns < tCKD, the IOB captures WAIT=LOW one posedge before DQ has
-  // valid data, causing the FSM to read stale DQ.  Adding one fabric pipeline
-  // stage ensures WAIT and DQ are always from the same IOB capture, with a
-  // full extra clock cycle (~9.5ns) of margin.
+  // WAIT and DQ are captured together at the I/O registers. The fabric
+  // stage preserves their alignment; it cannot repair setup/hold violations
+  // at those first registers. core_constraints.sdc times both pin paths.
   reg [15:0] cram_dq_r2;
   reg cram_wait_r2;
   always @(posedge clk) begin
-    cram_dq_r2 <= cram_dq_r;
-    cram_wait_r2 <= cram_wait_r;
+    cram_dq_r2 <= cram_input_r[15:0];
+    cram_wait_r2 <= cram_input_r[16];
   end
 
   always @(posedge clk) begin
@@ -257,38 +306,38 @@ module cram1_phy #(
     case (state)
       STATE_NONE: begin
 
-        cram_clk   <= 0;
-        cram_adv_n <= 1;
-        cram_cre   <= 0;
-        cram_ce0_n <= 1;
-        cram_ce1_n <= 1;
-        cram_oe_n  <= 1;
-        cram_we_n  <= 1;
-        cram_ub_n  <= 1;
-        cram_lb_n  <= 1;
+        burst_clock_enable <= 0;
+        cram_adv_n_q <= 1;
+        cram_cre_q   <= 0;
+        cram_ce0_n_q <= 1;
+        cram_ce1_n_q <= 1;
+        cram_oe_n_q  <= 1;
+        cram_we_n_q  <= 1;
+        cram_ub_n_q  <= 1;
+        cram_lb_n_q  <= 1;
 
         if (write_en) begin
           // Enter write_init
           state <= WRITE_INITIAL_COUNT;
 
-          if (bank_sel) cram_ce1_n <= 0;
-          else cram_ce0_n <= 0;
+          if (bank_sel) cram_ce1_n_q <= 0;
+          else cram_ce0_n_q <= 0;
 
           // Set address and output on dq
-          cram_a <= addr[21:16];
+          cram_a_q <= addr[21:16];
           cram_data <= addr[15:0];
           data_out_en <= 1;
           // Store data in for future use
           latched_data_in <= data_in;
 
           // Enable write
-          cram_we_n <= 0;
+          cram_we_n_q <= 0;
 
           // Enable address latching
-          cram_adv_n <= 0;
+          cram_adv_n_q <= 0;
 
-          if (write_high_byte) cram_ub_n <= 0;
-          if (write_low_byte) cram_lb_n <= 0;
+          if (write_high_byte) cram_ub_n_q <= 0;
+          if (write_low_byte) cram_lb_n_q <= 0;
 
           // Set busy now instead of waiting for the state change
           busy <= 1;
@@ -297,22 +346,22 @@ module cram1_phy #(
           // State 48 (CRE_WAIT): CRE high, auto-increments to 49 (CRE_SETUP)
           // State 49 (CRE_SETUP): CE#, ADV#, WE#, address asserted
           state <= STATE_CONFIG_CRE_WAIT;
-          cram_cre <= 1;    // CRE high, 20ns before CE# falls (at state 49)
+          cram_cre_q <= 1;    // CRE high, 20ns before CE# falls (at state 49)
           busy <= 1;
         end else if (read_en) begin
           // Async single-word read
           state <= READ_INITIAL_COUNT;
 
-          if (bank_sel) cram_ce1_n <= 0;
-          else cram_ce0_n <= 0;
+          if (bank_sel) cram_ce1_n_q <= 0;
+          else cram_ce0_n_q <= 0;
 
-          cram_a <= addr[21:16];
+          cram_a_q <= addr[21:16];
           cram_data <= addr[15:0];
           data_out_en <= 1;
 
-          cram_adv_n <= 0;
-          cram_ub_n <= 0;
-          cram_lb_n <= 0;
+          cram_adv_n_q <= 0;
+          cram_ub_n_q <= 0;
+          cram_lb_n_q <= 0;
 
           busy <= 1;
         end else if (sync_burst_en) begin
@@ -321,20 +370,21 @@ module cram1_phy #(
           // This guarantees tCSP (CE# setup to CLK) is met at the PSRAM CLK
           // edge where the address is latched.
           state <= STATE_SYNC_CE_SETUP;
+          burst_clock_enable <= 1'b1;
 
-          if (bank_sel) cram_ce1_n <= 0;
-          else cram_ce0_n <= 0;
+          if (bank_sel) cram_ce1_n_q <= 0;
+          else cram_ce0_n_q <= 0;
 
           // Pre-load address on DQ/A bus (ADV# stays HIGH this cycle)
-          cram_a <= addr[21:16];
+          cram_a_q <= addr[21:16];
           cram_data <= addr[15:0];
           data_out_en <= 1;
 
-          cram_adv_n <= 1;  // ADV# HIGH — address not latched yet
-          cram_we_n <= 1;   // WE# high for read
-          cram_oe_n <= 1;   // OE# high during address phase
-          cram_ub_n <= 0;
-          cram_lb_n <= 0;
+          cram_adv_n_q <= 1;  // ADV# HIGH — address not latched yet
+          cram_we_n_q <= 1;   // WE# high for read
+          cram_oe_n_q <= 1;   // OE# high during address phase
+          cram_ub_n_q <= 0;
+          cram_lb_n_q <= 0;
 
           latency_counter <= SYNC_LATENCY[5:0];
           burst_counter <= sync_burst_len;
@@ -348,7 +398,7 @@ module cram1_phy #(
       // ============================================
       STATE_WRITE_ADV_END: begin
         // Continue holding address after setting adv high
-        cram_adv_n <= 1;
+        cram_adv_n_q <= 1;
       end
       STATE_WRITE_ADDR_LATCH_END: begin
         // No longer sending address data on cram_dq
@@ -365,13 +415,13 @@ module cram1_phy #(
         data_out_en <= 0;
 
         // Unlatch write enable and banks
-        cram_we_n <= 1;
+        cram_we_n_q <= 1;
 
-        cram_ce0_n <= 1;
-        cram_ce1_n <= 1;
+        cram_ce0_n_q <= 1;
+        cram_ce1_n_q <= 1;
 
-        cram_ub_n <= 1;
-        cram_lb_n <= 1;
+        cram_ub_n_q <= 1;
+        cram_lb_n_q <= 1;
 
         // Clear busy now, so we don't have to wait for the state change
         busy <= 0;
@@ -381,24 +431,24 @@ module cram1_phy #(
       // Async reads (DEAD in CRAM1; sync-burst handles every read)
       // ============================================
       STATE_READ_ADV_END: begin
-        cram_adv_n <= 1;
+        cram_adv_n_q <= 1;
       end
       STATE_READ_ADDR_LATCH_END: begin
         data_out_en <= 0;
       end
       STATE_READ_DATA_ENABLE: begin
-        cram_oe_n <= 0;
+        cram_oe_n_q <= 0;
       end
       STATE_READ_DATA_RECEIVED: begin
         read_avail <= 1;
-        data_out <= cram_dq_r;  // IOB-captured value
+        data_out <= cram_input_r[15:0];  // IOB-captured value
 
         state <= STATE_NONE;
-        cram_ce0_n <= 1;
-        cram_ce1_n <= 1;
-        cram_ub_n <= 1;
-        cram_lb_n <= 1;
-        cram_oe_n <= 1;
+        cram_ce0_n_q <= 1;
+        cram_ce1_n_q <= 1;
+        cram_ub_n_q <= 1;
+        cram_lb_n_q <= 1;
+        cram_oe_n_q <= 1;
         busy <= 0;
       end
 
@@ -407,31 +457,31 @@ module cram1_phy #(
       // ============================================
       STATE_CONFIG_CRE_SETUP: begin
         // CRE is already HIGH from previous cycle. Now assert CE#, ADV#, WE#, address.
-        if (bank_sel) cram_ce1_n <= 0;
-        else cram_ce0_n <= 0;
+        if (bank_sel) cram_ce1_n_q <= 0;
+        else cram_ce0_n_q <= 0;
 
-        cram_a <= {2'b00, 2'b10, 2'b00};  // A[21:16] with A[19]=1 (BCR select for 64Mbit die)
+        cram_a_q <= {2'b00, 2'b10, 2'b00};  // A[21:16] with A[19]=1 (BCR select for 64Mbit die)
         cram_data <= config_data;          // BCR value on DQ[15:0] = A[15:0]
         data_out_en <= 1;
 
-        cram_we_n <= 0;   // WE# low for write
-        cram_adv_n <= 0;  // ADV# low to latch address
+        cram_we_n_q <= 0;   // WE# low for write
+        cram_adv_n_q <= 0;  // ADV# low to latch address
         // Auto-increment → STATE_CONFIG_START (50) → STATE_CONFIG_ADV_END
       end
 
       STATE_CONFIG_ADV_END: begin
         // Address latched, deassert ADV#
-        cram_adv_n <= 1;
+        cram_adv_n_q <= 1;
       end
 
       STATE_CONFIG_HOLD_END: begin
         // Config write complete — release everything
         state <= STATE_NONE;
         data_out_en <= 0;
-        cram_we_n <= 1;
-        cram_cre <= 0;
-        cram_ce0_n <= 1;
-        cram_ce1_n <= 1;
+        cram_we_n_q <= 1;
+        cram_cre_q <= 0;
+        cram_ce0_n_q <= 1;
+        cram_ce1_n_q <= 1;
         busy <= 0;
       end
 
@@ -442,16 +492,16 @@ module cram1_phy #(
         // CE# is now LOW (asserted previous cycle), address is on the bus.
         // Assert ADV# LOW to begin the address latch phase.
         // The next PSRAM CLK rising edge will see CE# with a full cycle of setup.
-        cram_adv_n <= 0;  // ADV# low — address will be latched on next PSRAM CLK edge
+        cram_adv_n_q <= 0;  // ADV# low — address will be latched on next PSRAM CLK edge
         state <= STATE_SYNC_SETUP;
       end
 
       STATE_SYNC_SETUP: begin
         // Address was driven in STATE_NONE, ADV# is low.
         // Deassert ADV# (address latched), release DQ, assert OE#
-        cram_adv_n <= 1;
+        cram_adv_n_q <= 1;
         data_out_en <= 0;  // Release DQ bus for CRAM to drive
-        cram_oe_n <= 0;    // OE# low for read
+        cram_oe_n_q <= 0;    // OE# low for read
         latency_counter <= latency_counter - 6'd1;
         state <= STATE_SYNC_WAIT;
       end
@@ -494,13 +544,14 @@ module cram1_phy #(
       end
 
       STATE_SYNC_END: begin
+        burst_clock_enable <= 1'b0;
         // Burst complete — release everything
         state <= STATE_NONE;
-        cram_ce0_n <= 1;
-        cram_ce1_n <= 1;
-        cram_oe_n <= 1;
-        cram_ub_n <= 1;
-        cram_lb_n <= 1;
+        cram_ce0_n_q <= 1;
+        cram_ce1_n_q <= 1;
+        cram_oe_n_q <= 1;
+        cram_ub_n_q <= 1;
+        cram_lb_n_q <= 1;
         busy <= 0;
       end
 

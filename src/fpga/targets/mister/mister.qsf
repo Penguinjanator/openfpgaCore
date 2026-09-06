@@ -228,6 +228,7 @@ set_global_assignment -name VERILOG_FILE sram_bram.v
 set_global_assignment -name VERILOG_FILE synch_3.v
 set_global_assignment -name SDC_FILE mister.sdc
 set_global_assignment -name VERILOG_FILE ../../common/audio_mixer.v
+set_global_assignment -name VERILOG_FILE mister_audio_output.v
 set_global_assignment -name VERILOG_FILE ../../common/gpu_core.v
 set_global_assignment -name VERILOG_FILE ../../common/gpu_edge_walker.v
 set_global_assignment -name VERILOG_FILE ../../common/gpu_tex_cache.v

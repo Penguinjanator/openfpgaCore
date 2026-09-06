@@ -72,6 +72,7 @@ module audio_mixer (
     // and pulses voice_wr for one cycle.  No SEL latch state means main
     // thread + ISR can write different voices without race or guard CSRs.
     input wire        voice_wr,
+    output wire       voice_wr_ready, // reserve space before a POS/VOL pulse
     input wire [3:0]  voice_field,
     input wire [4:0]  voice_sel,
     input wire [4:0]  voice_sel_rd,    // pos_latch readback select (registered read, 1-cycle latency)
@@ -235,7 +236,8 @@ reg [CPU_FSM_Q_ADDR_W:0]   cpu_fsm_q_count;
 wire cpu_fsm_q_empty = (cpu_fsm_q_count == {CPU_FSM_Q_ADDR_W+1{1'b0}});
 wire cpu_fsm_q_full  = (cpu_fsm_q_count == CPU_FSM_Q_COUNT_DEPTH);
 wire cpu_fsm_q_drain = (state == S_IDLE) && !cpu_fsm_q_empty;
-wire cpu_fsm_q_push  = cpu_fsm_wr && (!cpu_fsm_q_full || cpu_fsm_q_drain);
+assign voice_wr_ready = !cpu_fsm_q_full || cpu_fsm_q_drain;
+wire cpu_fsm_q_push  = cpu_fsm_wr && voice_wr_ready;
 wire [CPU_FSM_Q_DATA_W-1:0] cpu_fsm_q_front = cpu_fsm_q_mem[cpu_fsm_q_rd_ptr];
 wire [4:0]  cpu_fsm_commit_voice   = cpu_fsm_q_front[27:23];
 wire        cpu_fsm_commit_is_vol  = cpu_fsm_q_front[22];

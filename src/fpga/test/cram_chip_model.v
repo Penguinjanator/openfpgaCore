@@ -16,6 +16,9 @@
 
 module cram_chip_model #(
     parameter DEFAULT_BURST_LATENCY = 4,  // Default before BCR config
+    parameter CLOCK_MHZ = 100.0,
+    parameter CHECK_AS1C_TIMING = 0,
+    parameter REFRESH_EXTRA_CYCLES = 0,
     parameter POWERUP_CYCLES = 50         // Cycles after reset before accepting commands
 )(
     input  wire        clk,       // Controller clock (for async ops + edge detect)
@@ -78,7 +81,7 @@ reg [15:0] mem1 [0:(1<<BANK_BITS)-1];
 // BCR configuration (parsed from config write)
 reg        bcr_sync_mode;       // Bit 15 = 0 → sync burst enabled
 reg        bcr_wait_active_high;// Bit 10 = 1 → WAIT active high
-reg [2:0]  bcr_latency_code;   // Bits 6:4 → latency code
+reg [2:0]  bcr_latency_code;   // Bits 13:11 → latency code
 reg [3:0]  bcr_configured_latency;
 reg        bcr_valid;           // At least one valid BCR write received
 
@@ -205,24 +208,18 @@ always @(posedge clk) begin
                 // BCR value was on DQ[15:0] during address latch
                 bcr_sync_mode <= !latched_addr[15];       // Bit 15: 0=sync
                 bcr_wait_active_high <= latched_addr[10];  // Bit 10: WAIT polarity
-                bcr_latency_code <= latched_addr[6:4];     // Bits 6:4: latency code
-                // Decode latency: code 1→4 cycles, code 2→5, etc.
-                // For 105MHz (code 1): 4 cycles initial latency
-                case (latched_addr[6:4])
-                    3'd1: bcr_configured_latency <= 4'd4;
-                    3'd2: bcr_configured_latency <= 4'd5;
-                    3'd3: bcr_configured_latency <= 4'd6;
-                    default: bcr_configured_latency <= 4'd4;
-                endcase
+                bcr_latency_code <= latched_addr[13:11];
+                bcr_configured_latency <= latched_addr[13:11] == 3'd0
+                    ? 4'd8 : {1'b0, latched_addr[13:11]};
                 bcr_valid <= 1;
-                // Validate expected BCR value — production code writes
-                // 0x9D1F (async page mode).  The sim-only sync-burst
-                // exercises in this file still expect 0x641F, so accept
-                // either without warning.
-                if (latched_addr[15:0] != 16'h9D1F &&
-                    latched_addr[15:0] != 16'h641F) begin
-                    $display("[%0t] CRAM WARNING: unexpected BCR value 0x%04x",
-                             $time, latched_addr[15:0]);
+                // AS1C8M16PL Tables 5/6: fixed code 4 is limited to 66 MHz;
+                // variable code 4 supports 133 MHz. Bits 6:4 are drive strength,
+                // not latency. The former decoder hid the bad fixed-mode BCR.
+                if (CHECK_AS1C_TIMING && !latched_addr[15] &&
+                    ((latched_addr[14] && latched_addr[13:11] == 3'd4 && CLOCK_MHZ > 66.0) ||
+                     (!latched_addr[14] && latched_addr[13:11] == 3'd4 && CLOCK_MHZ > 133.0))) begin
+                    $display("CRAM ERROR: BCR 0x%04x latency is invalid at %0.1f MHz", latched_addr[15:0], CLOCK_MHZ);
+                    error_count <= error_count + 16'd1;
                 end
                 state <= ST_IDLE;
             end else if (latched_is_write) begin
@@ -234,7 +231,7 @@ always @(posedge clk) begin
                 if (!cram_oe_n) begin
                     // Sync burst read — hand off to cram_clk domain
                     burst_active <= 1;
-                    burst_latency_cnt <= bcr_configured_latency;
+                    burst_latency_cnt <= bcr_configured_latency + REFRESH_EXTRA_CYCLES;
                     burst_addr <= latched_addr[BANK_BITS-1:0];
                     burst_bank <= latched_bank;
                     burst_data_valid <= 0;
@@ -311,7 +308,14 @@ end
 // ============================================================
 // CRAM-clock domain: sync burst read/write data streaming
 // ============================================================
+reg async_clock_error_seen = 0;
 always @(posedge cram_clk) begin
+    if (!chip_active || cram_we_n) async_clock_error_seen <= 0;
+    else if (CHECK_AS1C_TIMING && bcr_sync_mode && !cram_cre && !async_clock_error_seen) begin
+        $display("CRAM ERROR: clock toggles during asynchronous write in burst mode");
+        error_count <= error_count + 16'd1;
+        async_clock_error_seen <= 1;
+    end
     if (burst_active && !latched_is_write) begin
         // Sync burst READ: output data
         if (burst_latency_cnt > 0) begin

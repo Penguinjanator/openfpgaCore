@@ -312,6 +312,11 @@ localparam WR_CNT_W      = 3;  // log2(WR_FIFO_DEPTH+1)
 reg [31:0] wr_addr_mem [0:WR_FIFO_DEPTH-1];
 reg [31:0] wr_data_mem [0:WR_FIFO_DEPTH-1];
 reg [3:0]  wr_mask_mem [0:WR_FIFO_DEPTH-1];
+// Equality with the preceding queue entry is fixed when an entry is pushed.
+// Cache that comparison once instead of multiplexing and comparing three
+// pairs of 36-bit address/mask values on the AW path. The oldest entry's
+// flag is never used; count gating excludes stale entries after a pop.
+reg [WR_FIFO_DEPTH-1:0] wr_matches_prev;
 reg [WR_PTR_W-1:0] wr_head, wr_tail;
 reg [WR_CNT_W-1:0] wr_count;
 reg                lsu_aw_sent, lsu_w_sent;  // per-head AW/W issue tracking
@@ -322,12 +327,14 @@ wire wr_fifo_empty = (wr_count == 0);
 // M2 coalescer state.  When the FIFO holds N consecutive same-address
 // same-mask entries at the head, fire one AW with awlen=N-1
 // and awburst=FIXED, pump N W-beats from FIFO[head..head+N-1], then
-// pop all N entries on B.  burst_awlen_calc is combinational from the
-// current FIFO contents; burst_awlen is the latched value at AW
-// handshake (used for W-phase wlast detection).  This still helps
+// pop all N entries on B. burst_awlen_calc scans the current queue;
+// presented_awlen freezes an offered burst if AW stalls, and burst_awlen
+// records its accepted length for WLAST. This still helps
 // repeated writes to one MMIO register, such as LUT uploads.
 reg [WR_PTR_W-1:0] burst_awlen;
 reg [WR_PTR_W-1:0] burst_w_idx;
+reg                awlen_held;
+reg [WR_PTR_W-1:0] held_awlen;
 
 // Accept logic.  A write enters the FIFO whenever it has room AND
 // no read is in flight (read drained first; writes don't pass reads
@@ -402,47 +409,49 @@ wire coalesce_is_cram0 = (coalesce_addr[31:24] == 8'h30)
 wire coalesce_ok = !coalesce_is_sdram && !coalesce_is_cram0; // LOCAL only
 wire match01 = coalesce_ok
             && (wr_count >= 3'd2)
-            && (wr_addr_mem[wr_head] == wr_addr_mem[head1])
-            && (wr_mask_mem[wr_head] == wr_mask_mem[head1]);
+            && wr_matches_prev[head1];
 wire match02 = match01 && (wr_count >= 3'd3)
-            && (wr_addr_mem[wr_head] == wr_addr_mem[head2])
-            && (wr_mask_mem[wr_head] == wr_mask_mem[head2]);
+            && wr_matches_prev[head2];
 wire match03 = match02 && (wr_count >= 3'd4)
-            && (wr_addr_mem[wr_head] == wr_addr_mem[head3])
-            && (wr_mask_mem[wr_head] == wr_mask_mem[head3]);
+            && wr_matches_prev[head3];
 
 wire [WR_PTR_W-1:0] burst_awlen_calc = match03 ? 2'd3
                                      : match02 ? 2'd2
                                      : match01 ? 2'd1
                                      : 2'd0;
+// Once AW is presented, additional pushes cannot extend its advertised
+// burst under backpressure. Capture the first stalled presentation; a
+// ready target still accepts the current run without an extra cycle.
+wire [WR_PTR_W-1:0] presented_awlen = awlen_held ? held_awlen : burst_awlen_calc;
 
 // W-beat data routing: head + w_idx for both single-beat and burst.
 wire [WR_PTR_W-1:0] w_idx     = wr_head + burst_w_idx;
 wire [31:0]         w_addr    = wr_addr_mem[wr_head];   // FIXED: same every beat
 wire [31:0]         w_data    = wr_data_mem[w_idx];
 wire [3:0]          w_mask    = wr_mask_mem[w_idx];
-// Pipeline-race fix (cr-gpu-and-tri-wedges issue 1): burst_awlen
-// updates at the same posedge the AW handshake commits.  Computing
-// w_is_last against the OLD burst_awlen on that cycle marks beat 0
-// of a multi-beat burst as last when the previous burst was a
-// single-beat (the bind_texture-followed-by-draw_triangles wedge
-// shape — see also tb_gpu_chain test_lsu_bind_then_draw).  Use
-// burst_awlen_calc when the AW handshake is firing this cycle.
+// W may be accepted before, with, or after AW. Before AW acceptance,
+// WLAST must describe the presented burst, including while W is stalled;
+// afterwards it uses the accepted length. The previous transaction's
+// burst_awlen is never valid for a newly presented W beat.
 wire [WR_PTR_W-1:0] eff_burst_awlen =
-    (per_awvalid_cpu && per_awready_cpu) ? burst_awlen_calc : burst_awlen;
+    lsu_aw_sent ? burst_awlen : presented_awlen;
 wire                w_is_last = (burst_w_idx == eff_burst_awlen);
 
 // Write FIFO push/pop and burst tracking.
 integer wi;
+wire [WR_PTR_W-1:0] wr_previous = wr_tail - 2'd1;
 always @(posedge clk or posedge reset) begin
     if (reset) begin
         wr_head     <= {WR_PTR_W{1'b0}};
         wr_tail     <= {WR_PTR_W{1'b0}};
         wr_count    <= {WR_CNT_W{1'b0}};
+        wr_matches_prev <= 0;
         lsu_aw_sent <= 1'b0;
         lsu_w_sent  <= 1'b0;
         burst_awlen <= {WR_PTR_W{1'b0}};
         burst_w_idx <= {WR_PTR_W{1'b0}};
+        awlen_held <= 1'b0;
+        held_awlen <= 0;
         for (wi = 0; wi < WR_FIFO_DEPTH; wi = wi + 1) begin
             wr_addr_mem[wi] <= 32'b0;
             wr_data_mem[wi] <= 32'b0;
@@ -450,6 +459,9 @@ always @(posedge clk or posedge reset) begin
         end
     end else begin
         if (wr_push) begin
+            wr_matches_prev[wr_tail] <=
+                (lsu_cmd_addr == wr_addr_mem[wr_previous]) &&
+                (lsu_cmd_mask == wr_mask_mem[wr_previous]);
             wr_addr_mem[wr_tail] <= lsu_cmd_addr;
             wr_data_mem[wr_tail] <= lsu_cmd_data;
             wr_mask_mem[wr_tail] <= lsu_cmd_mask;
@@ -468,7 +480,11 @@ always @(posedge clk or posedge reset) begin
         // AW handshake: latch awlen for the W phase + mark sent.
         if (per_awvalid_cpu && per_awready_cpu) begin
             lsu_aw_sent <= 1'b1;
-            burst_awlen <= burst_awlen_calc;
+            burst_awlen <= presented_awlen;
+            awlen_held <= 1'b0;
+        end else if (per_awvalid_cpu && !awlen_held) begin
+            held_awlen <= burst_awlen_calc;
+            awlen_held <= 1'b1;
         end
 
         // W beat: advance w_idx, set w_sent on wlast.
@@ -493,16 +509,16 @@ assign per_araddr_cpu  = lsu_rd_addr;
 assign per_arlen_cpu   = 8'd0;
 assign per_rready_cpu  = 1'b1;
 
-// AW channel.  awlen + awburst are combinational from the current
-// match scan — the slice samples them at the handshake posedge and
-// our burst_awlen register latches the same value at the same posedge.
+// AW channel. Length and burst type describe the presented run and stay
+// stable under backpressure. The target and our burst_awlen register
+// sample the same value on the AW handshake edge.
 // awburst=FIXED when coalescing keeps req_addr pinned across beats;
 // awburst=INCR for single beats so
 // non-burst-aware slaves keep their existing behavior.
 assign per_awvalid_cpu = !wr_fifo_empty & ~lsu_aw_sent;
 assign per_awaddr_cpu  = w_addr;
-assign per_awlen_cpu   = {{(8-WR_PTR_W){1'b0}}, burst_awlen_calc};
-assign per_awburst_cpu = (burst_awlen_calc != {WR_PTR_W{1'b0}}) ? 2'b00 : 2'b01;
+assign per_awlen_cpu   = {{(8-WR_PTR_W){1'b0}}, presented_awlen};
+assign per_awburst_cpu = (presented_awlen != {WR_PTR_W{1'b0}}) ? 2'b00 : 2'b01;
 
 // W channel — beat data from FIFO[head + w_idx]; wlast on the final beat.
 assign per_wvalid_cpu  = !wr_fifo_empty & ~lsu_w_sent;

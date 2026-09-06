@@ -135,30 +135,46 @@ set_multicycle_path -hold  -end -from [get_ports {dram_dq[*]}] 1
 set_false_path -to [get_ports {cram0_a[*] cram0_dq[*] cram0_adv_n cram0_cre cram0_ce0_n cram0_ce1_n cram0_oe_n cram0_we_n cram0_ub_n cram0_lb_n cram0_clk}]
 set_false_path -from [get_ports {cram0_dq[*] cram0_wait}]
 
-# CRAM1 retired in memory-arch v2 — chip is not pin-assigned in ap_core.qsf
-# and the top-level ports have been removed. Old cram1_* IO/clock constraints
-# deleted here; referencing the retired ports produced "unresolved port"
-# warnings from Quartus.
+# CRAM1 fast textures use synchronous burst reads on INCLUDE_TEX_MEM builds.
+# AS1C8M16PL-70BIN, Tables 5/14: variable latency code 4 supports 133 MHz.
+# Use the slower 108-MHz column conservatively here: tACLK/tKHTL <= 7 ns,
+# tKOH >= 2 ns, tSP/tCSP >= 3 ns and tHD >= 2 ns. Board-flight allowances
+# (+0.6 ns max / -0.2 ns min) are engineering budgets, not board measurements.
+# Both the DQ and WAIT I/O capture registers must meet these constraints;
+# the later fabric pipeline does not enlarge the first capture window.
+set cram1_timing_enabled 0
+foreach_in_collection assignment [get_all_global_assignments -name VERILOG_MACRO] {
+    if {[lindex $assignment 2] eq "INCLUDE_TEX_MEM"} {
+        set cram1_timing_enabled 1
+    }
+}
+if {$cram1_timing_enabled} {
+    create_generated_clock -name cram1_clk_pin \
+        -source [get_pins {ic|mp_ram|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
+        [get_ports cram1_clk]
+    set_input_delay -clock cram1_clk_pin -max 7.6 [get_ports {cram1_dq[*] cram1_wait}]
+    set_input_delay -clock cram1_clk_pin -min 1.8 [get_ports {cram1_dq[*] cram1_wait}]
+    # The clock's pin insertion, tAC and input delay return each word after
+    # the first falling edge. The DDIO input captures on the next falling
+    # edge and retimes internally to rising. Pair setup with that edge and
+    # restore hold to the next word's earliest arrival (as for SDRAM above).
+    set_multicycle_path -setup -end -from [get_ports {cram1_dq[*] cram1_wait}] 2
+    set_multicycle_path -hold -end -from [get_ports {cram1_dq[*] cram1_wait}] 1
+    set_output_delay -clock cram1_clk_pin -max 3.6 \
+        [get_ports {cram1_a[*] cram1_dq[*] cram1_adv_n cram1_ce0_n cram1_ce1_n cram1_oe_n cram1_we_n cram1_cre cram1_ub_n cram1_lb_n}]
+    set_output_delay -clock cram1_clk_pin -min -2.2 \
+        [get_ports {cram1_a[*] cram1_dq[*] cram1_adv_n cram1_ce0_n cram1_ce1_n cram1_oe_n cram1_we_n cram1_cre cram1_ub_n cram1_lb_n}]
+}
 
 # ============================================================================
-# VexiiRiscv FPU multicycle — the FpuAddSharedPlugin's pre-shift exp-diff
-# cone is explicitly pipelined (pip_node_0 → pip_node_1 → ...), so the
-# ctrl2-stage completion signal has at least 2 cycles to propagate into the
-# node_1 adder registers before the FPU op actually commits.  Quartus
-# otherwise treats this as a single-cycle path and fails setup by ~1.3 ns
-# at the slow 85C corner — the real hardware happily runs it at 100 MHz
-# because node_1 is latched on the second pipeline edge, not the first.
-set_multicycle_path -from [get_registers {*VexiiRiscv*|execute_ctrl2_up_COMPLETION_AT_*}] \
-                    -to   [get_registers {*FpuAddSharedPlugin_logic_pip_node_1*}] \
-                    -setup 2
-set_multicycle_path -from [get_registers {*VexiiRiscv*|execute_ctrl2_up_COMPLETION_AT_*}] \
-                    -to   [get_registers {*FpuAddSharedPlugin_logic_pip_node_1*}] \
-                    -hold 1
+# VexiiRiscv FPU node_0 -> node_1 is a normal single-cycle path.
+# node_0_isReady follows !execute_freeze_valid and can be asserted on every
+# clock; the node_1 operand registers then capture on every clock as well.
+# The number of later FPU pipeline stages does not relax this capture edge.
+# Do not apply a multicycle exception from ctrl2 COMPLETION_AT to node_1.
 
-# The GPU triangle rasterizer is currently disabled in the production
-# span-only profile, so its DSP input-shadow constraints are intentionally
-# absent.  If the triangle path is restored, also restore the narrow hold-only
-# exceptions for tri_A/tri_B -> tri_A_dsp_in/tri_B_dsp_in.
+# Enabled GPU triangle paths must meet their actual register-to-register
+# timing; no blanket arithmetic exceptions are applied here.
 
 # Quasi-static video-mode configuration -> scanout fetch address cone.
 # term_fb_active / analog_keep_app / fb_stride_reg / analog_fb_stride_reg

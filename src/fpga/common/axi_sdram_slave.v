@@ -11,14 +11,14 @@
 //   word_rd/wr pulse → accepted → busy → rdata_valid (reads)
 //
 // Features:
-//   - Burst reads: ARLEN → word_burst_len (0=1 word, 15=16 words)
+//   - AXI reads up to 256 words, split into native bursts of at most 16 words
 //   - Single and burst writes: each W beat → word_wr
 //   - Optional serialized write-burst execution: keep the AXI side as one
 //     AWLEN>0 transaction, but issue one conservative io_sdram word write per
 //     beat.  This isolates hardware from the SDRAM burst-continuation path
 //     while preserving lower upstream AXI/arbiter transaction volume.
 //   - Single outstanding transaction
-//   - 0 M10K (pure register/LUT)
+//   - 0 M10K (registers and MLAB response/write buffers)
 //
 
 `default_nettype none
@@ -170,24 +170,29 @@ assign sdram_preload_wdata = next_wdata;
 assign sdram_preload_wstrb = next_wstrb;
 reg        started;      // accepted seen, waiting for completion
 
-// 3-entry response pipeline (primary R slot + 2 skid entries) so
-// back-pressure from the master doesn't drop sdram_rdata_valid pulses.
-// cpu_target_port's registered response slot can transiently lower
-// rready mid-burst, and in the 3-master topology one master's slow
-// rready holds m_rready low for every beat until it drains.  SDRAM
-// streams at 1 beat/cycle, so a K-cycle master stall fills at most
-// K-1 downstream buffers.  3 buffers → tolerant of up to 2 cycles of
-// back-pressure before we'd have to drop, which is wider than anything
-// observed on VexiiRiscv L1 refills.
-//
-// Invariant: entries are always contiguous from the slot toward skid2
-// (rskid2_valid implies rskid_valid implies s_axi_rvalid).  Pushes fill
-// the first empty position; drains shift toward the slot.
-reg [31:0] rskid_data,  rskid2_data;
-reg        rskid_last,  rskid2_last;
-reg        rskid_valid, rskid2_valid;
-
+// The native SDRAM read stream cannot pause. Reserve a complete 16-word
+// burst before issuing it; the registered R slot plus this FIFO can absorb
+// every beat even if RREADY remains low indefinitely. A new native burst
+// may start only when the FIFO is empty (the R slot may still be occupied).
+// Bypass the FIFO while the master keeps up, preserving first-beat latency
+// and one-word-per-cycle throughput.
 wire beat_is_last = (beat_count == burst_len);
+wire read_incoming = (state == S_RD_DAT) && started && sdram_rdata_valid;
+wire read_fifo_empty;
+wire [32:0] read_fifo_head;
+wire read_fifo_pop = s_axi_rvalid && s_axi_rready && !read_fifo_empty;
+wire read_fifo_push = read_incoming && s_axi_rvalid &&
+                      (!s_axi_rready || !read_fifo_empty);
+sync_fifo #(.WIDTH(33), .DEPTH(16), .ADDR_WIDTH(4),
+            .RAMSTYLE("MLAB, no_rw_check")) read_fifo (
+    .clk(clk), .reset(reset), .clear(1'b0),
+    .push(read_fifo_push), .din({beat_is_last, sdram_rdata}),
+    .pop(read_fifo_pop), .dout(read_fifo_head),
+    .empty(read_fifo_empty), .full(), .count()
+);
+wire [7:0] read_remaining = burst_len - beat_count;
+wire [3:0] native_read_len = read_remaining > 8'd15 ? 4'd15 : read_remaining[3:0];
+
 // Serialize a multi-beat write unless its W stream is continuously available
 // (s_axi_wcont) or it was fully buffered locally (wbuf_active).  This keeps
 // native streaming bursts for the GPU (queue-fed, underrun-immune) and the
@@ -248,12 +253,6 @@ always @(posedge clk or posedge reset) begin
         wbuf_rptr <= 0;
         wbuf_active <= 0;
 
-        rskid_data   <= 0;
-        rskid_last   <= 0;
-        rskid_valid  <= 0;
-        rskid2_data  <= 0;
-        rskid2_last  <= 0;
-        rskid2_valid <= 0;
     end else begin
         // Defaults: deassert single-cycle signals.  rvalid and bvalid
         // are NOT in this list — they are "hold until *ready" signals
@@ -267,23 +266,14 @@ always @(posedge clk or posedge reset) begin
         sdram_burst_len <= 0;
         sdram_burst_wr_len <= 0;
 
-        // AXI handshake drain-and-shift for R: on every accepted beat,
-        // shift the skid chain one position toward the slot.  A push
-        // below may override one of the positions on the same cycle
-        // (non-blocking last-wins), which is how we handle concurrent
-        // drain+push without breaking the contiguous-valid invariant.
+        // Consume the oldest queued response before accepting newer data.
         if (s_axi_rvalid && s_axi_rready) begin
-            if (rskid_valid) begin
-                s_axi_rdata <= rskid_data;
-                s_axi_rlast <= rskid_last;
-                // s_axi_rvalid stays 1 — skid promoted into slot.
+            if (!read_fifo_empty) begin
+                s_axi_rdata <= read_fifo_head[31:0];
+                s_axi_rlast <= read_fifo_head[32];
             end else begin
                 s_axi_rvalid <= 1'b0;
             end
-            rskid_data   <= rskid2_data;
-            rskid_last   <= rskid2_last;
-            rskid_valid  <= rskid2_valid;
-            rskid2_valid <= 1'b0;
         end
         if (s_axi_bvalid && s_axi_bready) s_axi_bvalid <= 1'b0;
 
@@ -293,7 +283,7 @@ always @(posedge clk or posedge reset) begin
             cmd_issued <= 0;
             started <= 0;
             // Reads have priority over writes.  Accept a new AR as soon
-            // as the skid chain is empty.  AR/AW fairness was attempted
+            // as the response FIFO is empty.  AR/AW fairness was attempted
             // (alternation, wire-factored, starvation timer) and each
             // variant pushed setup TNS from -31 to -130..-300 — the
             // slave's S_IDLE has a tight combinational path through
@@ -303,7 +293,7 @@ always @(posedge clk or posedge reset) begin
             // without touching this path; if read-vs-write contention
             // remains the bottleneck, Stage 2b (multi-beat AW bursts)
             // amortises per-grant cost without modifying the priority.
-            if (s_axi_arvalid && !rskid_valid) begin
+            if (s_axi_arvalid && read_fifo_empty) begin
                 s_axi_arready <= 1;
                 addr_r <= s_axi_araddr;
                 burst_len <= s_axi_arlen;
@@ -312,11 +302,11 @@ always @(posedge clk or posedge reset) begin
                 if (!sdram_busy) begin
                     sdram_rd <= 1;
                     sdram_addr <= s_axi_araddr[25:2];
-                    sdram_burst_len <= s_axi_arlen[3:0];
+                    sdram_burst_len <= s_axi_arlen > 8'd15 ? 4'd15 : s_axi_arlen[3:0];
                     cmd_issued <= 1;
                 end
                 state <= S_RD_CMD;
-            end else if (s_axi_awvalid) begin
+            end else if (s_axi_awvalid && (!s_axi_bvalid || s_axi_bready)) begin
                 s_axi_awready <= 1;
                 addr_r <= s_axi_awaddr;
                 burst_len <= s_axi_awlen;
@@ -364,20 +354,20 @@ always @(posedge clk or posedge reset) begin
         // Read path
         // ============================================
         S_RD_CMD: begin
-            // Issue read to SDRAM, hold until accepted
+            // Wait for capacity for the entire unpausable native burst.
             if (!cmd_issued) begin
-                if (!sdram_busy) begin
+                if (!sdram_busy && read_fifo_empty) begin
                     sdram_rd <= 1;
                     sdram_addr <= addr_r[25:2];
-                    sdram_burst_len <= burst_len[3:0];
+                    sdram_burst_len <= native_read_len;
                     cmd_issued <= 1;
                     started <= 0;
                 end
             end else begin
-                // Hold read request until arbiter accepts
+                // Hold read request until arbiter accepts.
                 sdram_rd <= 1;
                 sdram_addr <= addr_r[25:2];
-                sdram_burst_len <= burst_len[3:0];
+                sdram_burst_len <= native_read_len;
                 if (sdram_accepted) begin
                     started <= 1;
                     state <= S_RD_DAT;
@@ -386,62 +376,25 @@ always @(posedge clk or posedge reset) begin
         end
 
         S_RD_DAT: begin
-            // Gate with started to prevent capturing peripheral data
-            // before our command was accepted.  An incoming
-            // sdram_rdata_valid pulse is placed at the earliest empty
-            // position in the drain-shifted pipeline (slot / skid /
-            // skid2).  When the handshake block above shifts on the
-            // same cycle, the shifted post-drain state drives the
-            // target selection so the invariant stays contiguous.
-            if (started && sdram_rdata_valid) begin
-                if (s_axi_rvalid && s_axi_rready) begin
-                    // Drain-overlap path: post-shift state is
-                    // (S'=rskid_valid, K'=rskid2_valid, K2'=0).
-                    if (!rskid_valid) begin
-                        // Slot will be empty after shift → push to slot.
-                        s_axi_rvalid <= 1'b1;
-                        s_axi_rdata  <= sdram_rdata;
-                        s_axi_rresp  <= 2'b00;
-                        s_axi_rlast  <= beat_is_last;
-                    end else if (!rskid2_valid) begin
-                        // Skid will be empty after shift → push to skid.
-                        rskid_valid <= 1'b1;
-                        rskid_data  <= sdram_rdata;
-                        rskid_last  <= beat_is_last;
-                    end else begin
-                        // Full chain shifting — skid2 vacates → push there.
-                        rskid2_valid <= 1'b1;
-                        rskid2_data  <= sdram_rdata;
-                        rskid2_last  <= beat_is_last;
-                    end
-                end else begin
-                    // No drain this cycle: push into first empty slot.
-                    if (!s_axi_rvalid) begin
-                        s_axi_rvalid <= 1'b1;
-                        s_axi_rdata  <= sdram_rdata;
-                        s_axi_rresp  <= 2'b00;
-                        s_axi_rlast  <= beat_is_last;
-                    end else if (!rskid_valid) begin
-                        rskid_valid <= 1'b1;
-                        rskid_data  <= sdram_rdata;
-                        rskid_last  <= beat_is_last;
-                    end else if (!rskid2_valid) begin
-                        rskid2_valid <= 1'b1;
-                        rskid2_data  <= sdram_rdata;
-                        rskid2_last  <= beat_is_last;
-                    end
-                    // else: all three full — drop (invariant broken by
-                    // pathological back-pressure).  beat_count still
-                    // advances so the FSM clears — master will hang
-                    // waiting on the lost beat, which is observable at
-                    // the bus and forces the backpressure assumption
-                    // to be revisited.
+            if (read_incoming) begin
+                if (!s_axi_rvalid || (s_axi_rready && read_fifo_empty)) begin
+                    s_axi_rvalid <= 1'b1;
+                    s_axi_rdata  <= sdram_rdata;
+                    s_axi_rresp  <= 2'b00;
+                    s_axi_rlast  <= beat_is_last;
                 end
                 beat_count <= beat_count + 1;
                 if (beat_is_last) begin
                     cmd_issued <= 0;
-                    started    <= 0;
-                    state      <= S_IDLE;
+                    started <= 0;
+                    state <= S_IDLE;
+                end else if (beat_count[3:0] == 4'd15) begin
+                    // AXI permits 256 beats; io_sdram accepts at most 16.
+                    // Keep the AXI transaction open across native bursts.
+                    addr_r <= addr_r + 32'd64;
+                    cmd_issued <= 0;
+                    started <= 0;
+                    state <= S_RD_CMD;
                 end
             end
         end

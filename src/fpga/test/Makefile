@@ -38,6 +38,7 @@ VERILATOR_FLAGS_NOTRACE = --cc --exe --build \
 SDRAM_SRCS = \
 	tb_sdram.v \
 	sdram_model.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v \
 	io_sdram_test.v
 
@@ -50,7 +51,7 @@ SDRAM_NATIVE2_DIR = obj_dir_sdram_native2
 SDRAM_WCONT0_DIR = obj_dir_sdram_wcont0
 
 # Generate test variant of io_sdram with split DQ (no inout for Verilator)
-io_sdram_test.v: $(TARGET_DIR)/io_sdram.v
+io_sdram_test.v: $(TARGET_DIR)/io_sdram.v Makefile
 	sed \
 	  -e 's/inout   wire    \[15:0\]  phy_dq,/input   wire    [15:0]  phy_dq_in,\noutput  wire    [15:0]  phy_dq_out_port,\noutput  wire            phy_dq_oe_port,/' \
 	  -e "s/assign          phy_dq = phy_dq_oe ? phy_dq_out : 16'bZZZZZZZZZZZZZZZZ;/assign phy_dq_out_port = phy_dq_out;\nassign phy_dq_oe_port = phy_dq_oe;/" \
@@ -62,7 +63,7 @@ io_sdram_test.v: $(TARGET_DIR)/io_sdram.v
 # with pocket except the SS1 A[12:11] DQM write-mask mirror).  Used by
 # the system-sdram boot repro so the SHIPPING mister controller is the
 # one under test.
-io_sdram_mister_test.v: ../targets/mister/io_sdram.v
+io_sdram_mister_test.v: ../targets/mister/io_sdram.v Makefile
 	sed \
 	  -e 's/inout   wire    \[15:0\]  phy_dq,/input   wire    [15:0]  phy_dq_in,\noutput  wire    [15:0]  phy_dq_out_port,\noutput  wire            phy_dq_oe_port,/' \
 	  -e "s/assign          phy_dq = phy_dq_oe ? phy_dq_out : 16'bZZZZZZZZZZZZZZZZ;/assign phy_dq_out_port = phy_dq_out;\nassign phy_dq_oe_port = phy_dq_oe;/" \
@@ -196,7 +197,9 @@ AUDIO_FLAGS = -Wno-WIDTHEXPAND -Wno-CASEINCOMPLETE -Wno-SYNCASYNCNET -Wno-UNOPTF
 # ============================================================
 MIXER_SRCS = \
 	tb_audio_mixer.v \
-	$(COMMON_DIR)/audio_mixer.v
+	$(COMMON_DIR)/audio_mixer.v \
+	$(COMMON_DIR)/sync_fifo.v \
+	../targets/mister/mister_audio_output.v
 
 MIXER_CPP = tb_audio_mixer_main.cpp
 MIXER_TOP = tb_audio_mixer
@@ -232,6 +235,7 @@ SDRAM_CONT_SRCS = \
 	tb_sdram_cont.v \
 	sdram_model_full.v \
 	$(COMMON_DIR)/axi_sdram_arbiter.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v \
 	../targets/mister/synch_3.v \
 	io_sdram_test.v
@@ -269,6 +273,7 @@ SDRAM_LOCK90_SRCS = \
 	tb_sdram_lock90.v \
 	sdram_model_full.v \
 	$(COMMON_DIR)/axi_sdram_arbiter.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v \
 	../targets/mister/synch_3.v \
 	../targets/mister/ddr3_fb.sv \
@@ -324,6 +329,7 @@ GPU_WRPATH_SRCS = \
 	$(COMMON_DIR)/gpu_edge_walker.v \
 	$(COMMON_DIR)/gpu_tex_cache.v \
 	$(COMMON_DIR)/axi_sdram_arbiter.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v \
 	../targets/mister/synch_3.v \
 	io_sdram_test.v
@@ -363,6 +369,7 @@ GPU_WSTALL_SRCS = \
 	$(COMMON_DIR)/gpu_edge_walker.v \
 	$(COMMON_DIR)/gpu_tex_cache.v \
 	$(COMMON_DIR)/axi_sdram_arbiter.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v \
 	../targets/mister/synch_3.v \
 	io_sdram_test.v
@@ -407,6 +414,7 @@ SCANOUT_RACE_SRCS = \
 	$(COMMON_DIR)/gpu_edge_walker.v \
 	$(COMMON_DIR)/gpu_tex_cache.v \
 	$(COMMON_DIR)/axi_sdram_arbiter.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v \
 	../targets/mister/synch_3.v \
 	io_sdram_test.v
@@ -498,6 +506,7 @@ HPSBRG_SRCS = \
 	sdram_fast_model.v \
 	$(MISTER_DIR)/hps_bridge.v \
 	$(COMMON_DIR)/axi_sdram_arbiter.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v
 
 MISTER_DIR = ../targets/mister
@@ -609,6 +618,74 @@ SYSTEM_FLAGS = -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-CASEINCOMPLETE \
         cram1-tex-chain cram1-cmap-chain gpu-cram1-repro
 
 all: sdram-all sram gpu gpu-persp axi-periph bridge-cmd bridge-rx audio audio-mixer arbiter hps-bridge hps-mouse hps-keyboard skid ddr3-fb
+
+.PHONY: cpu-target-port gpu-math lsu-coalescer-proof
+cpu-target-port: obj_dir_cpu_port/Vcpu_target_port obj_dir_cpu_port_per/Vcpu_target_port_per
+	./obj_dir_cpu_port/Vcpu_target_port
+	./obj_dir_cpu_port_per/Vcpu_target_port_per
+
+obj_dir_cpu_port/Vcpu_target_port: $(COMMON_DIR)/cpu_target_port.v tb_cpu_target_port_main.cpp
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) --top-module cpu_target_port \
+		--Mdir obj_dir_cpu_port $^
+
+obj_dir_cpu_port_per/Vcpu_target_port_per: $(COMMON_DIR)/cpu_target_port_per.v tb_cpu_target_port_main.cpp
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) --top-module cpu_target_port_per \
+		-CFLAGS "-DTEST_PER_ONLY" --Mdir obj_dir_cpu_port_per $^
+
+gpu-math:
+	python3 ../../../tools/check_gpu_math.py
+
+lsu-coalescer-proof:
+	python3 ../../../tools/check_lsu_coalescer.py
+
+.PHONY: lsu-shim
+lsu-shim: obj_dir_lsu_shim/Vlsu_axi_shim
+	./obj_dir_lsu_shim/Vlsu_axi_shim
+obj_dir_lsu_shim/Vlsu_axi_shim: lsu_axi_shim.v tb_lsu_axi_shim_main.cpp
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) --top-module lsu_axi_shim \
+		--Mdir obj_dir_lsu_shim $^
+
+.PHONY: sdram-response
+sdram-response: obj_dir_sdram_response/Vaxi_sdram_slave
+	./obj_dir_sdram_response/Vaxi_sdram_slave
+
+obj_dir_sdram_response/Vaxi_sdram_slave: $(COMMON_DIR)/axi_sdram_slave.v $(COMMON_DIR)/sync_fifo.v tb_axi_sdram_response_main.cpp
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) --top-module axi_sdram_slave \
+		--Mdir obj_dir_sdram_response $(COMMON_DIR)/axi_sdram_slave.v \
+		$(COMMON_DIR)/sync_fifo.v tb_axi_sdram_response_main.cpp
+
+.PHONY: gpu-tex-cache
+gpu-tex-cache: obj_dir_gpu_tex_cache/Vgpu_tex_cache
+	./obj_dir_gpu_tex_cache/Vgpu_tex_cache
+
+obj_dir_gpu_tex_cache/Vgpu_tex_cache: $(COMMON_DIR)/gpu_tex_cache.v tb_gpu_tex_cache_main.cpp
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) --top-module gpu_tex_cache \
+		-GSET_BITS=4 --Mdir obj_dir_gpu_tex_cache $^
+
+.PHONY: gpu-tex-cache-pocket gpu-tex-cache-mister gpu-tex-cache-all review-regression
+gpu-tex-cache-pocket: obj_dir_gpu_tex_cache_pocket/Vgpu_tex_cache
+	./obj_dir_gpu_tex_cache_pocket/Vgpu_tex_cache
+
+obj_dir_gpu_tex_cache_pocket/Vgpu_tex_cache: $(COMMON_DIR)/gpu_tex_cache.v tb_gpu_tex_cache_main.cpp
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) --top-module gpu_tex_cache \
+		-GSET_BITS=10 -CFLAGS "-DCACHE_SET_BITS=10" --Mdir obj_dir_gpu_tex_cache_pocket $^
+
+gpu-tex-cache-mister: obj_dir_gpu_tex_cache_mister/Vgpu_tex_cache
+	./obj_dir_gpu_tex_cache_mister/Vgpu_tex_cache
+
+obj_dir_gpu_tex_cache_mister/Vgpu_tex_cache: $(COMMON_DIR)/gpu_tex_cache.v tb_gpu_tex_cache_main.cpp
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) --top-module gpu_tex_cache \
+		-GSET_BITS=11 -CFLAGS "-DCACHE_SET_BITS=11" --Mdir obj_dir_gpu_tex_cache_mister $^
+
+gpu-tex-cache-all: gpu-tex-cache gpu-tex-cache-pocket gpu-tex-cache-mister
+
+# Focused functional coverage for the Pocket review. Formal arithmetic
+# equivalence is separate (gpu-math requires Yosys).
+review-regression: cpu-target-port lsu-shim sdram-response gpu-tex-cache-all axi-periph \
+	sdram-all sdram-cont sdram-rdscan sdram-rdscan-2t gpu-acceptance-all \
+	gpu-acceptance-mister-exact gpu-perf-pocket gpu-perf gpu-persp \
+	gpu-wrpath gpu-wstall scanout-race-pocket audio-mixer \
+	cram1-tex-chain cram1-cmap-chain cram1-cmap-refresh cram1-cmap-delay-min cram1-cmap-delay-max gpu-cram1-repro gpu-chain
 
 # --- SDRAM ---
 sdram: $(SDRAM_DIR)/V$(SDRAM_TOP)
@@ -854,7 +931,7 @@ $(GPU_ACCEPT_OS30_DIR)/V$(GPU_TOP): $(GPU_SRCS) $(GPU_ACCEPT_CPP)
 		-I$(COMMON_DIR) \
 		$(GPU_SRCS) $(GPU_ACCEPT_CPP)
 
-gpu-acceptance-all: gpu-acceptance gpu-acceptance-single gpu-acceptance-os30 \
+gpu-acceptance-all: gpu-acceptance gpu-acceptance-single gpu-acceptance-os30 gpu-acceptance-os25-exact \
 	gpu-acceptance-os30-exact gpu-acceptance-sm64 gpu-acceptance-sm64-nopal \
 	gpu-acceptance-nomac gpu-elab-nomac-noclip
 
@@ -1137,6 +1214,36 @@ gpu-perf: $(GPU_PERF_DIR)/V$(GPU_TOP)
 	@printf "\n=== GPU cyc/pixel measurement (SM64-class tri) ===\n"
 	./$(GPU_PERF_DIR)/V$(GPU_TOP) $(GPU_PERF_ARGS)
 
+# Exact Pocket os25 GPU configuration, shared by correctness and throughput tests.
+GPU_OS25_FLAGS = +define+INCLUDE_TRANSLUC \
+    -GINCLUDE_COMPACT_SPAN=1 -GINCLUDE_COLUMN_LIST=1 -GGPU_EW_PARALLEL_DIVS=0 \
+    -GINCLUDE_PARAM_TRI=0 -GINCLUDE_VERT_TRI=0 -GINCLUDE_PARAM_TRI_RECS=0 \
+    -GGPU_Z_READ_WINDOW=1 -GGPU_CB_READ_WINDOW=4 -GINCLUDE_DIRECT_COLOR=0 \
+    -GINCLUDE_XFORM_RGB=0 -GINCLUDE_VTX_CACHE=0 -GINCLUDE_GPU_LIGHT=0 \
+    -GINCLUDE_GPU_XFORM_MAC=0 -GINCLUDE_CLIP_TRI=0 -GINCLUDE_PALETTE=1 \
+    -GINCLUDE_COMBINE=0 -GINCLUDE_PARAM_SPAN_Q29=1 -GINCLUDE_TEX_MEM=0
+GPU_PERF_POCKET_DIR = obj_dir_gpu_perf_pocket
+GPU_ACCEPT_OS25X_DIR = obj_dir_gpu_acceptance_os25x
+.PHONY: gpu-perf-pocket gpu-acceptance-os25-exact
+gpu-perf-pocket: $(GPU_PERF_POCKET_DIR)/V$(GPU_TOP)
+	./$(GPU_PERF_POCKET_DIR)/V$(GPU_TOP) $(GPU_PERF_ARGS)
+
+gpu-acceptance-os25-exact: $(GPU_ACCEPT_OS25X_DIR)/V$(GPU_TOP)
+	./$(GPU_ACCEPT_OS25X_DIR)/V$(GPU_TOP)
+
+$(GPU_PERF_POCKET_DIR)/V$(GPU_TOP): $(GPU_SRCS) $(GPU_PERF_CPP) Makefile
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) -CFLAGS "-DGPU_PERF_POCKET" \
+		$(GPU_OS25_FLAGS) \
+		--top-module $(GPU_TOP) --Mdir $(GPU_PERF_POCKET_DIR) -I$(COMMON_DIR) \
+		$(GPU_SRCS) $(GPU_PERF_CPP)
+
+$(GPU_ACCEPT_OS25X_DIR)/V$(GPU_TOP): $(GPU_SRCS) $(GPU_ACCEPT_CPP) Makefile
+	$(VERILATOR) $(VERILATOR_FLAGS) \
+		-CFLAGS "-std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI" \
+		$(GPU_OS25_FLAGS) \
+		--top-module $(GPU_TOP) --Mdir $(GPU_ACCEPT_OS25X_DIR) -I$(COMMON_DIR) \
+		$(GPU_SRCS) $(GPU_ACCEPT_CPP)
+
 # COMPACT_SPAN/COLUMN_LIST are ON here (unlike gpu-setup) for the 0x4C
 # Doom-column write-drain benchmark: INCLUDE_COLUMN_LIST_EFF in gpu_core.v
 # requires INCLUDE_COMPACT_SPAN=1.  These gates only add the 0x48-compact/
@@ -1184,10 +1291,10 @@ TEX_CHAIN_VFLAGS = --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT -Wno-C
 cram1-tex-chain: obj_dir_cram1_tex_chain/Vtb_cram1_tex_chain
 	@printf "\n=== CRAM1 tex chain (tex_cache -> burst adapter -> cram1_controller+phy -> chip model) ===\n"
 	./obj_dir_cram1_tex_chain/Vtb_cram1_tex_chain
-obj_dir_cram1_tex_chain/Vtb_cram1_tex_chain: tb_cram1_tex_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v
+obj_dir_cram1_tex_chain/Vtb_cram1_tex_chain: tb_cram1_tex_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v altddio_out_stub.v
 	$(VERILATOR) $(TEX_CHAIN_VFLAGS) -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC --Mdir obj_dir_cram1_tex_chain \
 		--top-module tb_cram1_tex_chain \
-		tb_cram1_tex_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v
+		tb_cram1_tex_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v altddio_out_stub.v
 
 # --- CRAM1 sync-burst COLORMAP path: GPU tex_cache PORT B (cmap) fill ->
 # burst read, REAL models.  Fills the coverage hole where no test drives
@@ -1197,10 +1304,37 @@ obj_dir_cram1_tex_chain/Vtb_cram1_tex_chain: tb_cram1_tex_chain.v $(TARGET_DIR)/
 cram1-cmap-chain: obj_dir_cram1_cmap_chain/Vtb_cram1_cmap_chain
 	@printf "\n=== CRAM1 COLORMAP chain (tex_cache PORT B -> burst adapter -> cram1_controller+phy -> chip model) ===\n"
 	./obj_dir_cram1_cmap_chain/Vtb_cram1_cmap_chain
-obj_dir_cram1_cmap_chain/Vtb_cram1_cmap_chain: tb_cram1_cmap_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v
+obj_dir_cram1_cmap_chain/Vtb_cram1_cmap_chain: tb_cram1_cmap_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v altddio_out_stub.v
 	$(VERILATOR) $(TEX_CHAIN_VFLAGS) -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC --Mdir obj_dir_cram1_cmap_chain \
 		--top-module tb_cram1_cmap_chain \
-		tb_cram1_cmap_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v
+		tb_cram1_cmap_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v altddio_out_stub.v
+
+# Refresh can extend variable-latency reads; the return pipeline must follow WAIT.
+.PHONY: cram1-cmap-refresh
+cram1-cmap-refresh: obj_dir_cram1_cmap_refresh/Vtb_cram1_cmap_chain
+	./obj_dir_cram1_cmap_refresh/Vtb_cram1_cmap_chain
+obj_dir_cram1_cmap_refresh/Vtb_cram1_cmap_chain: tb_cram1_cmap_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v altddio_out_stub.v
+	$(VERILATOR) $(TEX_CHAIN_VFLAGS) -GEXTRA_REFRESH_CYCLES=5 \
+		--Mdir obj_dir_cram1_cmap_refresh --top-module tb_cram1_cmap_chain \
+		tb_cram1_cmap_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v altddio_out_stub.v
+
+# Return delay includes forwarded-clock insertion, memory access and input
+# routing relative to the controller clock. Exercise both ends of the fitted
+# falling-edge capture window, with WAIT at the opposite extreme and initial
+# refresh stalls. Equal DQ/WAIT delay can hide an incorrect capture phase.
+.PHONY: cram1-cmap-delay-min cram1-cmap-delay-max
+cram1-cmap-delay-min: obj_dir_cram1_cmap_delay_min/Vtb_cram1_cmap_chain
+	./obj_dir_cram1_cmap_delay_min/Vtb_cram1_cmap_chain
+cram1-cmap-delay-max: obj_dir_cram1_cmap_delay_max/Vtb_cram1_cmap_chain
+	./obj_dir_cram1_cmap_delay_max/Vtb_cram1_cmap_chain
+obj_dir_cram1_cmap_delay_min/Vtb_cram1_cmap_chain: CRAM_RETURN_DELAY = 7.9
+obj_dir_cram1_cmap_delay_min/Vtb_cram1_cmap_chain: CRAM_WAIT_DELAY = 14.2
+obj_dir_cram1_cmap_delay_max/Vtb_cram1_cmap_chain: CRAM_RETURN_DELAY = 14.2
+obj_dir_cram1_cmap_delay_max/Vtb_cram1_cmap_chain: CRAM_WAIT_DELAY = 7.9
+obj_dir_cram1_cmap_delay_min/Vtb_cram1_cmap_chain obj_dir_cram1_cmap_delay_max/Vtb_cram1_cmap_chain: tb_cram1_cmap_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v altddio_out_stub.v
+	$(VERILATOR) $(TEX_CHAIN_VFLAGS) -GEXTRA_REFRESH_CYCLES=5 -GRETURN_DELAY_NS=$(CRAM_RETURN_DELAY) -GRETURN_WAIT_DELAY_NS=$(CRAM_WAIT_DELAY) \
+		--Mdir $(@D) --top-module tb_cram1_cmap_chain \
+		tb_cram1_cmap_chain.v $(TARGET_DIR)/gpu_cram1_tex_adapter.v $(TARGET_DIR)/cram1_controller.v $(TARGET_DIR)/cram1_phy.sv ../common/gpu_tex_cache.v cram_chip_model.v altddio_out_stub.v
 
 # --- CRAM1 colormap repro through the REAL gpu_core (NOT the tex_cache alone) ---
 # Drives the REAL gpu_core's texture/colormap fills through the REAL CRAM1
@@ -1211,6 +1345,7 @@ obj_dir_cram1_cmap_chain/Vtb_cram1_cmap_chain: tb_cram1_cmap_chain.v $(TARGET_DI
 # Built with the C++ harness (--cc --exe) so it shares tb_gpu's plumbing; the
 # cram1 RTL is synthesizable (no --timing needed) and links straight in.
 GPU_CRAM1_SRCS = \
+	altddio_out_stub.v \
 	tb_gpu_cram1.v \
 	altsyncram_stub.v \
 	$(COMMON_DIR)/gpu_core.v \
@@ -1271,6 +1406,9 @@ $(BRIDGE_RX_DIR)/V$(BRIDGE_RX_TOP): $(BRIDGE_RX_SRCS) $(BRIDGE_RX_CPP)
 		$(BRIDGE_RX_SRCS) $(BRIDGE_RX_CPP)
 
 # --- GPU chain (slices + cpu_target_port + axi_periph_slave) ---
+lsu_axi_shim.v: $(COMMON_DIR)/cpu_system.v ../../../tools/generate_lsu_shim.py
+	python3 ../../../tools/generate_lsu_shim.py
+
 gpu-chain: $(GPU_CHAIN_DIR)/V$(GPU_CHAIN_TOP)
 	@printf "\n=== GPU chain (slice + target_port + slave) ===\n"
 	./$(GPU_CHAIN_DIR)/V$(GPU_CHAIN_TOP)
@@ -1293,6 +1431,14 @@ $(AUDIO_DIR)/V$(AUDIO_TOP): $(AUDIO_SRCS) $(AUDIO_CPP)
 		$(AUDIO_SRCS) $(AUDIO_CPP)
 
 # --- Audio mixer (audio_mixer.v v3) ---
+.PHONY: mister-audio-output
+mister-audio-output: obj_dir_mister_audio_output/Vmister_audio_output
+	./$<
+
+obj_dir_mister_audio_output/Vmister_audio_output: ../targets/mister/mister_audio_output.v $(COMMON_DIR)/sync_fifo.v tb_mister_audio_output_main.cpp
+	$(VERILATOR) $(VERILATOR_FLAGS_NOTRACE) --top-module mister_audio_output \
+		--Mdir obj_dir_mister_audio_output $^
+
 audio-mixer: $(MIXER_DIR)/V$(MIXER_TOP)
 	@printf "\n=== Audio mixer (audio_mixer.v v3) ===\n"
 	./$(MIXER_DIR)/V$(MIXER_TOP)
@@ -1411,6 +1557,7 @@ SDRAM_RDSCAN_DIR = obj_dir_sdram_rdscan
 SDRAM_RDSCAN_SRCS = \
 	tb_sdram_rdscan.v \
 	sdram_model_full.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v \
 	io_sdram_mister_test.v
 
@@ -1527,6 +1674,7 @@ GPU_TRANSLUC_SRCS = \
 	$(COMMON_DIR)/gpu_edge_walker.v \
 	$(COMMON_DIR)/gpu_tex_cache.v \
 	$(COMMON_DIR)/axi_sdram_arbiter.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v \
 	../targets/mister/synch_3.v \
 	io_sdram_mister_test.v
@@ -1585,6 +1733,7 @@ SDRAM_STRESS_SRCS = \
 	tb_sdram_stress.v \
 	sdram_model_full.v \
 	$(COMMON_DIR)/axi_sdram_arbiter.v \
+	$(COMMON_DIR)/sync_fifo.v \
 	$(COMMON_DIR)/axi_sdram_slave.v \
 	../targets/mister/synch_3.v \
 	io_sdram_test.v

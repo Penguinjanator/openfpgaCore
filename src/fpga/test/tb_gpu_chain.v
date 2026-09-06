@@ -439,6 +439,7 @@ assign dbg_gpu_reg_addr  = gpu_reg_addr_w;
 assign dbg_gpu_reg_wdata = gpu_reg_wdata_w;
 
 axi_periph_slave dut (
+    .mix_voice_ready(1'b1),
     .clk    (clk),
     .reset_n(reset_n),
 

@@ -15,7 +15,7 @@
 //        gpu_core.gpu_tex_mem_* -> gpu_cram1_tex_adapter
 //                              -> cram1_controller(#CLOCK_SPEED 100) + cram1_phy
 //                              -> cram_chip_model (pin-level behavioral)
-//      A BCR-init FSM configures both dies to sync-burst 0x641F before use.
+//      A BCR-init FSM configures both dies to sync-burst 0x241F before use.
 //
 //   2. DATA MIRRORING: every backdoor SDRAM write (bd_we/bd_addr/bd_wdata)
 //      is ALSO written into the cram_chip_model at the SAME 32-bit word
@@ -277,7 +277,7 @@ cram1_controller #(.CLOCK_SPEED(100.0)) ctrl (
     .word_q(cword_q), .word_busy(cword_busy), .word_q_valid(cword_q_valid),
     .burst_rd(burst_rd), .burst_addr(burst_addr), .burst_len(burst_len),
     .burst_q(burst_q), .burst_q_valid(burst_q_valid), .burst_busy(burst_busy),
-    .config_en(config_en), .config_data(16'h641F), .config_bank_sel(config_bank_sel),
+    .config_en(config_en), .config_data(16'h241F), .config_bank_sel(config_bank_sel),
     .raw_busy(raw_busy), .bcr_init_done(bcr_init_done),
     .cram_a(cram_a), .cram_dq_out(cram_ctrl_dq_out), .cram_dq_oe(cram_ctrl_dq_oe),
     .cram_dq_in(cram_dq_to_ctrl), .cram_wait(cram_wait), .cram_clk(cram_clk),
@@ -288,7 +288,7 @@ cram1_controller #(.CLOCK_SPEED(100.0)) ctrl (
 );
 
 cram_chip_model #(.POWERUP_CYCLES(8'd4)) chip (
-    .clk(clk), .cram_clk(clk), .reset_n(reset_n),
+    .clk(clk), .cram_clk(cram_clk), .reset_n(reset_n),
     .cram_a(cram_a),
     .cram_dq_in(cram_ctrl_dq_oe ? cram_ctrl_dq_out : 16'h0),
     .cram_dq_out(cram_chip_dq_out), .cram_dq_oe(cram_ctrl_dq_oe),
@@ -302,7 +302,7 @@ cram_chip_model #(.POWERUP_CYCLES(8'd4)) chip (
     .error_count(cram_errors)
 );
 
-// ---- BCR-init FSM: pulse config_en per die (sync burst 0x641F) ----
+// ---- BCR-init FSM: pulse config_en per die (sync burst 0x241F) ----
 reg [3:0] bcr_st = 0; integer warm = 0;
 localparam B_WAIT=0, B_P0=1, B_B0=2, B_I0=3, B_P1=4, B_B1=5, B_I1=6, B_DONE=7;
 always @(posedge clk or negedge reset_n) begin

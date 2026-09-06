@@ -690,6 +690,7 @@ wire [15:0] cont2_trig = 16'b0;
 wire [31:0] app_id = 32'b0;
 
 axi_periph_slave periph (
+    .mix_voice_ready(1'b1),
     .clk    (clk_cpu),
     .reset_n(reset_n),
 

@@ -879,7 +879,7 @@ wire        bridge_cram0_rdata_valid= ctrl_word_rdata_valid;
 // CRAM1 — dedicated GPU sync-burst texture memory (Phase 2).
 //
 // A separate physical chip from CRAM0 (saves), so textures NEVER touch the
-// latency-sensitive bridge/save path.  Runs on clk_cpu in BCR 0x641F sync-burst
+// latency-sensitive bridge/save path.  Runs on clk_cpu in BCR 0x241F sync-burst
 // mode (the mode that hangs CRAM0's shared async reads, but is exactly right for
 // a read-mostly dedicated texture chip).  Two masters into the one controller:
 //   - GPU texture fills  -> burst_rd via gpu_cram1_tex_adapter (priority).
@@ -917,6 +917,7 @@ wire        c1_burst_busy;
 
 // CRAM1 controller physical-pin nets (active-low; DQ tristated at top below)
 wire [21:16] c1a_a;
+wire         c1a_clk;
 wire [15:0]  c1a_dq_out;
 wire         c1a_dq_oe;
 wire         c1a_adv_n, c1a_cre, c1a_ce0_n, c1a_ce1_n, c1a_oe_n, c1a_we_n, c1a_ub_n, c1a_lb_n;
@@ -943,13 +944,14 @@ cram1_controller #(.CLOCK_SPEED(100.0)) psram1 (
     // sync-burst read — GPU texture fills
     .burst_rd(c1_burst_rd), .burst_addr(c1_burst_addr), .burst_len(c1_burst_len),
     .burst_q(c1_burst_q), .burst_q_valid(c1_burst_q_valid), .burst_busy(c1_burst_busy),
-    // BCR config (sync burst 0x641F)
-    .config_en(cram1_bcr_config_en), .config_data(16'h641F),
+    // Variable latency, code 4: AS1C8M16PL Table 5 permits 133 MHz.
+    // The former fixed-latency code 4 (0x641F) permits only 66 MHz.
+    .config_en(cram1_bcr_config_en), .config_data(16'h241F),
     .config_bank_sel(cram1_bcr_bank_sel),
     .raw_busy(cram1_a_raw_busy), .bcr_init_done(cram1_a_bcr_done),
-    // physical pins (cram_clk unused — chip clock is the pin driven below)
+    // Physical pins; the PHY forwards CLK only during synchronous reads.
     .cram_a(c1a_a), .cram_dq_out(c1a_dq_out), .cram_dq_oe(c1a_dq_oe),
-    .cram_dq_in(cram1_dq), .cram_wait(cram1_wait), .cram_clk(),
+    .cram_dq_in(cram1_dq), .cram_wait(cram1_wait), .cram_clk(c1a_clk),
     .cram_adv_n(c1a_adv_n), .cram_cre(c1a_cre),
     .cram_ce0_n(c1a_ce0_n), .cram_ce1_n(c1a_ce1_n),
     .cram_oe_n(c1a_oe_n), .cram_we_n(c1a_we_n),
@@ -965,7 +967,7 @@ gpu_cram1_tex_adapter cram1_tex_adapter (
     .burst_q(c1_burst_q), .burst_q_valid(c1_burst_q_valid), .burst_busy(c1_burst_busy)
 );
 
-// CRAM1 BCR-init FSM: program sync-burst mode (0x641F) into both dies at boot.
+// CRAM1 BCR-init FSM: program sync-burst mode (0x241F) into both dies at boot.
 // Pulses config_en per die, edge-detecting raw_busy for the inter-die handoff.
 reg [3:0] cram1_bcr_state;
 localparam [3:0] C1_BCR_WAIT_PLL=4'd0, C1_BCR_PULSE_DIE0=4'd1, C1_BCR_BUSY_DIE0=4'd2,
@@ -988,10 +990,10 @@ always @(posedge clk_cpu) begin
     endcase
 end
 
-// CRAM1 pin fan-out (DQ tristated at top level; chip clock = clk_cpu).
+// CRAM1 pin fan-out (DQ tristated at top level; chip clock is the PHY DDR output).
 assign cram1_a     = c1a_a;
 assign cram1_dq    = c1a_dq_oe ? c1a_dq_out : 16'hZZZZ;
-assign cram1_clk   = clk_cpu;
+assign cram1_clk   = c1a_clk;
 assign cram1_adv_n = c1a_adv_n;
 assign cram1_cre   = c1a_cre;
 assign cram1_ce0_n = c1a_ce0_n;
@@ -2731,6 +2733,7 @@ assign video_hs = vidout_hs;
         // Hardware mixer MMIO ↔ audio_mixer (flat addressing, 0x4B000000)
         .mix_enable             (mixer_enable_mmio),
         .mix_voice_wr           (mixer_voice_wr_mmio),
+        .mix_voice_ready        (mixer_voice_ready_mmio),
         .mix_voice_sel          (mixer_voice_sel_mmio),
         .mix_voice_field        (mixer_voice_field_mmio),
         .mix_voice_wdata        (mixer_voice_wdata_mmio),
@@ -3365,6 +3368,7 @@ end
 // MMIO-driven voice programming signals (from axi_periph_slave).
 wire        mixer_enable_mmio;
 wire        mixer_voice_wr_mmio;
+wire        mixer_voice_ready_mmio;
 wire [4:0]  mixer_voice_sel_mmio;
 wire [3:0]  mixer_voice_field_mmio;
 wire [31:0] mixer_voice_wdata_mmio;
@@ -3392,6 +3396,7 @@ wire [31:0] periph_audio_sample_data;
 // finished stereo samples through AUDIO_PCM_SAMPLE.  audio_mixer is not
 // instantiated; its periph-facing readbacks and its M3 arbiter port are
 // tied off so nothing is left undriven / multidriven.
+assign mixer_voice_ready_mmio  = 1'b1;
 assign mixer_pos_readback      = 22'd0;
 assign mixer_voice_end_pending = 32'd0;
 assign mixer_active_mask       = 32'd0;
@@ -3406,6 +3411,7 @@ audio_mixer audio_mixer_inst (
     .reset_n          (reset_n_cpu_media),
     .mixer_enable     (mixer_enable_mmio),
     .voice_wr         (mixer_voice_wr_mmio),
+    .voice_wr_ready   (mixer_voice_ready_mmio),
     .voice_field      (mixer_voice_field_mmio),
     .voice_sel        (mixer_voice_sel_mmio),
     .voice_sel_rd     (mixer_voice_sel_rd_mmio), // combinational from read addr

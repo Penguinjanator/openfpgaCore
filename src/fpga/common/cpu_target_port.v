@@ -520,6 +520,9 @@ always @(posedge clk or posedge reset) begin
         wr_per_wready_pulse <= 1'b0;
         if (mem_bready) mem_bvalid_r <= 1'b0;
         if (per_bready) per_bvalid_r <= 1'b0;
+        // AW and W are independent channels. A slave may accept W first,
+        // so AW must keep progressing after the W FSM leaves WR_AW.
+        if (m_awvalid && m_awready) m_awvalid <= 1'b0;
 
         case (wr_state)
         // WR_IDLE bundles W into the same cycle as AW when the master
@@ -578,15 +581,13 @@ always @(posedge clk or posedge reset) begin
         // from WR_IDLE) the W handshake too.  If m_awready+m_wready
         // both fire here, advance to WR_B directly.
         WR_AW: begin
-            if (m_awready) m_awvalid <= 1'b0;
-
             if (m_wready && m_wvalid) begin
                 m_wvalid <= 1'b0;
                 wr_burst_count <= wr_burst_count + 8'd1;
                 if (wr_beat_is_last) begin
-                    if (m_awready || !m_awvalid)
-                        wr_state <= WR_B;
-                    // else: AW not done yet, stay in WR_AW until awready
+                    // B cannot arrive until both AW and the final W have
+                    // been accepted. Keep a pending AWVALID while waiting.
+                    wr_state <= WR_B;
                 end else begin
                     wr_state <= WR_W;
                     // mem bursts stream full-rate in WR_W (both slots

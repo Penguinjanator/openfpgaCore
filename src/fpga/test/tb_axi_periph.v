@@ -17,6 +17,9 @@
 module tb_axi_periph (
     input wire clk,
     input wire reset_n,
+    input wire mixer_ready,
+    output wire mixer_write,
+    output wire [31:0] mixer_write_data,
 
     // AXI slave ports — driven by the C++ harness
     input  wire        s_axi_arvalid,
@@ -271,10 +274,11 @@ axi_periph_slave dut (
     .cram0_mode(),
 
     .mix_enable(),
-    .mix_voice_wr(),
+    .mix_voice_wr(mixer_write),
+    .mix_voice_ready(mixer_ready),
     .mix_voice_sel(),
     .mix_voice_field(),
-    .mix_voice_wdata(),
+    .mix_voice_wdata(mixer_write_data),
     .mix_irq_clear_wr(),
     .mix_irq_clear(),
     .mix_master_vol(),

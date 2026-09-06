@@ -304,12 +304,14 @@ struct Result {
     uint64_t cycles;
     uint32_t pixels;
     double cyc_per_px;
+    uint64_t framebuffer_hash;
 };
 
 // Render one (or two) truecolor 0x4E triangle(s) with optional z / tex.
 // Returns measured cycles (kick->fence) and pixels written.
 static Result measure_tc(const TriGeom &g, bool textured, bool zbuf, bool overdraw,
-                         int bbox_x1, int bbox_y1, bool uvvary = false) {
+                         int bbox_x1, int bbox_y1, bool uvvary = false,
+                         bool varying_depth = false) {
     gpu_init();
     preload();
     // texture: 1x1 white if untextured-ish path still binds a tex; use real tex
@@ -353,6 +355,13 @@ static Result measure_tc(const TriGeom &g, bool textured, bool zbuf, bool overdr
         t[0]=0; t[1]=0;                 t[2]=(int32_t)(63<<16);  // v: 0..63 down
     } else { s[0]=s[1]=s[2]=0; t[0]=t[1]=t[2]=0; }
     int32_t zi[3] = { Q, Q, Q };
+    if (varying_depth) {
+        zi[1] = Q / 2;
+        zi[2] = Q * 3 / 4;
+        // The perspective path consumes s/z and t/z at the vertices.
+        s[1] /= 2;
+        t[2] = t[2] * 3 / 4;
+    }
     uint16_t col[3] = { 0xFFFF, 0xFFFF, 0xFFFF };  // white verts => texel passes through
 
     emit_set_tri_state(p, 0, 320, 0, 200);
@@ -374,6 +383,11 @@ static Result measure_tc(const TriGeom &g, bool textured, bool zbuf, bool overdr
     r.cycles = ok ? (c1 - c0) : 0;
     r.pixels = count_written_px_tc(g.X0, bbox_x1, g.Y0, bbox_y1);
     r.cyc_per_px = r.pixels ? (double)r.cycles / r.pixels : 0.0;
+    r.framebuffer_hash = UINT64_C(14695981039346656037);
+    for (uint32_t i = 0; i < 320u * 200u * 2u; ++i) {
+        r.framebuffer_hash ^= sdram_read_byte(FB_BASE_BYTE + i);
+        r.framebuffer_hash *= UINT64_C(1099511628211);
+    }
     return r;
 }
 
@@ -431,19 +445,22 @@ static Result measure_pal(const TriGeom &g, bool zbuf, int bbox_x1, int bbox_y1)
 // burst-linkable drains.  Reports cyc/px AND write-transactions/px
 // (dbg_aw_count delta) so both effects are visible.
 // ------------------------------------------------------------------
-static Result measure_columns(int groups, uint32_t *aw_per_px_x1000) {
+static Result measure_columns(int groups, uint32_t *aw_per_px_x1000, bool lit = false) {
     gpu_init();
     preload();
     for (int i = 0; i < 64*64; i++)
         sdram_write_byte(TEX_BASE_BYTE + (uint32_t)i,
                          (uint8_t)(((i*2654435761u) >> 24) | 1u));
+    if (lit)
+        for (uint32_t i = 0; i < 256; ++i)
+            sdram_write_byte(PALOOKUP_BASE_BYTE + i, (uint8_t)(i ^ 0x55u));
 
     const int LANES = 4, COUNT = 100;
     uint32_t aw0 = tb->dbg_aw_count;
     uint64_t c0 = gpu_clocks;
     for (int g = 0; g < groups; g++) {
         ring_cmd(0x4C, 4u + 5u * (uint32_t)LANES);
-        ring_write(((uint32_t)LANES << 28));                 // lanes, flags=0
+        ring_write(((uint32_t)LANES << 28) | (lit ? (1u << 20) : 0u));
         ring_write(64u);                                     // tex_width
         ring_write((63u << 16) | 63u);                       // h_mask | w_mask
         ring_write(320u);                                    // fb step = stride
@@ -466,6 +483,11 @@ static Result measure_columns(int groups, uint32_t *aw_per_px_x1000) {
     r.cyc_per_px = r.pixels ? (double)r.cycles / r.pixels : 0.0;
     if (aw_per_px_x1000)
         *aw_per_px_x1000 = r.pixels ? (uint32_t)((uint64_t)(aw1 - aw0) * 1000u / r.pixels) : 0;
+    r.framebuffer_hash = UINT64_C(14695981039346656037);
+    for (uint32_t i = 0; i < 320u * 200u; ++i) {
+        r.framebuffer_hash ^= sdram_read_byte(FB_BASE_BYTE + i);
+        r.framebuffer_hash *= UINT64_C(1099511628211);
+    }
     if (!ok) printf("  [column bench: FENCE TIMEOUT]\n");
     return r;
 }
@@ -479,6 +501,20 @@ int main(int argc, char **argv) {
     Verilated::commandArgs(argc, argv);
     tb = new Vtb_gpu;
     hard_reset();
+
+#ifdef GPU_PERF_POCKET
+    uint32_t writes_per_pixel = 0;
+    Result columns = measure_columns(8, &writes_per_pixel);
+    print_row("Pocket column-list 4 lanes x 100 (8 groups)", columns);
+    printf("  framebuffer hash = %016llx; writes/1000 pixels = %u\n",
+           (unsigned long long)columns.framebuffer_hash, writes_per_pixel);
+    Result lit_columns = measure_columns(8, &writes_per_pixel, true);
+    print_row("Pocket lit column-list 4 lanes x 100", lit_columns);
+    printf("  lit framebuffer hash = %016llx; writes/1000 pixels = %u\n",
+           (unsigned long long)lit_columns.framebuffer_hash, writes_per_pixel);
+    delete tb;
+    return (columns.cycles && lit_columns.cycles) ? 0 : 1;
+#endif
 
     // Read back the SDRAM model's configured initial read latency so we can
     // report whether this run modeled realistic latency.
@@ -514,6 +550,11 @@ int main(int argc, char **argv) {
            base.cyc_per_px - untex.cyc_per_px);
     printf("  delta(tex vary-UV)  = %+.3f cyc/px  (real textured cost)\n",
            texvary.cyc_per_px - untex.cyc_per_px);
+
+    Result perspective = measure_tc(big, true, true, false, bbx1, bby1, true, true);
+    print_row("textured VARYING-DEPTH + z", perspective);
+    printf("  varying-depth framebuffer hash = %016llx\n",
+           (unsigned long long)perspective.framebuffer_hash);
 
     printf("\n--- FACTOR (b) Z-BUFFER: z-off vs z-on ---\n");
     Result noz = measure_tc(big, true, /*zbuf*/false, false, bbx1, bby1);

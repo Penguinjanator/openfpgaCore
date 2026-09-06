@@ -243,11 +243,25 @@ gpu_core #(
     // Status
     .busy(busy),
     .fence_reached(fence_reached),
-    .dbg_state(dbg_state),
-    .dbg_setup_step(dbg_setup_step),
-    .dbg_aux(dbg_aux),
-    .dbg_frag(dbg_frag)
+    .dbg_state(),
+    .dbg_setup_step(),
+    .dbg_aux(),
+    .dbg_frag()
 );
+
+// Production debug outputs are tied off to save resources. Observe the actual
+// state in the testbench so timeout diagnostics can identify a stalled stage.
+assign dbg_state = gpu.state;
+assign dbg_setup_step = {2'd0, gpu.spanprod_calc_step};
+assign dbg_aux = {gpu.sp_count, gpu.p0a_valid, gpu.p0_valid, gpu.p1_valid,
+                  gpu.p2_valid, gpu.p2b_valid, gpu.p3_valid, gpu.fbss,
+                  gpu.fp_pipe_stall, gpu.p1_tex_ready, gpu.tex_resp_valid,
+                  gpu.cmap_pending_valid, gpu.cmap_resp_valid_b, gpu.cmap_req_ready_b};
+assign dbg_frag = {20'd0, gpu.tex_cache.state, gpu.tex_cache.pipe_b_live,
+                   gpu.tex_cache.held_valid_b, gpu.tex_cache.pipe_valid_b,
+                   gpu.tex_cache.pipe_hit_b, gpu.tex_cache.pipe_miss_b,
+                   gpu.src_done, gpu.spanprod_active,
+                   gpu.p1_flags[0], gpu.p2b_flags[0]};
 
 // ============================================================
 // SRAM Model (word-level, GPU private scratch)

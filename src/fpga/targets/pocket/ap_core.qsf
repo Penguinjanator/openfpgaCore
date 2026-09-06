@@ -44,14 +44,9 @@ set_global_assignment -name ORIGINAL_QUARTUS_VERSION 18.1.1
 set_global_assignment -name PROJECT_CREATION_TIME_DATE "21:31:36  JANUARY 22, 2020"
 set_global_assignment -name LAST_QUARTUS_VERSION "25.1std.0 Lite Edition"
 set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
-# build_id.mif is checked in at a fixed value to keep bitstreams
-# deterministic. The Altera reference build_id_gen.tcl below
-# regenerated it on every Quartus invocation with the current
-# timestamp + MAC + hostname, which folded into BRAM init data and
-# produced non-deterministic bitstreams from the same RTL - some
-# functional, some wedging the CPU on first instruction fetch with
-# `0 errors, 0 warnings`. Re-enable only if you actually need a
-# unique build ID per compile.
+# apf/build_id.mif contains fixed zero metadata for reproducible builds.
+# Zero denotes an unspecified build identity. The optional generator below
+# produces a timestamp and random ID; leave it disabled for reproducibility.
 # set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:apf/build_id_gen.tcl"
 set_global_assignment -name SMART_RECOMPILE ON
 
@@ -243,6 +238,19 @@ set_instance_assignment -name FAST_INPUT_REGISTER ON -to cram1_dq[13]
 set_instance_assignment -name FAST_INPUT_REGISTER ON -to cram1_dq[14]
 set_instance_assignment -name FAST_INPUT_REGISTER ON -to cram1_dq[15]
 set_instance_assignment -name FAST_INPUT_REGISTER ON -to cram1_wait
+# The CRAM1 PHY launches on the falling edge to meet the forwarded clock's
+# setup/hold window. Keep these launch registers at the pins.
+set_instance_assignment -name FAST_OUTPUT_ENABLE_REGISTER ON -to cram1_dq[*]
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_dq[*]
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_a[*]
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_adv_n
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_cre
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_ce0_n
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_ce1_n
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_oe_n
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_we_n
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_ub_n
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to cram1_lb_n
 set_location_assignment PIN_J17 -to dram_a[12]
 set_location_assignment PIN_F15 -to dram_a[11]
 set_location_assignment PIN_C13 -to dram_a[10]
@@ -802,7 +810,8 @@ set_instance_assignment -name FAST_INPUT_REGISTER ON -to cram0_dq[13]
 set_instance_assignment -name FAST_INPUT_REGISTER ON -to cram0_dq[14]
 set_instance_assignment -name FAST_INPUT_REGISTER ON -to cram0_dq[15]
 set_instance_assignment -name FAST_INPUT_REGISTER ON -to cram0_wait
-# cram1_dq / cram1_wait FAST_INPUT_REGISTER assignments retired with memory-arch v2.
+# CRAM1 input placement assignments are next to its pin assignments above.
+# Its read PHY explicitly uses DDIO input cells for falling-edge capture.
 
 # SDRAM: keep command/address/data mask/data pins in the I/O cells.  These
 # paths are board-facing relative to dram_clk, so fabric-to-pad routing shows

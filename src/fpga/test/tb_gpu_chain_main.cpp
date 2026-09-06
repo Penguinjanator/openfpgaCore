@@ -12,10 +12,10 @@
 // We drive per_axi from the harness with the same shape the
 // cpu_system shim uses: AW + W presented simultaneously when there
 // are no in-flight transactions, both held until their respective
-// ready fires, then we wait for B (we always assert bready=1).  The
-// shim's posted-FIFO + coalescer is NOT modeled here on purpose —
-// this bench isolates the lower three layers so we can pinpoint where
-// (if anywhere) a wedge surfaces.
+// ready fires, then we wait for B (we always assert bready=1). Direct AXI
+// tests isolate the lower three layers. The LSU tests below additionally
+// exercise the production posted-write FIFO/coalescer, whose test wrapper
+// is generated from cpu_system.v by generate_lsu_shim.py.
 //
 
 #include "Vtb_gpu_chain.h"

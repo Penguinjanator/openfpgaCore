@@ -828,15 +828,20 @@ always @(posedge controller_clk) begin
         end
     end
     // Row-crossing for burst writes: finish tWR, precharge, activate new row, resume.
+    // Crossing banks may enter a bank with a different row still open.
+    // Precharge all banks on that rare boundary before the unconditional
+    // ACT below. Same-bank crossings retain the single-bank precharge.
     ST_WRITE_4_NEWROW: begin
         phy_dqm <= 2'b00;
         if(dc == TIMING_WRITE-1+1) begin
-            // Precharge the bank that was just written (stashed in
-            // ST_WRITE_3 before addr advanced into the new row)
+            // Precharge the old row, or all banks when entering another bank.
             cmd <= CMD_PRECHG;
-            phy_a[10] <= 0;
+            phy_a[10] <= (BANK_ROW_TRACK != 0) && (nr_prechg_bank != addr[24:23]);
             phy_ba <= nr_prechg_bank;
-            row_open_v[trk(nr_prechg_bank)] <= 1'b0;
+            if ((BANK_ROW_TRACK != 0) && (nr_prechg_bank != addr[24:23]))
+                row_open_v <= 4'd0;
+            else
+                row_open_v[trk(nr_prechg_bank)] <= 1'b0;
             dc <= 0;
             state <= ST_WRITE_4_NR_PRECHG;
         end
@@ -951,8 +956,12 @@ always @(posedge controller_clk) begin
             // last ST_READ_0 ACT), which is exactly the precharge target —
             // addr has already advanced and may point into a new bank.
             cmd <= CMD_PRECHG;
-            phy_a[10] <= 0; // only precharge current bank
-            row_open_v[trk(phy_ba)] <= 1'b0;
+            phy_a[10] <= (BANK_ROW_TRACK != 0) && (phy_ba != addr[24:23]);
+            // The destination bank can already have a row open, too.
+            if ((BANK_ROW_TRACK != 0) && (phy_ba != addr[24:23]))
+                row_open_v <= 4'd0;
+            else
+                row_open_v[trk(phy_ba)] <= 1'b0;
             state <= ST_READ_7;
         end
     end

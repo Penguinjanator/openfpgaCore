@@ -64,6 +64,8 @@ static const bool LEAN_CONFIG = false;
  *                              decode (gpu_core ~1701): raw-texel output is
  *                              CORRECT there, so colormap-byte oracles and
  *                              the port-B (cmap) starvation cases don't hold.
+ *   GPU_TEST_NO_VERT_TRI       INCLUDE_VERT_TRI=0: vertex rendering oracles
+ *                              are replaced by a disabled-command drain test.
  *   GPU_TEST_NO_PARAM_TRI      INCLUDE_PARAM_TRI=0 + INCLUDE_PARAM_TRI_RECS=0
  *                              (set together in every config so far): 0x49 /
  *                              0x4D draws drain as no-ops, so param renders
@@ -311,8 +313,8 @@ static bool wait_fence(uint32_t token, int timeout = 400000) {
         uint32_t reached = tb->fence_reached;
         if ((int32_t)(reached - token) >= 0) return true;
     }
-    fprintf(stderr, "  TIMEOUT waiting for fence %u (reached=%u dbg_state=%u)\n",
-            token, tb->fence_reached, tb->dbg_state);
+    fprintf(stderr, "  TIMEOUT waiting for fence %u (reached=%u state=%u aux=%08x frag=%08x)\n",
+            token, tb->fence_reached, tb->dbg_state, tb->dbg_aux, tb->dbg_frag);
     return false;
 }
 
@@ -9444,6 +9446,33 @@ static void test_lean_column_list_drains() {
 // and drains (lean config).  So 0x4A -> compact 0x48 -> 0x4B must be a
 // guarded no-op 0x4B in BOTH configs; after re-issuing 0x4A the same 0x4B
 // draws (byte-exact vs the 0x49 derived-planes twin).
+// A valid sticky-state/vertex stream must drain without drawing when vertex
+// triangles are absent. A following clear proves the parser advanced.
+static void test_disabled_vertex_commands_drain() {
+    printf("TEST disabled_vertex_commands_drain\n");
+    gpu_init();
+    FbModel m = preload_with_sentinel();
+    upload_texture(TEX_BASE_BYTE, make_projection_test_texture());
+    m.snapshot_from_sdram();
+    ParamSpanListWire surf = make_vert_tri_surface();
+    const int16_t vx[3] = {5*16, 40*16, 20*16};
+    const int16_t vy[3] = {2, 6, 22};
+    const int32_t s[3] = {0, 30*65536, 14*65536};
+    const int32_t t[3] = {0, 6*65536, 20*65536};
+    const int32_t zi[3] = {65536, 65536, 65536};
+    const uint8_t light[3] = {0, 0, 0};
+    emit_set_tri_state_raw(surf, 0, 320, 0, 64);
+    emit_draw_vert_tri_raw(vx, vy, s, t, zi, light);
+    cmd_clear_rect(FB_BASE_BYTE + 26u*320u + 1u, 4, 1, 0, 0x5C);
+    m.apply_clear_rect(FB_BASE_BYTE + 26u*320u + 1u, 4, 1, 0, 0x5C);
+    if (!submit_and_wait()) {
+        check_fail("disabled_vertex_commands_drain", "timeout");
+        return;
+    }
+    compare_fb_region("disabled_vertex_commands_drain", m,
+                      FB_BASE_BYTE, 320, 0, 0, 64, 34);
+}
+
 static void test_lean_sticky_state_contract() {
     printf("TEST lean_sticky_state_contract (lean=%d)\n", LEAN_CONFIG ? 1 : 0);
     const int Q = 1 << 16;
@@ -11580,6 +11609,8 @@ int main(int argc, char **argv) {
     test_param_tri_fuzz_affine();
     test_vert_tri_equivalence_vs_param();
 #endif
+
+#ifndef GPU_TEST_NO_VERT_TRI
     test_texture_mirror_s();
     test_texture_mirror_t();
     test_vert_tri_sliver_renders_in_range();
@@ -11588,6 +11619,7 @@ int main(int argc, char **argv) {
     test_vert_tri_shared_edge_adjacency();
 #endif
     test_vert_tri_sticky_semantics();
+#endif
     test_vert_tri_wrong_size_noop();
 #ifndef GPU_TEST_NO_PARAM_TRI
     /* 0x4D recs tests all reference full-0x49 twins (and recs itself is
@@ -11700,7 +11732,11 @@ int main(int argc, char **argv) {
     // ---- OS30 lean-variant contract tests (run in BOTH configs) ----
     test_lean_compact_0x48_drains();
     test_lean_column_list_drains();
+#ifndef GPU_TEST_NO_VERT_TRI
     test_lean_sticky_state_contract();
+#else
+    test_disabled_vertex_commands_drain();
+#endif
     test_lean_wrong_size_0x48_33w();
 
 #ifdef GPU_TEST_TRUECOLOR
