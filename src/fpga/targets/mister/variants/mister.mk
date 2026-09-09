@@ -30,7 +30,9 @@ DEFS := INCLUDE_HW_MIXER INCLUDE_TRANSLUC \
         INCLUDE_COLUMN_LIST INCLUDE_COMPACT_SPAN INCLUDE_PARAM_TRI \
         INCLUDE_VERT_TRI INCLUDE_PARAM_TRI_RECS \
         MISTER_FB MISTER_FB_PALETTE \
-        INCLUDE_CLK_AUTOTUNE
+        INCLUDE_CLK_AUTOTUNE INCLUDE_EARLY_Z_CAPTURE INCLUDE_NONSTREAM_BYPASS
+# These two implementation choices are fitted for MiSTer. Keep them absent
+# from Pocket variants: enabling them there regresses timing at the stored seed.
 # INCLUDE_CLK_AUTOTUNE (v0.9, the SHIPPING config): self-tuning clock —
 # Reconfigurable VCO-900 pll_sys (C0 /9 = 100 MHz default, runtime /10 =
 # 90 MHz) + clk_autotune.v + the boot-ROM SDRAM probe.  A board whose

@@ -204,6 +204,7 @@ MIXER_SRCS = \
 MIXER_CPP = tb_audio_mixer_main.cpp
 MIXER_TOP = tb_audio_mixer
 MIXER_DIR = obj_dir_audio_mixer
+MIXER_MISTER_DIR = obj_dir_audio_mixer_mister
 MIXER_FLAGS = -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-CASEINCOMPLETE -Wno-SYNCASYNCNET -Wno-UNOPTFLAT
 
 # AXI skid buffer (full-throughput valid/ready register slice primitive)
@@ -1068,17 +1069,8 @@ $(GPU_ACCEPT_OS30X_DIR)/V$(GPU_TOP): $(GPU_SRCS) $(GPU_ACCEPT_CPP)
 		--top-module $(GPU_TOP) --Mdir $(GPU_ACCEPT_OS30X_DIR) -I$(COMMON_DIR) \
 		$(GPU_SRCS) $(GPU_ACCEPT_CPP)
 
-# EXACT shipped MiSTer bitstream GPU config (mirrors emu.sv's gpu_core params
-# for targets/mister INCLUDE_DEFS = HW_MIXER TRANSLUC COLUMN_LIST COMPACT_SPAN
-# PARAM_TRI VERT_TRI PARAM_TRI_RECS).  emu.sv passes exactly six params —
-# PARAM_TRI/VERT_TRI/PARAM_TRI_RECS/COMPACT_SPAN/COLUMN_LIST=1, TEX_MEM=0 —
-# and leaves the rest at gpu_core defaults (Z_WINDOW=4, EW_DIVS=1,
-# DIRECT_COLOR=0, XFORM_RGB=0, CLIP_TRI=1, VTX/LIGHT=0, PALETTE=1, COMBINE=1,
-# PARAM_SPAN_Q29=1) with the INCLUDE_TRANSLUC macro defined by the qsf.  The
-# ONLY delta vs the always-green full-feature gpu-acceptance build is
-# INCLUDE_TEX_MEM=0 — the fold no other acceptance config has ever elaborated
-# (same coverage-gap class the os30-exact variant closed).  Full suite, full
-# assertions: must be green.
+# MiSTer GPU configuration: emu.sv's feature parameters, 32 KB texture cache,
+# and the variant's translucency and early depth-capture definitions.
 GPU_ACCEPT_MISTERX_DIR = obj_dir_gpu_acceptance_misterx
 gpu-acceptance-mister-exact: $(GPU_ACCEPT_MISTERX_DIR)/V$(GPU_TOP)
 	@printf "\n=== GPU acceptance suite (EXACT shipped MiSTer GPU config) ===\n"
@@ -1091,6 +1083,8 @@ $(GPU_ACCEPT_MISTERX_DIR)/V$(GPU_TOP): $(GPU_SRCS) $(GPU_ACCEPT_CPP)
 		-GINCLUDE_COMPACT_SPAN=1 -GINCLUDE_COLUMN_LIST=1 \
 		-GINCLUDE_TEX_MEM=0 \
 		-GGPU_Z_READ_WINDOW=4 -GGPU_EW_PARALLEL_DIVS=1 \
+		+define+INCLUDE_EARLY_Z_CAPTURE \
+		-GGPU_TEX_CACHE_SET_BITS=11 \
 		-GINCLUDE_DIRECT_COLOR=0 -GINCLUDE_XFORM_RGB=0 -GINCLUDE_CLIP_TRI=1 \
 		-GINCLUDE_VTX_CACHE=0 -GINCLUDE_GPU_LIGHT=0 -GINCLUDE_PALETTE=1 \
 		-GINCLUDE_COMBINE=1 -GINCLUDE_PARAM_SPAN_Q29=1 \
@@ -1139,6 +1133,7 @@ $(GPU_SCENE_MISTER_DIR)/V$(GPU_TOP): $(GPU_SRCS) $(GPU_SCENE_MISTER_CPP) $(GPU_A
 		-GINCLUDE_COMPACT_SPAN=1 -GINCLUDE_COLUMN_LIST=1 \
 		-GINCLUDE_TEX_MEM=0 \
 		-GGPU_Z_READ_WINDOW=4 -GGPU_EW_PARALLEL_DIVS=1 \
+		+define+INCLUDE_EARLY_Z_CAPTURE -GGPU_TEX_CACHE_SET_BITS=11 \
 		-GINCLUDE_DIRECT_COLOR=0 -GINCLUDE_XFORM_RGB=0 -GINCLUDE_CLIP_TRI=1 \
 		-GINCLUDE_VTX_CACHE=0 -GINCLUDE_GPU_LIGHT=0 -GINCLUDE_PALETTE=1 \
 		-GINCLUDE_COMBINE=1 -GINCLUDE_PARAM_SPAN_Q29=1 \
@@ -1449,6 +1444,17 @@ $(MIXER_DIR)/V$(MIXER_TOP): $(MIXER_SRCS) $(MIXER_CPP)
 		-I$(COMMON_DIR) \
 		$(MIXER_SRCS) $(MIXER_CPP)
 
+.PHONY: audio-mixer-mister
+audio-mixer-mister: $(MIXER_MISTER_DIR)/V$(MIXER_TOP)
+	./$(MIXER_MISTER_DIR)/V$(MIXER_TOP)
+
+$(MIXER_MISTER_DIR)/V$(MIXER_TOP): $(MIXER_SRCS) $(MIXER_CPP)
+	$(VERILATOR) $(VERILATOR_FLAGS) $(MIXER_FLAGS) \
+		+define+INCLUDE_NONSTREAM_BYPASS \
+		--top-module $(MIXER_TOP) --Mdir $(MIXER_MISTER_DIR) \
+		-I$(COMMON_DIR) \
+		$(MIXER_SRCS) $(MIXER_CPP)
+
 # --- AXI skid buffer (register slice primitive) ---
 skid: $(SKID_DIR)/V$(SKID_TOP)
 	@printf "\n=== AXI skid buffer (register slice) ===\n"
@@ -1648,7 +1654,7 @@ clean:
 	       $(GPU_GPUDEMO_DIR) $(GPU_ACCEPT_DIR) $(GPU_ACCEPT_SINGLE_DIR) \
 	       $(GPU_ACCEPT_OS30_DIR) $(GPU_ACCEPT_ZRAW_DIR) $(SCANOUT_LEAN_DIR) \
 	       $(AXI_PERIPH_DIR) \
-	       $(AUDIO_DIR) $(MIXER_DIR) $(SYSTEM_DIR) \
+	       $(AUDIO_DIR) $(MIXER_DIR) $(MIXER_MISTER_DIR) $(SYSTEM_DIR) \
 	       $(ARBITER_DIR) \
 	       obj_dir_gpu obj_dir_gpu_floor obj_dir_gpu_gpudemo \
 	       obj_dir_gpu_acceptance \

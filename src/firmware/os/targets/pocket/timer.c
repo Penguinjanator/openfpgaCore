@@ -17,7 +17,7 @@ void of_timer_init(void) {
 }
 
 uint32_t of_timer_get_us(void) {
-    /* 100 MHz = 100 cycles per microsecond */
+    /* Use the clock reported by the core, including the 90 MHz fallback. */
     return (uint32_t)(read_cycles() / (CPU_FREQ_HZ / 1000000));
 }
 
@@ -30,7 +30,7 @@ uint32_t of_timer_get_seconds(uint32_t *ns_out) {
     uint32_t sec = (uint32_t)(cycles / CPU_FREQ_HZ);
     if (ns_out) {
         uint64_t rem = cycles % CPU_FREQ_HZ;
-        *ns_out = (uint32_t)(rem * 10);  /* 10ns per cycle at 100MHz */
+        *ns_out = (uint32_t)((rem * 1000000000ull) / CPU_FREQ_HZ);
     }
     return sec;
 }

@@ -1,0 +1,1302 @@
+{
+  "review_date": "2026-09-08",
+  "core_head": "176c1634af4a2674a5575c18059deb0a74148114",
+  "hardware_tested": false,
+  "release_published": false,
+  "original_pocket_os25_alms": 16000,
+  "pocket_os25_target_alms": 12800,
+  "trials": [
+    {
+      "name": "baseline",
+      "target": "mister",
+      "status": "fit_complete",
+      "seed": 21,
+      "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+      "alms": 28068,
+      "registers": 37334,
+      "memory_bits": 2976080,
+      "m10k": 410,
+      "dsp": 58,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "7bf0bab62199eb809877cede7464a0841fd3d6188503d5bde5003f8ce8c1a52c",
+        "src/fpga/common/audio_mixer.v": "8e09eccc5c0f07efff34560208f16090d8942474e399903610c4c74d7e3b6906",
+        "src/fpga/targets/mister/emu.sv": "75a6537ccd08d5ea5ff47170e72004cf020ad49f07259c56a99f10a5fa0e1b54",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_mister.v": "3bffd7947c4d631be31c5ec01e5e15aee453c19277242b1a7761011e6a2f2f88",
+        "src/fpga/targets/mister/firmware.mif": "5e5c22a93fdec278e0f09f4fa3391764f6345f99ad45db756b874a58fa5a7285",
+        "src/fpga/targets/mister/variants/mister.mk": "2272e1e409729e02a3278bfbfed158e4432299a5d851a54c80739b780ba5a6e6"
+      },
+      "all_corner_setup_hold": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": -0.206
+        },
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.245
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": -0.366
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.18
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": 1.164
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.133
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": 1.196
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.116
+        }
+      ],
+      "worst_setup_ns": -0.366,
+      "worst_hold_ns": 0.116,
+      "failing_clock_checks": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.206"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.366"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.187"
+        }
+      ],
+      "report_sha256": {
+        "baseline/src/fpga/targets/mister/output_files/mister.fit.summary": "797bf7873db4811a1b479657ec25ead62416fbd377b487ede5f9c594f2050f81",
+        "baseline/src/fpga/targets/mister/output_files/mister.sta.summary": "492b25a7e34300e37d679addd98d29f3e33ee1d97885c67ba6c5a7048aeebba9"
+      },
+      "rbf_sha256": "9aa30b2b2a8382c0baa923bf6c2e5e6ac40bc6dfe7f11a05a2d8e834c8e9000e",
+      "rbf_bytes": 4040156,
+      "implementation_definitions": [],
+      "decision": "MiSTer reference",
+      "cpu_setup_default_corner": {
+        "type": "Setup 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'",
+        "slack_ns": -0.206,
+        "tns_ns": -2.789
+      }
+    },
+    {
+      "name": "gpu-capture",
+      "target": "mister",
+      "status": "fit_complete",
+      "seed": 21,
+      "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+      "alms": 27770,
+      "registers": 37245,
+      "memory_bits": 2975824,
+      "m10k": 408,
+      "dsp": 58,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "29a4deea6d2f9a2933099a6f1ffbba56211fdf2ef055bd0910eaa775f902b53d",
+        "src/fpga/common/audio_mixer.v": "8e09eccc5c0f07efff34560208f16090d8942474e399903610c4c74d7e3b6906",
+        "src/fpga/targets/mister/emu.sv": "75a6537ccd08d5ea5ff47170e72004cf020ad49f07259c56a99f10a5fa0e1b54",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_mister.v": "3bffd7947c4d631be31c5ec01e5e15aee453c19277242b1a7761011e6a2f2f88",
+        "src/fpga/targets/mister/firmware.mif": "5e5c22a93fdec278e0f09f4fa3391764f6345f99ad45db756b874a58fa5a7285",
+        "src/fpga/targets/mister/variants/mister.mk": "2272e1e409729e02a3278bfbfed158e4432299a5d851a54c80739b780ba5a6e6"
+      },
+      "all_corner_setup_hold": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": -0.355
+        },
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.24
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": -0.129
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.215
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": 1.164
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.133
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": 1.196
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.115
+        }
+      ],
+      "worst_setup_ns": -0.355,
+      "worst_hold_ns": 0.115,
+      "failing_clock_checks": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.355"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.129"
+        }
+      ],
+      "report_sha256": {
+        "gpu-capture/src/fpga/targets/mister/output_files/mister.fit.summary": "0bc4bb41bf551fd749b798bfda59f5d34f9f98186d5f2091960352e30201718e",
+        "gpu-capture/src/fpga/targets/mister/output_files/mister.sta.summary": "2382690face16447e02e4ff7d37b60c566f23350f4e2810a65212fa253051df4"
+      },
+      "rbf_sha256": "713bdcd924c4646cb7a986d0e4c992693febe5c882408fd5d64292474dbab1a8",
+      "rbf_bytes": 4026416,
+      "implementation_definitions": [],
+      "decision": "Not selected alone: lower area but worse slow-100-C CPU setup slack.",
+      "cpu_setup_default_corner": {
+        "type": "Setup 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'",
+        "slack_ns": -0.355,
+        "tns_ns": -7.714
+      }
+    },
+    {
+      "name": "audio-skip",
+      "target": "mister",
+      "status": "fit_complete",
+      "seed": 21,
+      "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+      "alms": 27894,
+      "registers": 37208,
+      "memory_bits": 2976080,
+      "m10k": 410,
+      "dsp": 58,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "7bf0bab62199eb809877cede7464a0841fd3d6188503d5bde5003f8ce8c1a52c",
+        "src/fpga/common/audio_mixer.v": "ca22e0793b301b0d900470e3144753c826edbba825e0c77b6344a352631f7e68",
+        "src/fpga/targets/mister/emu.sv": "75a6537ccd08d5ea5ff47170e72004cf020ad49f07259c56a99f10a5fa0e1b54",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_mister.v": "3bffd7947c4d631be31c5ec01e5e15aee453c19277242b1a7761011e6a2f2f88",
+        "src/fpga/targets/mister/firmware.mif": "5e5c22a93fdec278e0f09f4fa3391764f6345f99ad45db756b874a58fa5a7285",
+        "src/fpga/targets/mister/variants/mister.mk": "2272e1e409729e02a3278bfbfed158e4432299a5d851a54c80739b780ba5a6e6"
+      },
+      "all_corner_setup_hold": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": -0.432
+        },
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.25
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": -0.373
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.101
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": 1.152
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.132
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": 1.188
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.083
+        }
+      ],
+      "worst_setup_ns": -0.432,
+      "worst_hold_ns": 0.083,
+      "failing_clock_checks": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.432"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.373"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.225"
+        }
+      ],
+      "report_sha256": {
+        "audio-skip/src/fpga/targets/mister/output_files/mister.fit.summary": "4d1a5c391e2e78d798cccb39491b7b01ffec77fd860b6b3f6b1e1a9ac4afb175",
+        "audio-skip/src/fpga/targets/mister/output_files/mister.sta.summary": "b38b14c1a8a1be514782611c5de87e5316e77b932f0e204e78b6bb446dade009"
+      },
+      "rbf_sha256": "911d1935ad660ebe61f3579d6550b8b15fb70ec796d5bcb3db8678496d5978ec",
+      "rbf_bytes": 4065216,
+      "implementation_definitions": [],
+      "decision": "Rejected alone: worse setup timing.",
+      "cpu_setup_default_corner": {
+        "type": "Setup 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'",
+        "slack_ns": -0.432,
+        "tns_ns": -4.395
+      }
+    },
+    {
+      "name": "combined",
+      "target": "mister",
+      "status": "fit_complete",
+      "seed": 21,
+      "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+      "alms": 27883,
+      "registers": 37396,
+      "memory_bits": 2975824,
+      "m10k": 408,
+      "dsp": 58,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "474bd265c51429de0cdf5d8b48257a8330bc0db2011e7bbd84a55ef55f77e080",
+        "src/fpga/common/audio_mixer.v": "ca22e0793b301b0d900470e3144753c826edbba825e0c77b6344a352631f7e68",
+        "src/fpga/targets/mister/emu.sv": "75a6537ccd08d5ea5ff47170e72004cf020ad49f07259c56a99f10a5fa0e1b54",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_mister.v": "3bffd7947c4d631be31c5ec01e5e15aee453c19277242b1a7761011e6a2f2f88",
+        "src/fpga/targets/mister/firmware.mif": "5e5c22a93fdec278e0f09f4fa3391764f6345f99ad45db756b874a58fa5a7285",
+        "src/fpga/targets/mister/variants/mister.mk": "2272e1e409729e02a3278bfbfed158e4432299a5d851a54c80739b780ba5a6e6"
+      },
+      "all_corner_setup_hold": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": -0.14
+        },
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.076
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": -0.221
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.048
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": 1.164
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.097
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": 1.196
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.052
+        }
+      ],
+      "worst_setup_ns": -0.221,
+      "worst_hold_ns": 0.048,
+      "failing_clock_checks": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.140"
+        },
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "clock": "pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.069"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.052"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.221"
+        }
+      ],
+      "report_sha256": {
+        "combined/src/fpga/targets/mister/output_files/mister.fit.summary": "6db089dc8ea0d298d458dad0efb32cc4a6968aaacf087632402a4c3c64362ebe",
+        "combined/src/fpga/targets/mister/output_files/mister.sta.summary": "2ea61d79c223189a01eb40fd1dd1f2d0cc65242b13421da255e18fae3d1e134b"
+      },
+      "rbf_sha256": "3a5db4c5a22151fd976f9e924912e21ec1df07c359d5747fcdabfe9f5bdeda99",
+      "rbf_bytes": 4014548,
+      "implementation_definitions": [],
+      "decision": "Successful optimization prototype; final guarded MiSTer RBF matches byte-for-byte.",
+      "cpu_setup_default_corner": {
+        "type": "Setup 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'",
+        "slack_ns": -0.14,
+        "tns_ns": -0.483
+      }
+    },
+    {
+      "name": "combined-fan32",
+      "target": "mister",
+      "status": "fit_complete",
+      "seed": 21,
+      "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+      "alms": 28045,
+      "registers": 37352,
+      "memory_bits": 2975824,
+      "m10k": 408,
+      "dsp": 58,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "474bd265c51429de0cdf5d8b48257a8330bc0db2011e7bbd84a55ef55f77e080",
+        "src/fpga/common/audio_mixer.v": "ca22e0793b301b0d900470e3144753c826edbba825e0c77b6344a352631f7e68",
+        "src/fpga/targets/mister/emu.sv": "75a6537ccd08d5ea5ff47170e72004cf020ad49f07259c56a99f10a5fa0e1b54",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_mister.v": "82d1dab2d07f1ad9f400cb58eba35480b5960b4e0251c3a05275f321bbf7d0fb",
+        "src/fpga/targets/mister/firmware.mif": "5e5c22a93fdec278e0f09f4fa3391764f6345f99ad45db756b874a58fa5a7285",
+        "src/fpga/targets/mister/variants/mister.mk": "2272e1e409729e02a3278bfbfed158e4432299a5d851a54c80739b780ba5a6e6"
+      },
+      "all_corner_setup_hold": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": -0.675
+        },
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.231
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": -0.722
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.178
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": 1.164
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.133
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": 1.196
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.118
+        }
+      ],
+      "worst_setup_ns": -0.722,
+      "worst_hold_ns": 0.118,
+      "failing_clock_checks": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.675"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.722"
+        }
+      ],
+      "report_sha256": {
+        "combined-fan32/src/fpga/targets/mister/output_files/mister.fit.summary": "de811f68fab2eec093f5e8e764da5772b5e514acbfa0a01c504a819fbdb249bc",
+        "combined-fan32/src/fpga/targets/mister/output_files/mister.sta.summary": "03ac92de1e90ffb010d638646f59f046250cd67c2c832646412875ad34888c78"
+      },
+      "rbf_sha256": "b5f604d962db95bc05a90f0963ad850685a72ae1692be069e65cab7edd8bc606",
+      "rbf_bytes": 4051940,
+      "implementation_definitions": [],
+      "decision": "Rejected: CPU fanout hint substantially worsens setup timing.",
+      "cpu_setup_default_corner": {
+        "type": "Setup 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'",
+        "slack_ns": -0.675,
+        "tns_ns": -170.825
+      }
+    },
+    {
+      "name": "pocket-baseline",
+      "target": "pocket-os25",
+      "status": "fit_complete",
+      "seed": 35,
+      "quartus": "25.1std.0 Build 1129 10/21/2025 SC Lite Edition",
+      "alms": 14972,
+      "registers": 22434,
+      "memory_bits": 2254029,
+      "m10k": 296,
+      "dsp": 24,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "7bf0bab62199eb809877cede7464a0841fd3d6188503d5bde5003f8ce8c1a52c",
+        "src/fpga/common/audio_mixer.v": "8e09eccc5c0f07efff34560208f16090d8942474e399903610c4c74d7e3b6906",
+        "src/fpga/targets/pocket/core_top.v": "4cc43203163461ff0ecadc1dd110fab79ad91e188b32719e6064b929bb87fdcd",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_os25.v": "3e9dda9ae2d039af4880442bec2f6389413d8caea483c25cc05929abde7e6150",
+        "src/fpga/targets/pocket/firmware.mif": "be777ecb1a14c0c49b750952ab48649ff57ea74ee5555a6dbfe03ea1bb0c3cd5",
+        "src/fpga/targets/pocket/variants/os25.mk": "8c0a6dc942f4139f585e5d68dac6947b7de89595b4ae16a1d431f57e993ed4f1"
+      },
+      "all_corner_setup_hold": [
+        {
+          "model": "slow",
+          "temperature": "85",
+          "check": "setup",
+          "slack_ns": -0.598
+        },
+        {
+          "model": "slow",
+          "temperature": "85",
+          "check": "hold",
+          "slack_ns": 0.282
+        },
+        {
+          "model": "slow",
+          "temperature": "0",
+          "check": "setup",
+          "slack_ns": -0.717
+        },
+        {
+          "model": "slow",
+          "temperature": "0",
+          "check": "hold",
+          "slack_ns": 0.275
+        },
+        {
+          "model": "fast",
+          "temperature": "85",
+          "check": "setup",
+          "slack_ns": 1.984
+        },
+        {
+          "model": "fast",
+          "temperature": "85",
+          "check": "hold",
+          "slack_ns": 0.105
+        },
+        {
+          "model": "fast",
+          "temperature": "0",
+          "check": "setup",
+          "slack_ns": 2.031
+        },
+        {
+          "model": "fast",
+          "temperature": "0",
+          "check": "hold",
+          "slack_ns": 0.103
+        }
+      ],
+      "worst_setup_ns": -0.717,
+      "worst_hold_ns": 0.103,
+      "failing_clock_checks": [
+        {
+          "model": "slow",
+          "temperature": "85",
+          "check": "setup",
+          "clock": "ic|mp_ram|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk",
+          "slack": "-0.598"
+        },
+        {
+          "model": "slow",
+          "temperature": "0",
+          "check": "setup",
+          "clock": "ic|mp_ram|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk",
+          "slack": "-0.717"
+        }
+      ],
+      "report_sha256": {
+        "pocket-baseline/src/fpga/targets/pocket/bld/review-final-os25/output_files/ap_core.fit.summary": "a1ed9db4544c6858fdfa3445f1505fc2fb485deb09fb7d948cdd01736d26412c",
+        "pocket-baseline/src/fpga/targets/pocket/bld/review-final-os25/output_files/ap_core.sta.summary": "60c690d2342cc5e1e93d4b1c01f9a695c070b31cf45df5ce5a03833496814705"
+      },
+      "rbf_sha256": "aa2c2fedf5343e1efee39c15da7312b196974264a991b66d27138e696a68be1c",
+      "rbf_bytes": 2118616,
+      "implementation_definitions": [],
+      "decision": "Pocket os25 reference",
+      "cpu_setup_default_corner": {
+        "type": "Slow 1100mV 85C Model Setup 'ic|mp_ram|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk'",
+        "slack_ns": -0.598,
+        "tns_ns": -45.29
+      }
+    },
+    {
+      "name": "pocket-combined",
+      "target": "pocket-os25",
+      "status": "fit_complete",
+      "seed": 35,
+      "quartus": "25.1std.0 Build 1129 10/21/2025 SC Lite Edition",
+      "alms": 14984,
+      "registers": 22349,
+      "memory_bits": 2254029,
+      "m10k": 296,
+      "dsp": 24,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "474bd265c51429de0cdf5d8b48257a8330bc0db2011e7bbd84a55ef55f77e080",
+        "src/fpga/common/audio_mixer.v": "ca22e0793b301b0d900470e3144753c826edbba825e0c77b6344a352631f7e68",
+        "src/fpga/targets/pocket/core_top.v": "4cc43203163461ff0ecadc1dd110fab79ad91e188b32719e6064b929bb87fdcd",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_os25.v": "3e9dda9ae2d039af4880442bec2f6389413d8caea483c25cc05929abde7e6150",
+        "src/fpga/targets/pocket/firmware.mif": "be777ecb1a14c0c49b750952ab48649ff57ea74ee5555a6dbfe03ea1bb0c3cd5",
+        "src/fpga/targets/pocket/variants/os25.mk": "8c0a6dc942f4139f585e5d68dac6947b7de89595b4ae16a1d431f57e993ed4f1"
+      },
+      "worst_setup_ns": -1.132,
+      "worst_hold_ns": -0.007,
+      "report_sha256": {
+        "pocket-combined/src/fpga/targets/pocket/bld/review-final-os25/output_files/ap_core.fit.summary": "e0e73a027227bce9a6ea93113735f75879f2bbea8094abecbdc77130cd10b644",
+        "pocket-combined/src/fpga/targets/pocket/bld/review-final-os25/output_files/ap_core.sta.summary": "7fa705f2f0cbe306a21f625dc836251a8c136adfb0a8d438e01603ee10ff3816"
+      },
+      "rbf_sha256": "5abafe7083f1bdd0b9dc685870cd0f7ec25d505a53f2e3de74b5acc21b79f0c8",
+      "rbf_bytes": 2104580,
+      "implementation_definitions": [],
+      "decision": "Rejected: area, setup and hold regressions.",
+      "cpu_setup_default_corner": {
+        "type": "Slow 1100mV 85C Model Setup 'ic|mp_ram|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk'",
+        "slack_ns": -1.132,
+        "tns_ns": -205.331
+      }
+    },
+    {
+      "name": "pocket-preserved",
+      "target": "pocket-os25",
+      "status": "fit_complete",
+      "seed": 35,
+      "quartus": "25.1std.0 Build 1129 10/21/2025 SC Lite Edition",
+      "alms": 14958,
+      "registers": 22332,
+      "memory_bits": 2254029,
+      "m10k": 296,
+      "dsp": 24,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "9e25cd8cfe272d40d61e6882eec0200cfddc0e3fe0e37cf5dfc19ce40550dd18",
+        "src/fpga/common/audio_mixer.v": "a80d4eead745776e2c86ceec4ed41040d165b104b5e0a67d23f445fdcf01df63",
+        "src/fpga/targets/pocket/core_top.v": "4cc43203163461ff0ecadc1dd110fab79ad91e188b32719e6064b929bb87fdcd",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_os25.v": "3e9dda9ae2d039af4880442bec2f6389413d8caea483c25cc05929abde7e6150",
+        "src/fpga/targets/pocket/firmware.mif": "be777ecb1a14c0c49b750952ab48649ff57ea74ee5555a6dbfe03ea1bb0c3cd5",
+        "src/fpga/targets/pocket/variants/os25.mk": "8c0a6dc942f4139f585e5d68dac6947b7de89595b4ae16a1d431f57e993ed4f1"
+      },
+      "worst_setup_ns": -1.589,
+      "worst_hold_ns": 0.057,
+      "report_sha256": {
+        "pocket-preserved/src/fpga/targets/pocket/bld/review-final-os25/output_files/ap_core.fit.summary": "7544094b29b2dd74dc12d7f9630c84b74953b407a54259433c0b600826f30cd8",
+        "pocket-preserved/src/fpga/targets/pocket/bld/review-final-os25/output_files/ap_core.sta.summary": "7903b9b844651882b5d6a17d517f6012f3fabf2e1ff81ec4493f736e815b8eb9"
+      },
+      "rbf_sha256": "d101a6d1f9d8867f556dce54d55da31366db110e838fd0113c947ec75b629df0",
+      "rbf_bytes": 2111284,
+      "implementation_definitions": [],
+      "decision": "Rejected: disabled parameters still perturb fitting and worsen setup timing.",
+      "cpu_setup_default_corner": {
+        "type": "Slow 1100mV 85C Model Setup 'ic|mp_ram|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk'",
+        "slack_ns": -1.589,
+        "tns_ns": -175.273
+      }
+    },
+    {
+      "name": "mister-selected",
+      "status": "abandoned",
+      "reason": "Stopped before completion: the parameterized form changed Pocket fitting with both choices disabled. Replaced by compile-time guards. No fitted result is claimed."
+    },
+    {
+      "name": "pocket-guarded",
+      "target": "pocket-os25",
+      "status": "fit_complete",
+      "seed": 35,
+      "quartus": "25.1std.0 Build 1129 10/21/2025 SC Lite Edition",
+      "alms": 14972,
+      "registers": 22434,
+      "memory_bits": 2254029,
+      "m10k": 296,
+      "dsp": 24,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "6676825ab334239474a245b4c887546f7299cdc67f30b59685e3a2d3ba1c5243",
+        "src/fpga/common/audio_mixer.v": "e8438cd737d277e0fed64d91a7dd967795dea48eaefb30eb79c5cf933f47b72f",
+        "src/fpga/targets/pocket/core_top.v": "4cc43203163461ff0ecadc1dd110fab79ad91e188b32719e6064b929bb87fdcd",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_os25.v": "3e9dda9ae2d039af4880442bec2f6389413d8caea483c25cc05929abde7e6150",
+        "src/fpga/targets/pocket/firmware.mif": "be777ecb1a14c0c49b750952ab48649ff57ea74ee5555a6dbfe03ea1bb0c3cd5",
+        "src/fpga/targets/pocket/variants/os25.mk": "8c0a6dc942f4139f585e5d68dac6947b7de89595b4ae16a1d431f57e993ed4f1"
+      },
+      "all_corner_setup_hold": [
+        {
+          "model": "slow",
+          "temperature": "85",
+          "check": "setup",
+          "slack_ns": -0.598
+        },
+        {
+          "model": "slow",
+          "temperature": "85",
+          "check": "hold",
+          "slack_ns": 0.282
+        },
+        {
+          "model": "slow",
+          "temperature": "0",
+          "check": "setup",
+          "slack_ns": -0.717
+        },
+        {
+          "model": "slow",
+          "temperature": "0",
+          "check": "hold",
+          "slack_ns": 0.275
+        },
+        {
+          "model": "fast",
+          "temperature": "85",
+          "check": "setup",
+          "slack_ns": 1.984
+        },
+        {
+          "model": "fast",
+          "temperature": "85",
+          "check": "hold",
+          "slack_ns": 0.105
+        },
+        {
+          "model": "fast",
+          "temperature": "0",
+          "check": "setup",
+          "slack_ns": 2.031
+        },
+        {
+          "model": "fast",
+          "temperature": "0",
+          "check": "hold",
+          "slack_ns": 0.103
+        }
+      ],
+      "worst_setup_ns": -0.717,
+      "worst_hold_ns": 0.103,
+      "failing_clock_checks": [
+        {
+          "model": "slow",
+          "temperature": "85",
+          "check": "setup",
+          "clock": "ic|mp_ram|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk",
+          "slack": "-0.598"
+        },
+        {
+          "model": "slow",
+          "temperature": "0",
+          "check": "setup",
+          "clock": "ic|mp_ram|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk",
+          "slack": "-0.717"
+        }
+      ],
+      "report_sha256": {
+        "pocket-guarded/src/fpga/targets/pocket/bld/review-final-os25/output_files/ap_core.fit.summary": "7475f3b6d3b92272bdb4467180eab80d9bedb0ef31d9a30b0774a88e71d05f9a",
+        "pocket-guarded/src/fpga/targets/pocket/bld/review-final-os25/output_files/ap_core.sta.summary": "60c690d2342cc5e1e93d4b1c01f9a695c070b31cf45df5ce5a03833496814705"
+      },
+      "rbf_sha256": "aa2c2fedf5343e1efee39c15da7312b196974264a991b66d27138e696a68be1c",
+      "rbf_bytes": 2118616,
+      "implementation_definitions": [],
+      "decision": "Selected: RBF byte-identical to Pocket baseline.",
+      "cpu_setup_default_corner": {
+        "type": "Slow 1100mV 85C Model Setup 'ic|mp_ram|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk'",
+        "slack_ns": -0.598,
+        "tns_ns": -45.29
+      }
+    },
+    {
+      "name": "mister-guarded",
+      "target": "mister",
+      "status": "fit_complete",
+      "seed": 21,
+      "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+      "alms": 27883,
+      "registers": 37396,
+      "memory_bits": 2975824,
+      "m10k": 408,
+      "dsp": 58,
+      "source_sha256": {
+        "src/fpga/common/gpu_core.v": "6676825ab334239474a245b4c887546f7299cdc67f30b59685e3a2d3ba1c5243",
+        "src/fpga/common/audio_mixer.v": "e8438cd737d277e0fed64d91a7dd967795dea48eaefb30eb79c5cf933f47b72f",
+        "src/fpga/targets/mister/emu.sv": "75a6537ccd08d5ea5ff47170e72004cf020ad49f07259c56a99f10a5fa0e1b54",
+        "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_mister.v": "3bffd7947c4d631be31c5ec01e5e15aee453c19277242b1a7761011e6a2f2f88",
+        "src/fpga/targets/mister/firmware.mif": "5e5c22a93fdec278e0f09f4fa3391764f6345f99ad45db756b874a58fa5a7285",
+        "src/fpga/targets/mister/variants/mister.mk": "7f0763a0f968d737a745bf4eb1f6b6f27d6fc4cd44b3503a9c30864f075155e7"
+      },
+      "all_corner_setup_hold": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": -0.14
+        },
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.076
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": -0.221
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.048
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "setup",
+          "slack_ns": 1.164
+        },
+        {
+          "model": "fast",
+          "temperature": "100",
+          "check": "hold",
+          "slack_ns": 0.097
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "setup",
+          "slack_ns": 1.196
+        },
+        {
+          "model": "fast",
+          "temperature": "-40",
+          "check": "hold",
+          "slack_ns": 0.052
+        }
+      ],
+      "worst_setup_ns": -0.221,
+      "worst_hold_ns": 0.048,
+      "failing_clock_checks": [
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.140"
+        },
+        {
+          "model": "slow",
+          "temperature": "100",
+          "check": "setup",
+          "clock": "pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.069"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.052"
+        },
+        {
+          "model": "slow",
+          "temperature": "-40",
+          "check": "setup",
+          "clock": "pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk",
+          "slack": "-0.221"
+        }
+      ],
+      "report_sha256": {
+        "mister-guarded/src/fpga/targets/mister/output_files/mister.fit.summary": "603c422c53f068babc270d5a2cd7a2c9d9ada102d447a7c47717669648085007",
+        "mister-guarded/src/fpga/targets/mister/output_files/mister.sta.summary": "2ea61d79c223189a01eb40fd1dd1f2d0cc65242b13421da255e18fae3d1e134b"
+      },
+      "rbf_sha256": "3a5db4c5a22151fd976f9e924912e21ec1df07c359d5747fcdabfe9f5bdeda99",
+      "rbf_bytes": 4014548,
+      "implementation_definitions": [
+        "INCLUDE_EARLY_Z_CAPTURE",
+        "INCLUDE_NONSTREAM_BYPASS"
+      ],
+      "decision": "Selected locally: saves 185 ALMs and two M10Ks; CPU/HDMI setup timing remains open.",
+      "cpu_setup_default_corner": {
+        "type": "Setup 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'",
+        "slack_ns": -0.14,
+        "tns_ns": -0.483
+      }
+    }
+  ],
+  "throughput": [
+    {
+      "voices": 1,
+      "read_delay_cycles": 0,
+      "before_cycles": 96.5,
+      "after_cycles": 94.5,
+      "reduction_percent": 2.073
+    },
+    {
+      "voices": 1,
+      "read_delay_cycles": 16,
+      "before_cycles": 112.52,
+      "after_cycles": 110.52,
+      "reduction_percent": 1.777
+    },
+    {
+      "voices": 1,
+      "read_delay_cycles": 32,
+      "before_cycles": 128.53,
+      "after_cycles": 126.53,
+      "reduction_percent": 1.556
+    },
+    {
+      "voices": 1,
+      "read_delay_cycles": 48,
+      "before_cycles": 144.55,
+      "after_cycles": 142.55,
+      "reduction_percent": 1.384
+    },
+    {
+      "voices": 1,
+      "read_delay_cycles": 64,
+      "before_cycles": 160.56,
+      "after_cycles": 158.56,
+      "reduction_percent": 1.246
+    },
+    {
+      "voices": 1,
+      "read_delay_cycles": 96,
+      "before_cycles": 192.6,
+      "after_cycles": 190.6,
+      "reduction_percent": 1.038
+    },
+    {
+      "voices": 8,
+      "read_delay_cycles": 0,
+      "before_cycles": 310.02,
+      "after_cycles": 294.02,
+      "reduction_percent": 5.161
+    },
+    {
+      "voices": 8,
+      "read_delay_cycles": 16,
+      "before_cycles": 438.14,
+      "after_cycles": 422.14,
+      "reduction_percent": 3.652
+    },
+    {
+      "voices": 8,
+      "read_delay_cycles": 32,
+      "before_cycles": 566.27,
+      "after_cycles": 550.27,
+      "reduction_percent": 2.826
+    },
+    {
+      "voices": 8,
+      "read_delay_cycles": 48,
+      "before_cycles": 694.39,
+      "after_cycles": 678.39,
+      "reduction_percent": 2.304
+    },
+    {
+      "voices": 8,
+      "read_delay_cycles": 64,
+      "before_cycles": 822.52,
+      "after_cycles": 806.52,
+      "reduction_percent": 1.945
+    },
+    {
+      "voices": 8,
+      "read_delay_cycles": 96,
+      "before_cycles": 1078.77,
+      "after_cycles": 1062.77,
+      "reduction_percent": 1.483
+    },
+    {
+      "voices": 16,
+      "read_delay_cycles": 0,
+      "before_cycles": 554.03,
+      "after_cycles": 522.03,
+      "reduction_percent": 5.776
+    },
+    {
+      "voices": 16,
+      "read_delay_cycles": 16,
+      "before_cycles": 810.28,
+      "after_cycles": 778.28,
+      "reduction_percent": 3.949
+    },
+    {
+      "voices": 16,
+      "read_delay_cycles": 32,
+      "before_cycles": 1066.53,
+      "after_cycles": 1034.53,
+      "reduction_percent": 3.0
+    },
+    {
+      "voices": 16,
+      "read_delay_cycles": 48,
+      "before_cycles": 1322.78,
+      "after_cycles": 1290.78,
+      "reduction_percent": 2.419
+    },
+    {
+      "voices": 16,
+      "read_delay_cycles": 64,
+      "before_cycles": 1579.03,
+      "after_cycles": 1547.03,
+      "reduction_percent": 2.027
+    },
+    {
+      "voices": 16,
+      "read_delay_cycles": 96,
+      "before_cycles": 2091.53,
+      "after_cycles": 2059.53,
+      "reduction_percent": 1.53
+    },
+    {
+      "voices": 20,
+      "read_delay_cycles": 0,
+      "before_cycles": 676.04,
+      "after_cycles": 636.04,
+      "reduction_percent": 5.917
+    },
+    {
+      "voices": 20,
+      "read_delay_cycles": 16,
+      "before_cycles": 996.35,
+      "after_cycles": 956.35,
+      "reduction_percent": 4.015
+    },
+    {
+      "voices": 20,
+      "read_delay_cycles": 32,
+      "before_cycles": 1316.66,
+      "after_cycles": 1276.66,
+      "reduction_percent": 3.038
+    },
+    {
+      "voices": 20,
+      "read_delay_cycles": 48,
+      "before_cycles": 1636.98,
+      "after_cycles": 1596.98,
+      "reduction_percent": 2.444
+    },
+    {
+      "voices": 20,
+      "read_delay_cycles": 64,
+      "before_cycles": 1957.29,
+      "after_cycles": 1917.29,
+      "reduction_percent": 2.044
+    },
+    {
+      "voices": 20,
+      "read_delay_cycles": 96,
+      "before_cycles": 2597.91,
+      "after_cycles": 2557.91,
+      "reduction_percent": 1.54
+    },
+    {
+      "voices": 28,
+      "read_delay_cycles": 0,
+      "before_cycles": 920.05,
+      "after_cycles": 864.05,
+      "reduction_percent": 6.087
+    },
+    {
+      "voices": 28,
+      "read_delay_cycles": 16,
+      "before_cycles": 1368.49,
+      "after_cycles": 1312.49,
+      "reduction_percent": 4.092
+    },
+    {
+      "voices": 28,
+      "read_delay_cycles": 32,
+      "before_cycles": 1816.93,
+      "after_cycles": 1760.93,
+      "reduction_percent": 3.082
+    },
+    {
+      "voices": 28,
+      "read_delay_cycles": 48,
+      "before_cycles": 2265.37,
+      "after_cycles": 2209.37,
+      "reduction_percent": 2.472
+    },
+    {
+      "voices": 28,
+      "read_delay_cycles": 64,
+      "before_cycles": 2713.8,
+      "after_cycles": 2657.8,
+      "reduction_percent": 2.064
+    },
+    {
+      "voices": 28,
+      "read_delay_cycles": 96,
+      "before_cycles": 3610.68,
+      "after_cycles": 3554.68,
+      "reduction_percent": 1.551
+    },
+    {
+      "voices": 32,
+      "read_delay_cycles": 0,
+      "before_cycles": 1042.06,
+      "after_cycles": 978.06,
+      "reduction_percent": 6.142
+    },
+    {
+      "voices": 32,
+      "read_delay_cycles": 16,
+      "before_cycles": 1554.56,
+      "after_cycles": 1490.56,
+      "reduction_percent": 4.117
+    },
+    {
+      "voices": 32,
+      "read_delay_cycles": 32,
+      "before_cycles": 2067.06,
+      "after_cycles": 2003.06,
+      "reduction_percent": 3.096
+    },
+    {
+      "voices": 32,
+      "read_delay_cycles": 48,
+      "before_cycles": 2579.56,
+      "after_cycles": 2515.56,
+      "reduction_percent": 2.481
+    },
+    {
+      "voices": 32,
+      "read_delay_cycles": 64,
+      "before_cycles": 3092.06,
+      "after_cycles": 3028.06,
+      "reduction_percent": 2.07
+    },
+    {
+      "voices": 32,
+      "read_delay_cycles": 96,
+      "before_cycles": 4117.06,
+      "after_cycles": 4053.06,
+      "reduction_percent": 1.555
+    }
+  ],
+  "selected_trials": [
+    "mister-guarded",
+    "pocket-guarded"
+  ],
+  "timing_closed": false,
+  "status": "RTL implemented locally; no deployment or publication. Pocket configuration bytes unchanged.",
+  "verification": {
+    "final_mister_gpu": {
+      "log": "guarded-gpu-32k-tests.log",
+      "checks": 299,
+      "passed": 299,
+      "sim_time": 45648604,
+      "texture_cache_kib": 32,
+      "log_sha256": "d32e272305faabf9b0a6f588e37ac263caf2410f3089bcc538cec9b52a273713"
+    },
+    "baseline_mister_gpu": {
+      "log": "baseline-gpu-32k-tests.log",
+      "checks": 299,
+      "passed": 299,
+      "sim_time": 45648604,
+      "texture_cache_kib": 32,
+      "log_sha256": "665b81f0dc6120fae6253afd094c0191cc9a2f6f86a7f35ff5c3793fb5d8de1e"
+    },
+    "final_mister_courtyard": {
+      "log": "guarded-gpu-32k-tests.log",
+      "checks": 1,
+      "passed": 1,
+      "log_sha256": "d32e272305faabf9b0a6f588e37ac263caf2410f3089bcc538cec9b52a273713"
+    },
+    "final_pocket_gpu": {
+      "log": "guarded-rtl-tests.log",
+      "checks": 276,
+      "passed": 276,
+      "log_sha256": "4f06c15c0090f6f31c6d836f7ba01100d9726b2e90a33a174d40b25b0e0a1946"
+    },
+    "audio_default": {
+      "log": "guarded-rtl-tests.log",
+      "checks": 150,
+      "passed": 150,
+      "log_sha256": "4f06c15c0090f6f31c6d836f7ba01100d9726b2e90a33a174d40b25b0e0a1946"
+    },
+    "audio_mister": {
+      "log": "guarded-rtl-tests.log",
+      "checks": 150,
+      "passed": 150,
+      "log_sha256": "4f06c15c0090f6f31c6d836f7ba01100d9726b2e90a33a174d40b25b0e0a1946"
+    },
+    "audio_throughput": {
+      "baseline": "guarded-audio-throughput-default.log",
+      "mister": "guarded-audio-throughput-mister.log",
+      "comparisons": 36,
+      "cycles_saved_per_nonstream_voice": 2,
+      "baseline_sha256": "9497e34c0651bc61776abbaeeb612c75391bffc2c4893ebb363e1a1804d0d7b5",
+      "mister_sha256": "abab52b73e718acbd13bd91774a0a7951053a61cb4a8029bddc6d40b2e8de53d"
+    },
+    "final_mister_gpu_stalls": {
+      "log": "guarded-gpu-mister32-stall.log",
+      "checks": 299,
+      "passed": 299,
+      "sim_time": 46287144,
+      "texture_cache_kib": 32,
+      "arguments": [
+        "+gpu_rd_latency=32",
+        "+gpu_rd_latency_var=64"
+      ],
+      "log_sha256": "5e8aa8d81b418826559cf4298c8201b14f3d96c52963fc4ef05e56cdd7bb0d06"
+    },
+    "baseline_mister_gpu_stalls": {
+      "log": "baseline-gpu-mister32-stall.log",
+      "checks": 299,
+      "passed": 299,
+      "sim_time": 46287144,
+      "texture_cache_kib": 32,
+      "arguments": [
+        "+gpu_rd_latency=32",
+        "+gpu_rd_latency_var=64"
+      ],
+      "log_sha256": "5e8aa8d81b418826559cf4298c8201b14f3d96c52963fc4ef05e56cdd7bb0d06"
+    }
+  },
+  "preprocessor_comparison": [
+    {
+      "file": "audio_mixer.v",
+      "optimizations_enabled": false,
+      "reference": "baseline",
+      "tokens": 4917,
+      "token_sha256": "75aedf5ff1765478be1a3e96f5969d690c580897855fbaa2129e1985bce74348"
+    },
+    {
+      "file": "audio_mixer.v",
+      "optimizations_enabled": true,
+      "reference": "combined",
+      "tokens": 4936,
+      "token_sha256": "25627bbf325323d17ec0e4c1212ebf360c9867b7a51c217df5251c4f182672f2"
+    },
+    {
+      "file": "gpu_core.v",
+      "optimizations_enabled": false,
+      "reference": "baseline",
+      "tokens": 40019,
+      "token_sha256": "f767e3dd0441ecb8c7406d1ad855ca23dc0950900a038700f8b48c8ff844466b"
+    },
+    {
+      "file": "gpu_core.v",
+      "optimizations_enabled": true,
+      "reference": "combined",
+      "tokens": 40114,
+      "token_sha256": "21cf76e13ad9a5b85dfa13a36a5b55778a3e2a64cb548af8cf4d9b44bb0a537f"
+    }
+  ]
+}

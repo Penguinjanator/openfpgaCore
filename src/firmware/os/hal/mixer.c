@@ -14,7 +14,8 @@
  * audio_output's dcfifo at 48 kHz.
  *
  * Programming model (audio_mixer.v + axi_periph_slave.v): every per-voice
- * register is flat-addressed, so main-thread and ISR writes never race.
+ * register is flat-addressed. Allocation and shared shadow updates still
+ * require interrupt exclusion when called from both the main thread and ISR.
  * MIX_IRQ_PENDING is a W1C bitmap, one bit per retired one-shot voice.
  */
 
@@ -38,12 +39,9 @@ extern void of_irq_register_mixer_end(void (*cb)(uint32_t ended_mask));
 
 extern void of_term_printf(const char *fmt, ...);
 
-/* v3 flat MMIO: every per-voice register has its own address, so main
- * thread + ISR writes never race.  Group and master volume are HW-side
- * (composed in audio_mixer.v's S_WR_VOL stage), so set_master_volume
- * and set_group_volume are now O(1) MMIO writes, with no SEL+field
- * race-guarding needed on THAT path.  (mixer_irq_save/restore is still
- * used throughout the file — every active_shadow mutation is guarded.) */
+/* Flat voice addresses eliminate selector-register races. Slot ownership,
+ * generation and packed group updates must still be changed atomically.
+ * Group/master volume each use a single independent MMIO write. */
 
 #define MIXER_MAX_VOICES     32
 #define MIXER_OUTPUT_RATE    48000
@@ -494,65 +492,24 @@ static int alloc_voice(int priority)
     return victim;
 }
 
-/* Group-aware allocator.  MUSIC scans low→high so the SFX-preferred
- * high end stays available for short, time-critical effects; every
- * other group (including untagged voices, which init to SFX=0) scans
- * high→low.  The scan covers all 31 non-reserved slots in either
- * direction, so a free slot anywhere is found in pass 1 — there is no
- * separate "opposite end" pass.  Stealing prefers a same-group victim
- * first so a busy group never silences the other group's audio while
- * its own range still holds something stealable. */
-/* Drop active_shadow bits the hardware says are not playing.
- *
- * active_shadow is edge-maintained, so an end missed in MIX_IRQ_PENDING leaves
- * its bit set forever and the voice becomes unreachable — the free scan skips
- * it and no steal can reclaim it because nothing owns it.  MIX_ACTIVE_MASK is
- * a level snapshot, so intersecting against it self-heals that.
- *
- * The mask LAGS a just-issued start (HW: the CTRL write waits in
- * voice_start_pending until the CPU queue drains; SW: rebuilt per render
- * chunk), so this can clear a live voice's bit and hand its slot out twice.
- * Accepted: it runs only after the free scan already failed, where the
- * alternative is a priority steal that also cuts a note.  Recently armed
- * voices are the set at risk here, not the set that is safe. */
-static void mixer_resync_active_shadow(void)
-{
-    /* Sample the slow MMIO mask outside the lock, apply it inside: every other
-     * active_shadow mutation is guarded, and an unguarded read-modify-write
-     * would drop a concurrent clear from the mixer-end ISR. */
-    uint32_t hw  = MIX_ACTIVE_MASK;
-    uint32_t irq = mixer_irq_save_local();
-    active_shadow &= hw;
-    mixer_irq_restore_local(irq);
-}
-
+/* Called with interrupts disabled after reaping pending ends. MUSIC scans
+ * low to high; SFX scans high to low. Only an end notification or explicit
+ * stop frees a slot: MIX_ACTIVE_MASK lags queued starts and cannot establish
+ * that a newly armed slot is free. Stealing requires a lower priority and
+ * prefers the caller's group. Voice 31 remains reserved for streaming. */
 static int alloc_voice_grouped(int priority, int group)
 {
-    for (int attempt = 0; attempt < 2; attempt++) {
     if (group == OF_MIXER_GROUP_MUSIC) {
-        for (int i = 0; i < MIXER_MAX_VOICES; i++) {
-            if (i == MIXER_SCRATCH_VOICE) continue;
+        for (int i = 0; i < MIXER_SCRATCH_VOICE; i++)
             if (!(active_shadow & (1u << i))) return i;
-        }
     } else {
-        for (int i = MIXER_MAX_VOICES - 1; i >= 0; i--) {
-            if (i == MIXER_SCRATCH_VOICE) continue;
+        for (int i = MIXER_SCRATCH_VOICE - 1; i >= 0; i--)
             if (!(active_shadow & (1u << i))) return i;
-        }
-    }
-
-    /* Free scan found nothing.  Before stealing, reconcile against hardware
-     * once: if the pool is full of leaked bits rather than real voices, this
-     * recovers them and the retry succeeds with no steal at all. */
-    if (attempt == 0) {
-        mixer_resync_active_shadow();
-        continue;
     }
 
     int victim = -1;
     int lowest = priority;
-    for (int i = 0; i < MIXER_MAX_VOICES; i++) {
-        if (i == MIXER_SCRATCH_VOICE) continue;
+    for (int i = 0; i < MIXER_SCRATCH_VOICE; i++) {
         if (group_shadow[i] != (uint8_t)group) continue;
         if (priority_shadow[i] < lowest) {
             lowest = priority_shadow[i];
@@ -562,60 +519,48 @@ static int alloc_voice_grouped(int priority, int group)
     if (victim >= 0) return victim;
 
     lowest = priority;
-    for (int i = 0; i < MIXER_MAX_VOICES; i++) {
-        if (i == MIXER_SCRATCH_VOICE) continue;
+    for (int i = 0; i < MIXER_SCRATCH_VOICE; i++) {
         if (priority_shadow[i] < lowest) {
             lowest = priority_shadow[i];
             victim = i;
         }
     }
     return victim;
-    }
-    return -1;
 }
 
-/* Program an already-allocated voice slot for fresh playback.  Shared by
- * both of_mixer_play (back-compat scan-from-zero) and the grouped alloc
- * path; the caller has chosen `voice` and (for the grouped path) tagged
- * group_shadow before this runs so apply_vol_pan composes against the
- * correct group_vol[]. */
-static of_mixer_handle_t program_voice_play(int voice, const void *pcm,
-                                            uint32_t sample_count,
-                                            uint32_t sample_rate,
-                                            int priority, int volume)
+/* Validate and publish sample data before claiming a slot. Cache writeback
+ * can take much longer than the register writes; leave the caller's IRQ
+ * state unchanged so main-thread SFX preparation does not block MIDI ticks. */
+static int prepare_voice_play(const void *pcm, uint32_t sample_count,
+                              uint32_t sample_rate, uint32_t *sdram_addr,
+                              uint32_t *rate)
 {
     uint32_t sample_bytes;
-    uint32_t sdram_addr;
     int needs_flush;
-    if (!sample_byte_count(sample_count, sizeof(int16_t), &sample_bytes) ||
-        !mixer_sdram_addr(pcm, sample_bytes, &sdram_addr, &needs_flush))
-        return OF_MIXER_HANDLE_INVALID;
+    if (!mixer_initialized || !pcm || !sample_count ||
+        !sample_byte_count(sample_count, sizeof(int16_t), &sample_bytes) ||
+        !mixer_sdram_addr(pcm, sample_bytes, sdram_addr, &needs_flush))
+        return 0;
 
-    uint32_t rate = ((uint64_t)sample_rate << 16) / MIXER_OUTPUT_RATE;
-    uint32_t irq = mixer_irq_save_local();
-    of_mixer_handle_t handle = mixer_make_handle_locked(voice);
-
-    active_shadow &= ~(1u << voice);
-    ctrl_shadow[voice] = 0;
-    mixer_irq_restore_local(irq);
-
-    /* A one-shot voice may have retired in hardware while the app was
-     * busy and before of_mixer_poll_ended() ran. If we reuse that slot
-     * with its old IRQ bit still pending, the next poll would clear
-     * active_shadow/ctrl_shadow for this fresh playback and callers
-     * would treat the live voice as ended. Clear the selected slot's
-     * stale end bit before re-arming it. */
-    MIX_IRQ_CLEAR = 1u << voice;
-
-    /* Force the sample data out to SDRAM before the HW mixer reads it.
-     * The mixer fetches directly from SDRAM on its own AXI master,
-     * bypassing the CPU D-cache; any CPU stores are still dirty in L1
-     * until we force writeback.  Use cbo.flush (writeback + invalidate)
-     * rather than cbo.clean — the bank_preload path showed that on this
-     * VexiiRiscv config, only flush reliably moves data to SDRAM for
-     * the mixer's AXI read path to see. */
+    *rate = ((uint64_t)sample_rate << 16) / MIXER_OUTPUT_RATE;
+    /* The mixer bypasses L1. Flush, rather than clean, is required by this
+     * CPU configuration for dirty sample data to reach SDRAM reliably. */
     if (needs_flush)
         of_cache_flush_range((void *)pcm, sample_bytes);
+    return 1;
+}
+
+/* The caller holds the IRQ lock from slot selection through publication.
+ * Sample validation, rate calculation and cache writeback are already done. */
+static of_mixer_handle_t program_voice_play_locked(int voice, uint32_t sdram_addr,
+                                                   uint32_t sample_count,
+                                                   uint32_t rate,
+                                                   int priority, int volume)
+{
+    of_mixer_handle_t handle = mixer_make_handle_locked(voice);
+    write_ctrl(voice, 0);
+    /* Discard a previous one-shot's end before publishing the new handle. */
+    MIX_IRQ_CLEAR = 1u << voice;
 
     MIX_VOICE_ADDR(voice)       = sdram_addr;
     MIX_VOICE_LEN(voice)        = sample_count;
@@ -634,9 +579,7 @@ static of_mixer_handle_t program_voice_play(int voice, const void *pcm,
     vol_target_shadow[voice] = VOL_TARGET_UNKNOWN;
     apply_vol_pan(voice);
 
-    irq = mixer_irq_save_local();
     write_ctrl(voice, 1u);   /* active | mono | no-loop */
-    mixer_irq_restore_local(irq);
     return handle;
 }
 
@@ -644,19 +587,24 @@ static of_mixer_handle_t play_internal_h(const void *pcm, uint32_t sample_count,
                                          uint32_t sample_rate, int priority,
                                          int volume, int fmt16)
 {
-    if (!mixer_initialized || !pcm || sample_count == 0)
+    uint32_t sdram_addr, rate;
+    if (!fmt16 || !prepare_voice_play(pcm, sample_count, sample_rate,
+                                      &sdram_addr, &rate))
         return OF_MIXER_HANDLE_INVALID;
-    if (!fmt16)
-        return OF_MIXER_HANDLE_INVALID;   /* HW v2 is 16-bit only */
+
+    uint32_t irq = mixer_irq_save_local();
     mixer_reap_ended_pending();
     int voice = alloc_voice(priority);
-    if (voice < 0)
-        return OF_MIXER_HANDLE_INVALID;
-    /* Ungrouped play: reset any stale group left on this slot by a prior
-     * grouped use, else the sound inherits the wrong group's volume. */
-    group_shadow[voice] = (uint8_t)OF_MIXER_GROUP_SFX;
-    return program_voice_play(voice, pcm, sample_count, sample_rate,
-                              priority, volume);
+    of_mixer_handle_t handle = OF_MIXER_HANDLE_INVALID;
+    if (voice >= 0) {
+        /* Reset both software and hardware group state on legacy reuse. */
+        group_shadow[voice] = (uint8_t)OF_MIXER_GROUP_SFX;
+        write_voice_group_packed();
+        handle = program_voice_play_locked(voice, sdram_addr, sample_count,
+                                             rate, priority, volume);
+    }
+    mixer_irq_restore_local(irq);
+    return handle;
 }
 
 int of_mixer_play(const uint8_t *pcm_s16, uint32_t sample_count,
@@ -678,11 +626,8 @@ of_mixer_handle_t of_mixer_play_h(const uint8_t *pcm_s16,
                            priority, volume, 1);
 }
 
-/* Atomic alloc-and-tag for callers that know which group the voice
- * belongs to.  Tags group_shadow before programming so apply_vol_pan
- * composes against the right group_vol[]; allocation prefers the
- * group's end of the slot range to keep the other group's range free
- * for its own voices.  Out-of-range groups are clamped to SFX. */
+/* Atomic allocation, group assignment and voice programming. Out-of-range
+ * groups are clamped to SFX. Sample writeback precedes the critical section. */
 int of_mixer_alloc_for_group(int group, const uint8_t *pcm_s16,
                              uint32_t sample_count, uint32_t sample_rate,
                              int priority, int volume)
@@ -702,17 +647,23 @@ of_mixer_handle_t of_mixer_alloc_for_group_h(int group,
                                              int priority,
                                              int volume)
 {
-    if (!mixer_initialized || !pcm_s16 || sample_count == 0)
+    uint32_t sdram_addr, rate;
+    if (!prepare_voice_play(pcm_s16, sample_count, sample_rate, &sdram_addr, &rate))
         return OF_MIXER_HANDLE_INVALID;
     if (group < 0 || group >= MIXER_NUM_GROUPS) group = OF_MIXER_GROUP_SFX;
+
+    uint32_t irq = mixer_irq_save_local();
     mixer_reap_ended_pending();
     int voice = alloc_voice_grouped(priority, group);
-    if (voice < 0)
-        return OF_MIXER_HANDLE_INVALID;
-    group_shadow[voice] = (uint8_t)group;
-    write_voice_group_packed();
-    return program_voice_play(voice, pcm_s16, sample_count, sample_rate,
-                              priority, volume);
+    of_mixer_handle_t handle = OF_MIXER_HANDLE_INVALID;
+    if (voice >= 0) {
+        group_shadow[voice] = (uint8_t)group;
+        write_voice_group_packed();
+        handle = program_voice_play_locked(voice, sdram_addr, sample_count,
+                                             rate, priority, volume);
+    }
+    mixer_irq_restore_local(irq);
+    return handle;
 }
 
 /* Read the group tag for a voice slot.  Used by the SW MIDI engine's
@@ -764,29 +715,23 @@ static of_mixer_handle_t retrigger_voice_h(int voice, const uint8_t *pcm_s16,
                                            int volume,
                                            of_mixer_handle_t handle)
 {
-    if (!voice_in_range(voice) || !pcm_s16 || sample_count == 0)
-        return OF_MIXER_HANDLE_INVALID;
-    uint32_t sample_bytes;
-    uint32_t sdram_addr;
-    int needs_flush;
-    if (!sample_byte_count(sample_count, sizeof(int16_t), &sample_bytes) ||
-        !mixer_sdram_addr(pcm_s16, sample_bytes, &sdram_addr, &needs_flush))
+    uint32_t sdram_addr, rate;
+    if (!voice_in_range(voice) ||
+        !prepare_voice_play(pcm_s16, sample_count, sample_rate, &sdram_addr, &rate))
         return OF_MIXER_HANDLE_INVALID;
 
-    uint32_t rate = ((uint64_t)sample_rate << 16) / MIXER_OUTPUT_RATE;
-    int v = volume & 0xFF;
-
-    if (handle == OF_MIXER_HANDLE_INVALID) {
-        uint32_t irq = mixer_irq_save_local();
-        handle = mixer_make_handle_locked(voice);
-        active_shadow &= ~(1u << voice);
-        ctrl_shadow[voice] = 0;
+    uint32_t irq = mixer_irq_save_local();
+    /* A timer callback may have stolen or ended the voice during writeback.
+     * Validate ownership afterwards, before changing any state or registers. */
+    if (handle != OF_MIXER_HANDLE_INVALID &&
+        mixer_validate_handle_locked(handle) != voice) {
         mixer_irq_restore_local(irq);
+        return OF_MIXER_HANDLE_INVALID;
     }
-
-    /* Same SDRAM flush as play_internal — see comment there. */
-    if (needs_flush)
-        of_cache_flush_range((void *)pcm_s16, sample_bytes);
+    handle = mixer_make_handle_locked(voice);
+    write_ctrl(voice, 0);
+    MIX_IRQ_CLEAR = 1u << voice;
+    int v = volume & 0xFF;
 
     MIX_VOICE_ADDR(voice)       = sdram_addr;
     MIX_VOICE_LEN(voice)        = sample_count;
@@ -803,7 +748,6 @@ static of_mixer_handle_t retrigger_voice_h(int voice, const uint8_t *pcm_s16,
     vol_target_shadow[voice] = VOL_TARGET_UNKNOWN;
     apply_vol_pan(voice);
 
-    uint32_t irq = mixer_irq_save_local();
     write_ctrl(voice, 1u);   /* active | mono | no-loop */
     mixer_irq_restore_local(irq);
     return handle;
@@ -823,19 +767,11 @@ of_mixer_handle_t of_mixer_retrigger_h(of_mixer_handle_t handle,
                                        uint32_t sample_rate,
                                        int volume)
 {
-    uint32_t irq = mixer_irq_save_local();
-    int voice = mixer_validate_handle_locked(handle);
-    of_mixer_handle_t new_handle = OF_MIXER_HANDLE_INVALID;
-    if (voice >= 0) {
-        new_handle = mixer_make_handle_locked(voice);
-        active_shadow &= ~(1u << voice);
-        ctrl_shadow[voice] = 0;
-    }
-    mixer_irq_restore_local(irq);
+    int voice = mixer_handle_voice_index(handle);
     if (voice < 0)
         return OF_MIXER_HANDLE_INVALID;
     return retrigger_voice_h(voice, pcm_s16, sample_count, sample_rate, volume,
-                             new_handle);
+                             handle);
 }
 
 /* Stopping a voice was previously a 2-MMIO sequence: snap VOL_LR=0,
@@ -859,7 +795,9 @@ of_mixer_handle_t of_mixer_retrigger_h(of_mixer_handle_t handle,
 void of_mixer_stop(int voice)
 {
     if (!voice_in_range(voice)) return;
+    uint32_t irq = mixer_irq_save_local();
     write_ctrl(voice, 0);
+    mixer_irq_restore_local(irq);
 }
 
 void of_mixer_stop_h(of_mixer_handle_t handle)
@@ -1200,8 +1138,10 @@ void of_mixer_set_group(int voice, int group)
 {
     if (!voice_in_range(voice)) return;
     if (group < 0 || group >= MIXER_NUM_GROUPS) return;
+    uint32_t irq = mixer_irq_save_local();
     group_shadow[voice] = (uint8_t)group;
     write_voice_group_packed();
+    mixer_irq_restore_local(irq);
 }
 
 /* O(1): single MMIO write — HW composes group_vol × master_vol × per-voice

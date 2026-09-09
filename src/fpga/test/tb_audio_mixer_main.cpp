@@ -675,6 +675,39 @@ static void test_legacy_loop_ignores_wptr(void) {
     check(dut->max_araddr_seen >= 200 * 2, "legacy voice fetched past WPTR");
 }
 
+// Empty streams must not carry their quiet flag into a following ordinary
+// voice, including the transition from voice 31 to voice 0 on the next pass.
+static void test_stream_quiet_is_per_voice() {
+    printf("test_stream_quiet_is_per_voice:\n");
+    program_constant_looped_voice(0, 0x4040);
+    uint32_t reference = wait_for_sample(64, "ordinary voice settles before empty streams");
+    check(reference != 0, "ordinary voice produces nonzero PCM");
+
+    for (int voice : {1, 31}) {
+        mmio_voice_write(voice, VTBL_ADDR, 0);
+        mmio_voice_write(voice, VTBL_LEN, 32);
+        mmio_voice_write(voice, VTBL_RATE, 0x10000);
+        mmio_voice_write(voice, VTBL_LOOP_START, 0);
+        mmio_voice_write(voice, VTBL_LOOP_END, 32);
+        mmio_voice_write(voice, VTBL_WPTR, 0);
+        mmio_voice_write(voice, VTBL_VOL_LR, 0);
+        mmio_voice_write(voice, VTBL_VOL_TARGET, 0xFFFF);
+        mmio_voice_write(voice, VTBL_VOL_RATE, 0);
+        mmio_voice_write(voice, VTBL_CTRL, CTRL_ACTIVE | CTRL_LOOP | CTRL_STREAM);
+    }
+    wait_for_sample(64, "empty streams settle");
+    bool exact = true;
+    int samples = 0;
+    for (int cycles = 0; cycles < 200000 && samples < 128; ++cycles) {
+        tick();
+        if (dut->sample_wr) {
+            exact &= dut->sample_data == reference;
+            ++samples;
+        }
+    }
+    check(samples == 128 && exact, "empty streams leave ordinary PCM bit-identical");
+}
+
 // A long SDRAM stall prevents the mixer from draining CPU POS/VOL writes.
 // More than one full queue of retriggers must eventually reach the voice table.
 static void test_queued_writes_under_memory_stall() {
@@ -705,6 +738,100 @@ static void test_queued_writes_under_memory_stall() {
     dut->stall_sdram = 0;
     tick(1000);
     check_eq_u32("all queued writes reach inactive voice", vtbl_read(31, VTBL_POS_INT), 0x14F);
+}
+
+static void test_rearm_during_sample() {
+    printf("test_rearm_during_sample:\n");
+    for (int delay : {0, 1, 2, 5, 15, 40}) {
+        reset_dut();
+        sdram_fill_constant(0x40004000);
+        mmio_voice_write(0, VTBL_ADDR, 0);
+        mmio_voice_write(0, VTBL_LEN, 1);
+        mmio_voice_write(0, VTBL_RATE, 65536);
+        mmio_voice_write(0, VTBL_POS_INT, 0);
+        mmio_voice_write(0, VTBL_VOL_LR, 0xffff);
+        dut->stall_sdram = 1;
+        mmio_voice_write(0, VTBL_CTRL, CTRL_ACTIVE);
+        int timeout = 0;
+        while (!dut->read_pending && timeout++ < 5000) tick();
+        check(dut->read_pending, "old one-shot has an outstanding read");
+
+        mmio_voice_write(0, VTBL_CTRL, 0);
+        dut->irq_clear = 1;
+        dut->irq_clear_wr = 1;
+        tick();
+        dut->irq_clear_wr = 0;
+        mmio_voice_write(0, VTBL_ADDR, 128);
+        mmio_voice_write(0, VTBL_LEN, 64);
+        mmio_voice_write(0, VTBL_RATE, 65536);
+        mmio_voice_write(0, VTBL_POS_INT, 0);
+        mmio_voice_write(0, VTBL_LOOP_START, 0);
+        mmio_voice_write(0, VTBL_LOOP_END, 64);
+        mmio_voice_write(0, VTBL_VOL_LR, 0);
+        mmio_voice_write(0, VTBL_VOL_TARGET, 0xffff);
+        mmio_voice_write(0, VTBL_VOL_RATE, 0);
+        tick(delay);
+        mmio_voice_write(0, VTBL_CTRL, CTRL_ACTIVE | CTRL_LOOP);
+        dut->stall_sdram = 0;
+        tick(2000);
+        check_eq_u32("retired sample cannot end the replacement", dut->voice_end_pending, 0);
+        check_eq_u32("replacement stays active", dut->voice_active_mask, 1);
+        check(vtbl_read(0, VTBL_POS_INT) < 64, "replacement position stays inside its sample");
+    }
+}
+
+static void test_rearm_phase_sweep() {
+    printf("test_rearm_phase_sweep:\n");
+    int errors = 0, cases = 0;
+    uint64_t states = 0;
+    for (int latency : {0, 13, 71}) {
+        for (int offset = 0; offset < 96; ++offset) {
+            reset_dut();
+            sdram_fill_constant(0x20002000);
+            dut->sdram_latency = latency;
+            mmio_voice_write(0, VTBL_ADDR, 0);
+            mmio_voice_write(0, VTBL_LEN, 32);
+            mmio_voice_write(0, VTBL_RATE, 65536);
+            mmio_voice_write(0, VTBL_POS_INT, 31);
+            mmio_voice_write(0, VTBL_VOL_LR, 0x8080);
+            mmio_voice_write(0, VTBL_CTRL, CTRL_ACTIVE);
+            int timeout = 0;
+            auto *tb = dut->rootp->tb_audio_mixer;
+            while ((tb->__PVT__dut__DOT__cur_voice != 0 ||
+                    tb->__PVT__dut__DOT__state != 3) && timeout++ < 5000) tick();
+            if (timeout >= 5000) { ++errors; continue; }
+            tick(offset);
+            if (tb->__PVT__dut__DOT__cur_voice == 0)
+                states |= uint64_t(1) << tb->__PVT__dut__DOT__state;
+
+            mmio_voice_write(0, VTBL_CTRL, 0);
+            dut->irq_clear = 1; dut->irq_clear_wr = 1; tick();
+            dut->irq_clear_wr = 0;
+            mmio_voice_write(0, VTBL_ADDR, 128);
+            mmio_voice_write(0, VTBL_LEN, 4);
+            mmio_voice_write(0, VTBL_POS_INT, 0);
+            mmio_voice_write(0, VTBL_LOOP_START, 0);
+            mmio_voice_write(0, VTBL_LOOP_END, 4);
+            mmio_voice_write(0, VTBL_VOL_LR, 0);
+            mmio_voice_write(0, VTBL_VOL_TARGET, 0xffff);
+            mmio_voice_write(0, VTBL_VOL_RATE, 0);
+            mmio_voice_write(0, VTBL_CTRL, CTRL_ACTIVE | CTRL_LOOP);
+            tick(2500);
+            if (dut->voice_end_pending || dut->voice_active_mask != 1 ||
+                dut->max_araddr_seen > 132 || vtbl_read(0, VTBL_POS_INT) >= 4) {
+                if (errors < 4)
+                    printf("  phase failure latency=%d offset=%d irq=%x addr=%x\n",
+                           latency, offset, unsigned(dut->voice_end_pending),
+                           unsigned(dut->max_araddr_seen));
+                ++errors;
+            }
+            ++cases;
+        }
+    }
+    check(cases == 288 && errors == 0, "288 stop/rearm interleavings preserve DMA bounds and ownership");
+    check((states & ((uint64_t(1) << 8) | (uint64_t(1) << 16) | (uint64_t(1) << 28))) ==
+                   ((uint64_t(1) << 8) | (uint64_t(1) << 16) | (uint64_t(1) << 28)),
+          "sweep reaches parameter capture, outstanding reads and retirement");
 }
 
 // Compare the real mixer's buffered PCM with and without SDRAM stalls.
@@ -844,12 +971,15 @@ int main(int argc, char **argv) {
     test_stream_hold_resume();
 
     test_stream_empty_and_full();
+    test_stream_quiet_is_per_voice();
 
     test_stream_max_rate();
 
     test_legacy_loop_ignores_wptr();
 
     test_queued_writes_under_memory_stall();
+    test_rearm_during_sample();
+    test_rearm_phase_sweep();
     test_mister_paced_mixer();
 
     printf("\n=== Results: %d passed, %d failed ===\n", passes, fails);

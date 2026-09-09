@@ -21,6 +21,7 @@
 #include "bank_preload.h"
 #include "services_table.h"
 #include "of_smp_bank.h"
+#include "of_smp_bank_validate.h"
 
 #include "../hal/mixer.h"
 #include "../hal/cache.h"
@@ -143,7 +144,7 @@ int bank_preload(void) {
     }
 
     long sz = of_file_size(slot_id);
-    if (sz <= 0) {
+    if (sz < (long)sizeof(ofsf_header_t)) {
         of_term_puts(" \033[93mNONE(size)\033[0m\n");
         return -2;
     }
@@ -172,7 +173,7 @@ int bank_preload(void) {
      * skip the filter pass and fall through to the existing error
      * return (cache flush of unfiltered bytes is harmless). */
     const ofsf_header_t *hdr = (const ofsf_header_t *)buf;
-    if (hdr->magic != OFSF_MAGIC || hdr->version != OFSF_VERSION) {
+    if (!of_smp_bank_valid(buf, (uint32_t)sz)) {
         /* Cache flush still required — same rationale as the success path. */
         of_cache_flush_range(buf, (uint32_t)sz);
         of_cache_invalidate_icache();
@@ -184,8 +185,7 @@ int bank_preload(void) {
      * bank_lpf_biquad comment).  ~10 cycles/sample × N samples; for a
      * typical 3 MB SF2 (~1.5 M samples) that's ~150 ms at 100 MHz —
      * one-time boot cost, paid before the first note plays. */
-    if (hdr->sample_data_size > 0 &&
-        hdr->sample_data_offset + hdr->sample_data_size <= (uint32_t)sz) {
+    if (hdr->sample_data_size > 0) {
         int16_t *blob = (int16_t *)((uint8_t *)buf + hdr->sample_data_offset);
         uint32_t blob_samples = hdr->sample_data_size / sizeof(int16_t);
         bank_lpf_biquad(blob, blob_samples);

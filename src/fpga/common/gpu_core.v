@@ -8589,16 +8589,24 @@ always @(posedge clk) begin : main_fsm
             endcase
 
             // ----------------------------------------------------------
-            // Shared ztest_acc capture (round-2 dedup, A2 idiom).  The
-            // three FBSS sites above only raise ztest_cap_fire and select
-            // the 32-bit source word; this ONE copy of the
-            // fb_halfword_read mux applies it.  Only old_half, word and
-            // from_read are captured — the pixel's own value/half/write/
-            // address are read live from p3 in ACC_EVAL (p3 is held
-            // unshifted for the whole detour).  The z_acc-hit source
-            // never reads ztest_acc_word in ACC_EVAL (from_read=0), so
-            // capturing it unconditionally is dont-care for that arm.
-            // ----------------------------------------------------------
+            // During IDLE, capture the candidate depth independently of
+            // write-queue availability. It is consumed only if FBSS enters
+            // ACC_EVAL, whose existing guards still enforce the flush order.
+            // Read-fill captures must retain their per-beat enable so the
+            // selected word survives the remainder of a multiword burst.
+`ifdef INCLUDE_EARLY_Z_CAPTURE
+            if (fbss == FBSS_IDLE) begin
+                if (z_acc_valid && z_acc_addr == p3_z_word_addr) begin
+                    ztest_acc_old_half <= fb_halfword_read({z_acc_hi, z_acc_lo}, p3_z_hi);
+                    ztest_acc_from_read <= 1'b0;
+                    ztest_acc_word <= {z_acc_hi, z_acc_lo};
+                end else if (GPU_Z_READ_WINDOW > 1) begin
+                    ztest_acc_old_half <= fb_halfword_read(zw_word[p3_z_word_addr[3:2]], p3_z_hi);
+                    ztest_acc_from_read <= 1'b1;
+                    ztest_acc_word <= zw_word[p3_z_word_addr[3:2]];
+                end
+            end else
+`endif
             if (ztest_cap_fire) begin
                 ztest_acc_old_half  <= fb_halfword_read(ztest_cap_word, p3_z_hi);
                 ztest_acc_from_read <= ztest_cap_from_read;

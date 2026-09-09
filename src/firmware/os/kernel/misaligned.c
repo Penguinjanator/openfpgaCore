@@ -11,6 +11,7 @@
 
 #include "../hal/terminal.h"
 #include "../hal/regs.h"
+#include "trap_screen.h"
 
 /* Trap frame layout (matches start.S) */
 typedef struct {
@@ -650,6 +651,15 @@ void fatal_trap(trap_frame_t *frame) {
     FB_MODE_STRIDE    = FB_STRIDE;
     VIDEO_SCALER_MODE = VIDEO_SCALER_SLOT_DEFAULT_320X240;
     TERM_FB_CTRL      = 1u;  /* 1 = terminal overlay shown, 0 = app framebuffer */
+
+    /* The renderer and font live in BRAM and use no terminal globals. */
+    extern const uint8_t font8x8[2048];
+    trap_screen_report((volatile uint8_t *)(uintptr_t)
+                          ((uint32_t)TERM_FB_BASE >= SDRAM_UNCACHED_BASE
+                               ? (uint32_t)TERM_FB_BASE
+                               : (uint32_t)TERM_FB_BASE - SDRAM_BASE + SDRAM_UNCACHED_BASE),
+                       FB_STRIDE, font8x8, frame->mcause, frame->mepc,
+                       frame->mtval, frame->regs[2], frame->regs[1]);
 
     /* MiSTer's fb_direct output never shows the terminal (ddr3_fb DMA-reads
      * the app framebuffer), so ALSO force the 16 VGA console colors and

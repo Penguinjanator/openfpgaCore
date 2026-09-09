@@ -13,14 +13,11 @@
 // directly into audio_output's dcfifo (audio_dma is retired — removed
 // from core_top and the QSF in v3).
 //
-// Runs on clk_cpu (100 MHz).  Produces a stereo int16 pair at 48 kHz
-// (sample period = 2083 cycles).  Each active voice now walks a long
-// pipelined per-voice sequence (field reads, stream-backlog check,
-// burst-mode decision, two-phase LERP, position advance, and a 4-stage
-// volume-write pipeline) plus its SDRAM round-trip(s), so the old
-// ~30-cycle/voice estimate no longer holds — but the worst-case
-// 32-voice pass still sits comfortably within the 2083-cycle slot,
-// with slack for SDRAM arbitration.
+// Runs on clk_cpu (90 or 100 MHz). The output FIFO is consumed at 48 kHz,
+// giving 1875 or 2083.33 clock cycles per stereo sample. Work depends on
+// active voices, interpolation, stream checks and SDRAM arbitration.
+// The FIFO absorbs short stalls; sustained work must fit the sample budget.
+// Use the mixer's --throughput test mode to measure that budget under load.
 //
 // What's in this version:
 //   - 32 voices, mono/stereo 16-bit PCM in SDRAM
@@ -28,7 +25,7 @@
 //   - Stream-mode (FIFO) voices: ring-buffer wptr/backlog tracking
 //     (ctrl[3], STREAM_LOW/FLOOR thresholds, S_STREAM_* states)
 //   - 2-tap linear interpolation (Q16.16 position)
-//   - Per-channel HW volume ramp (target/rate pair), 4-stage pipeline
+//   - Per-channel HW volume ramp (target/rate pair), pipelined
 //   - Group × master HW volume composition (gxm pipeline)
 //   - ARLEN=1 burst tap-fetch with loop-seam interpolation
 //   - Voice-end IRQ bitmap (W1C from CPU)
@@ -40,7 +37,7 @@
 //   - A true cross-pass sample cache (a burst-FETCH path exists, but
 //     samples are not retained across passes)
 //
-// Voice table layout (16-word stride × 32 voices = 512 words = 1 M10K):
+// Voice table layout (16-word stride × 32 voices = 512 x 32 bits):
 //   Word 0:  base_byte[31:0]   — absolute SDRAM byte address of sample 0
 //   Word 1:  length[21:0]      — total sample count
 //   Word 2:  rate_fp16[31:0]   — Q16.16 playback rate (0x10000 = 1.0)
@@ -521,6 +518,17 @@ localparam S_STREAM_CHK    = 6'd40;  // backlog thresholds; hold-branch for a st
 
 reg [5:0] state;
 reg [4:0] cur_voice;
+reg cur_cancelled;
+wire cur_cancel_write = voice_wr && (voice_sel == cur_voice) &&
+    (cpu_fsm_wr || (voice_field == VTBL_CTRL && !voice_wdata[0]));
+wire cur_cancel = cur_cancelled || cur_cancel_write;
+always @(posedge clk) begin
+    if (!reset_n || state == S_NEXT_VOICE || state == S_IDLE)
+        cur_cancelled <= 1'b0;
+    else if (cur_cancel_write)
+        cur_cancelled <= 1'b1;
+end
+
 // Per-voice cached fields for the current pass.
 reg [31:0] voice_base;          // absolute SDRAM byte address from voice state
 reg [21:0] cur_length;
@@ -533,8 +541,9 @@ reg [21:0] cur_loop_end, cur_loop_start;
 reg [21:0] cur_loop_len;
 reg        cur_loop_valid;
 reg [7:0]  cur_vol_rate;
-/* Per-voice volume-write pipeline (4 stages):
+/* Per-voice volume-write pipeline (6 states):
  *   S_RAMP_STEP    → cur_gxm_r ← pick_gxm(voice→group)         (mux only)
+ *   S_WR_VOL_LOAD  → latch raw target from VTBL_VOL_TARGET      (RAM read)
  *   S_WR_VOL_MULT  → tgt_*_r ← raw × cur_gxm_r                 (DSP only)
  *   S_WR_VOL_RAMP  → nxt_l_r ← ramp_step(cur_vol_l, tgt_l_r,...) (compare chain)
  *   S_WR_VOL_RAMP_R→ nxt_r_r ← ramp_step(cur_vol_r, tgt_r_r,...) (same chain)
@@ -545,10 +554,8 @@ reg [7:0]  cur_vol_rate;
  * 3-comparator ramp + write-mux + storage setup ≈ 7+ ns
  * combinational — broke 100 MHz once clock skew was added.
  *
- * Cost: +2 cycles per voice over the original (now 4 cycles total
- * across the volume pipeline; was 1).  At 32 voices that's +64
- * cycles per 48 kHz output sample — the 2083-cycle window has
- * plenty of slack. */
+ * These six scheduled states are included in the throughput measurement;
+ * available headroom also depends on SDRAM latency and active voice count. */
 reg [7:0]  cur_gxm_r;
 reg [7:0]  vol_raw_l_r, vol_raw_r_r;
 reg [7:0]  tgt_l_r, tgt_r_r;
@@ -725,6 +732,14 @@ always @(posedge clk) begin
         stream_d0        <= 23'd0;
         stream_d1        <= 23'd0;
         stream_quiet     <= 1'b0;
+    end else if (cur_cancel && state != S_IDLE && state != S_START_SAMPLE &&
+                 state != S_NEXT_VOICE && state != S_OUTPUT &&
+                 state != S_FETCH_TAP0_R && state != S_FETCH_TAP1_R &&
+                 state != S_FETCH_SEAM_R) begin
+        // Drain any issued AXI read before discarding a stopped/rearmed pass.
+        // Queued start state is committed only after the scan reaches IDLE.
+        state <= S_NEXT_VOICE;
+        lerp_phase <= 1'b0;
     end else case (state)
 
     // ---- Idle: wait for FIFO to drop below half, then start new sample ----
@@ -839,8 +854,20 @@ always @(posedge clk) begin
         cur_loop_valid <= (cur_loop_end > vtbl_a_q[21:0]);
         cur_loop_len   <= cur_loop_end - vtbl_a_q[21:0];
         stream_lmp     <= {1'b0, cur_length} - {1'b0, cur_pos_int};
+`ifdef INCLUDE_NONSTREAM_BYPASS
+        if (cur_stream) begin
+            vtbl_a_addr <= {cur_voice, VTBL_WPTR};
+            state       <= S_STREAM_WPTR_W;
+        end else begin
+            // Ordinary voices have no ring producer. Skip both backlog
+            // states and clear any quiet flag left by the preceding stream.
+            stream_quiet <= 1'b0;
+            state        <= S_FETCH_TAP0_CALC;
+        end
+`else
         vtbl_a_addr    <= {cur_voice, VTBL_WPTR};
         state          <= S_STREAM_WPTR_W;
+`endif
     end
 
     // Two PARALLEL ring-distance cones registered straight off the WPTR
@@ -957,7 +984,7 @@ always @(posedge clk) begin
         reg signed [15:0] beat0_l, beat0_r;
         if (m_arvalid && m_arready) m_arvalid <= 1'b0;
         m_rready <= 1'b1;
-        if (m_rvalid) begin
+        if (m_rvalid && m_rready) begin
             // Beat 0 always holds tap0.  For mono, low/high half pick by
             // tap_byte_addr[1].  For stereo, low word is L, high word R.
             if (cur_stereo) begin
@@ -1021,7 +1048,7 @@ always @(posedge clk) begin
     S_FETCH_SEAM_R: begin
         if (m_arvalid && m_arready) m_arvalid <= 1'b0;
         m_rready <= 1'b1;
-        if (m_rvalid) begin
+        if (m_rvalid && m_rready) begin
             if (cur_stereo) begin
                 tap1_l <= $signed(m_rdata[15:0]);
                 tap1_r <= $signed(m_rdata[31:16]);
@@ -1038,7 +1065,7 @@ always @(posedge clk) begin
     // burst_mode_2beat (stereo or mono pos_odd, no wrap).
     S_FETCH_TAP1_R: begin
         m_rready <= 1'b1;
-        if (m_rvalid) begin
+        if (m_rvalid && m_rready) begin
             if (cur_stereo) begin
                 // Beat 1 = stereo pair at pos+1.
                 tap1_l <= $signed(m_rdata[15:0]);
@@ -1202,7 +1229,7 @@ always @(posedge clk) begin
     end
 
     // ---- Volume ramp step ----
-    // Four-stage pipeline to keep the per-voice path inside 10 ns:
+    // Six-state pipeline to keep the per-voice path inside 10 ns:
     //   S_RAMP_STEP    → pick gxm for cur_voice (cur_voice → voice_group
     //                    → pick_gxm), queue VTBL_VOL_TARGET read
     //   S_WR_VOL_LOAD  → latch raw target from VTBL_VOL_TARGET
