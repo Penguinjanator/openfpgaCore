@@ -8,22 +8,17 @@
 # Shared Quartus STA-report parsing, sourced by sweep.sh and report.sh
 # (one parser to fix when a Quartus version shifts the panel format).
 
-# Worst setup slack (WNS) + summed per-clock TNS from the slow-corner
-# setup panel.  25.1std titles it "; Slow ... Model Setup Summary"; Q17
+# Worst setup slack (WNS) + summed per-clock TNS across all analyzed corners.
+# 25.1std titles each panel "; Slow ... Model Setup Summary"; Q17
 # single-corner runs use a plain "; Setup Summary" (the TOC repeats the
-# phrase without a leading ';', hence the anchored grep).  Echoes
+# phrase without a leading ';', hence the anchored match). Echoes
 # "wns tns" or nothing when the panel is missing.
 sta_wns_tns() {
-    local rpt="$1" anchor
+    local rpt="$1"
     [ -f "$rpt" ] || return 0
-    if grep -q '^; Slow[^;]* Model Setup Summary' "$rpt"; then
-        anchor='^; Slow[^;]* Model Setup Summary'
-    else
-        anchor='^; Setup Summary'
-    fi
-    awk -F';' -v anchor="$anchor" '
-        !f && $0 ~ anchor { f=1; next }
-        f && /^\+/ { dash++; if (dash >= 3) exit; next }
+    awk -F';' '
+        /^; ([^;]* Model )?Setup Summary[ ;]*$/ { f=1; dash=0; next }
+        f && /^\+/ { dash++; if (dash >= 3) f=0; next }
         f && /^;/ && $3 ~ /-?[0-9]+\.[0-9]/ {
             slack=$3; gsub(/[ \t]/, "", slack)
             t=$4;     gsub(/[ \t]/, "", t)
@@ -46,7 +41,7 @@ sta_hold_wns() {
     local rpt="$1"
     [ -f "$rpt" ] || return 0
     awk -F';' '
-        /^; ([A-Za-z0-9 ]* Model )?Hold Summary/ { f=1; dash=0; next }
+        /^; ([^;]* Model )?Hold Summary[ ;]*$/ { f=1; dash=0; next }
         f && /^\+/ { dash++; if (dash >= 3) f=0; next }
         f && /^;/ && $3 ~ /-?[0-9]+\.[0-9]/ {
             slack=$3; gsub(/[ \t]/, "", slack)

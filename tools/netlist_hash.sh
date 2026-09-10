@@ -5,13 +5,15 @@
 # SPDX-FileCopyrightText: (c) 2026, ThinkElastic <Think@Elastic.com>
 #------------------------------------------------------------------------------
 #
-# netlist_hash <generated-qsf> -> one md5 over every source + macro the qsf
-# names.  A stored fitter seed only means anything for the exact netlist it was
+# netlist_hash <generated-qsf> [extra-files...] -> one md5 over sources/macros.
+# Extra files cover includes and variant definitions outside the qsf file list.
+# A stored fitter seed only means anything for the netlist it was
 # swept on: any RTL change reshuffles placement and makes the seed a lottery
 # ticket.  That once shipped a WNS -1.08 black-screen os20 from a seed swept at
 # -0.156.  sweep.sh records the hash beside the seed; `make build` compares.
 netlist_hash() {
     local qsf="$1"
+    shift
     [ -f "$qsf" ] || { echo "no-qsf"; return; }
     {
         grep -E "VERILOG_MACRO|SEED " "$qsf" | grep -v "SEED " | sort
@@ -30,5 +32,11 @@ netlist_hash() {
             elif [ -f "$(dirname "$qsf")/$f" ]; then md5sum < "$(dirname "$qsf")/$f"
             fi
           done | sort
+        for f in "$@"; do
+            if [ -f "$f" ]; then md5sum < "$f"
+            elif [ -f "$(dirname "$qsf")/$f" ]; then md5sum < "$(dirname "$qsf")/$f"
+            else printf 'missing:%s\n' "$f"
+            fi
+        done
     } | md5sum | cut -d' ' -f1
 }

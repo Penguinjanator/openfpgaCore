@@ -33,9 +33,8 @@
 # Common env: PROJECT(=ap_core)  CLOCK_RE  MAXJOBS(=4)  USE_CONTAINER(=1)
 #             VARIANT  SEED_FILE  QRUN
 #
-# No `set -e`: Quartus exits non-zero when timing isn't met, but still produces a
-# valid bitstream — we keep going and rank every seed; only a fitter crash (no
-# STA report) drops a seed from consideration.
+# No `set -e`: a failed candidate must not abort the remaining search. Only
+# completed compiles with fresh setup and hold reports enter the ranking.
 set -uo pipefail
 
 PROJECT=${PROJECT:-ap_core}
@@ -61,8 +60,12 @@ parse_sta() {
     _wns=""; _tns=""; _fmax="failed"
     [ -f "$1" ] || return
     read -r _wns _tns < <(sta_wns_tns "$1")
-    _fmax=$(awk -F';' -v re="$CLOCK_RE" \
-        '/^; [0-9]/ && $4 ~ re { gsub(/^ +| +$/, "", $3); print $3; exit }' \
+    _fmax=$(CLOCK_RE="$CLOCK_RE" awk -F';' \
+        'BEGIN { re=ENVIRON["CLOCK_RE"] }
+        /^; [0-9]/ {
+            clock=$4; gsub(/^[ \t]+|[ \t]+$/, "", clock)
+            if (clock ~ re) { gsub(/^ +| +$/, "", $3); print $3; exit }
+        }' \
         "$1" 2>/dev/null)
     [ -z "$_fmax" ] && _fmax="failed"
 }
@@ -87,14 +90,21 @@ if [ "$USE_CONTAINER" = 1 ]; then
     : > "$RESULTS"
 
     # Shared inputs once: the CPU netlist + firmware are identical across seeds.
-    make --no-print-directory cpu VARIANT="$VARIANT" >/dev/null
-    make --no-print-directory bootloader >/dev/null
+    make --no-print-directory cpu VARIANT="$VARIANT" >/dev/null || exit 1
+    make --no-print-directory bootloader >/dev/null || exit 1
 
     run_one() {
         local s="$1" job="${VARIANT}-s$1"
-        make --no-print-directory "bld/$job/ap_core.qsf" \
-            VARIANT="$VARIANT" JOB="$job" SEED="$s" >/dev/null 2>&1
-        bash "$TOOLS/quartus-container.sh" "$TARGET_DIR/bld/$job" >"bld/$job.log" 2>&1
+        rm -f "bld/$job/output_files/${PROJECT}.sta.rpt" \
+              "bld/$job/output_files/${PROJECT}.sof" \
+              "bld/$job/output_files/${PROJECT}.rbf"
+        if ! make --no-print-directory "bld/$job/ap_core.qsf" \
+            VARIANT="$VARIANT" JOB="$job" SEED="$s" >/dev/null 2>&1 ||
+           ! bash "$TOOLS/quartus-container.sh" "$TARGET_DIR/bld/$job" >"bld/$job.log" 2>&1; then
+            printf "%s|||||\n" "$s" >> "$RESULTS"
+            printf "  seed %-3s ${C_ERR}compile failed${C_RESET}\n" "$s"
+            return
+        fi
         # Harvest this seed's numbers NOW (subshell-local parse; single-line
         # O_APPEND write is atomic across the MAXJOBS parallel jobs).
         parse_sta "bld/$job/output_files/${PROJECT}.sta.rpt"
@@ -130,7 +140,7 @@ if [ "$USE_CONTAINER" = 1 ]; then
         R_RAN[$s]=1
     done < "$RESULTS"
     for s in $(seq "$MIN" "$MAX"); do
-        [ -n "${R_WNS[$s]:-}" ] && continue
+        [ -n "${R_RAN[$s]:-}" ] && continue
         parse_sta "bld/${VARIANT}-s$s/output_files/${PROJECT}.sta.rpt"
         [ -n "$_wns" ] && { R_WNS[$s]=$_wns; R_TNS[$s]=$_tns; R_FMAX[$s]=$_fmax;
                             R_HOLD[$s]=$(sta_hold_wns "bld/${VARIANT}-s$s/output_files/${PROJECT}.sta.rpt"); }
@@ -163,7 +173,13 @@ else
         printf "${C_DIM}[%d/%d]${C_RESET} Seed %-3s " "$n" "$TOTAL" "$s"
         sed -i "s/^set_global_assignment -name SEED .*/set_global_assignment -name SEED ${s}/" "${PROJECT}.qsf"
         rm -rf db incremental_db
-        $QRUN bash -c "$FLOW" > "output_files/seed_${s}_compile.log" 2>&1 || true
+        rm -f "output_files/${PROJECT}.sta.rpt" "output_files/${PROJECT}.sof" \
+              "output_files/${PROJECT}.rbf" "output_files/seed_${s}_sta.log"
+        R_RAN[$s]=1
+        if ! $QRUN bash -c "$FLOW" > "output_files/seed_${s}_compile.log" 2>&1; then
+            printf "${C_ERR}compile failed${C_RESET}\n"
+            continue
+        fi
         parse_sta "output_files/${PROJECT}.sta.rpt"
         cp "output_files/${PROJECT}.sta.rpt" "output_files/seed_${s}_sta.log" 2>/dev/null || true
         R_WNS[$s]=$_wns; R_TNS[$s]=$_tns; R_FMAX[$s]=$_fmax
@@ -180,7 +196,7 @@ else
         if [ "${STOP_ON_PASS:-0}" = "1" ] && [ -n "$_wns" ]; then
             _h=${R_HOLD[$s]:-}
             if awk -v w="$_wns" 'BEGIN{exit !(w>=0)}' &&
-               { [ -z "$_h" ] || awk -v h="$_h" -v v="${SWEEP_HOLD_VETO:-0}" 'BEGIN{exit !(h>=v)}'; }; then
+               [ -n "$_h" ] && awk -v h="$_h" -v v="${SWEEP_HOLD_VETO:-0}" 'BEGIN{exit !(h>=v)}'; then
                 printf "${C_OK}[sweep]${C_RESET} seed %s closes timing (WNS %s, HOLD %s) — stopping early\n" \
                        "$s" "$_wns" "${_h:--}"
                 break
@@ -218,6 +234,10 @@ for s in $(seq "$MIN" "$MAX"); do
     dq=${R_DQ[$s]:-}
     hold=${R_HOLD[$s]:-}
     veto=""
+    if [ -z "$hold" ]; then
+        veto=" ${C_ERR}(missing hold report: VETOED)${C_RESET}"
+        R_VETO[$s]=1
+    fi
     if [ -n "$hold" ] && awk -v a="$hold" -v v="$HOLD_VETO" 'BEGIN{exit !(a<v)}'; then
         veto=" ${C_ERR}(HOLD ${hold} < ${HOLD_VETO}: VETOED)${C_RESET}"
         R_VETO[$s]=1
@@ -269,38 +289,43 @@ if [ -z "$BEST" ]; then printf "\n${C_ERR}[sweep] All seeds failed${C_RESET}\n";
 printf "\n${C_HEAD}Best: seed %s (Fmax %s, WNS %s, TNS %s)${C_RESET}" \
     "$BEST" "${R_FMAX[$BEST]}" "$BEST_WNS" "${R_TNS[$BEST]:--}"
 awk -v a="$BEST_WNS" 'BEGIN{exit !(a<0)}' && \
-    printf " ${C_WARN}(below 100 MHz target — shipping anyway)${C_RESET}"
+    printf " ${C_WARN}(setup timing remains open)${C_RESET}"
 echo ""
-
-# Persist the winner into the variant's stored seed file (the source of truth
-# `make build` reads).  The per-candidate qsf patching above is just the test.
-if [ -n "${SEED_FILE:-}" ]; then
-    printf "%s\n" "$BEST" > "$SEED_FILE"
-    printf "${C_OK}[sweep]${C_RESET} stored seed $BEST → $SEED_FILE\n"
-    # Fingerprint the exact netlist this seed was ranked on (sources +
-    # macros from the winning job's generated qsf).  `make build` compares
-    # and warns loudly: a seed on a changed netlist is a placement lottery.
-    if [ -f "$TOOLS/netlist_hash.sh" ]; then
-        . "$TOOLS/netlist_hash.sh"
-        _bq="bld/${VARIANT}-s${BEST}/ap_core.qsf"
-        [ -f "$_bq" ] || _bq="${PROJECT}.qsf"
-        netlist_hash "$_bq" > "${SEED_FILE}.src"
-        printf "${C_OK}[sweep]${C_RESET} netlist fingerprint → ${SEED_FILE}.src\n"
-    fi
-fi
 
 # In-place mode rebuilds the best seed where it swept (MiSTer relies on the
 # .sof landing here), through the same $QRUN wrapper/macros as the sweep fits.
 # Container mode already produced a full bitstream per seed in
-# bld/<variant>-s<best>/ and wrote the seed file, so `make build` is ready —
+# bld/<variant>-s<best>/, so `make build` is ready —
 # no in-place rebuild needed.
 if [ "$USE_CONTAINER" != 1 ]; then
     printf "${C_HEAD}[rebuild]${C_RESET} Final compile with seed $BEST...\n"
     sed -i "s/^set_global_assignment -name SEED .*/set_global_assignment -name SEED ${BEST}/" "${PROJECT}.qsf"
     rm -rf db incremental_db
-    $QRUN bash -c "$FLOW" || true
-    if [ ! -f "output_files/${PROJECT}.sof" ]; then
-        printf "\n${C_ERR}[sweep] Final rebuild failed — no .sof produced${C_RESET}\n"; exit 1
+    rm -f "output_files/${PROJECT}.sta.rpt" "output_files/${PROJECT}.sof" \
+          "output_files/${PROJECT}.rbf"
+    if ! $QRUN bash -c "$FLOW" || [ ! -f "output_files/${PROJECT}.sof" ]; then
+        printf "\n${C_ERR}[sweep] Final rebuild failed${C_RESET}\n"; exit 1
+    fi
+    parse_sta "output_files/${PROJECT}.sta.rpt"
+    _hold=$(sta_hold_wns "output_files/${PROJECT}.sta.rpt")
+    if [ -z "$_wns" ] || [ -z "$_hold" ] ||
+       ! awk -v w="$_wns" -v previous="$BEST_WNS" -v h="$_hold" -v v="$HOLD_VETO" \
+            'BEGIN { exit !(w>=previous && h>=v) }'; then
+        printf "\n${C_ERR}[sweep] Final rebuild did not reproduce the selected timing${C_RESET}\n"; exit 1
+    fi
+fi
+
+# Persist only after the selected build and its timing have been checked.
+if [ -n "${SEED_FILE:-}" ]; then
+    printf "%s\n" "$BEST" > "$SEED_FILE"
+    printf "${C_OK}[sweep]${C_RESET} stored seed $BEST → $SEED_FILE\n"
+    if [ -f "$TOOLS/netlist_hash.sh" ]; then
+        . "$TOOLS/netlist_hash.sh"
+        _bq="bld/${VARIANT}-s${BEST}/ap_core.qsf"
+        [ -f "$_bq" ] || _bq="${PROJECT}.qsf"
+        # The target supplies whitespace-separated relative file names.
+        netlist_hash "$_bq" ${NETLIST_EXTRA_FILES:-} > "${SEED_FILE}.src"
+        printf "${C_OK}[sweep]${C_RESET} netlist fingerprint → ${SEED_FILE}.src\n"
     fi
 fi
 

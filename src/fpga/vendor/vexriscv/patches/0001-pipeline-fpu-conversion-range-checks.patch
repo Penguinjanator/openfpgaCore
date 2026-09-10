@@ -1,0 +1,22 @@
+--- a/src/main/scala/vexiiriscv/execute/fpu/FpuF2iPlugin.scala
++++ b/src/main/scala/vexiiriscv/execute/fpu/FpuF2iPlugin.scala
+@@ -116,12 +116,16 @@
+       val expMax = (i64 ? AFix(62) | AFix(30)) + AFix(!signed)
+       val expMin = (i64 ? AFix(63) | AFix(31))
+       val unsignedMin = muxRv64[UInt](i64)(BigInt(1) << 63)(BigInt(1) << 31)
+-      val overflow = (RS1_FP.exponent > expMax || RS1_FP.isInfinity) && !RS1_FP.sign || RS1_FP.isNan
+-      val underflow = (RS1_FP.exponent > expMin || signed && RS1_FP.exponent === expMin && (unsigned =/= unsignedMin || onShift.increment) || !signed && (unsigned =/= 0 || onShift.increment) || RS1_FP.isInfinity) && RS1_FP.sign
++      val overflowRaw = (RS1_FP.exponent > expMax || RS1_FP.isInfinity) && !RS1_FP.sign || RS1_FP.isNan
++      val underflowRaw = (RS1_FP.exponent > expMin || signed && RS1_FP.exponent === expMin && (unsigned =/= unsignedMin || onShift.increment) || !signed && (unsigned =/= 0 || onShift.increment) || RS1_FP.isInfinity) && RS1_FP.sign
+       val isZero = RS1_FP.isZero
+       if (p.rvd) {
+-        overflow setWhen (!i64 && !RS1_FP.sign && onShift.increment && unsigned(30 downto 0).andR && (signed || unsigned(31)))
++        overflowRaw setWhen (!i64 && !RS1_FP.sign && onShift.increment && unsigned(30 downto 0).andR && (signed || unsigned(31)))
+       }
++      // The existing half-rate pause also captures the range checks.
++      // These flags then reach writeback alongside the delayed integer result.
++      val overflow = Delay(overflowRaw, halfRate.toInt)
++      val underflow = Delay(underflowRaw, halfRate.toInt)
+       val NV = insert(RS1_FP.isNan && !RS1_FP.quiet)
+       val NX = insert(False)
+       when(isZero) {

@@ -1,8 +1,8 @@
-# Check setup and hold timing at every available operating condition.
+# Check setup, hold, recovery, removal and pulse width at every corner.
 # Run in a completed Quartus project directory:
 #   quartus_sta -t /path/to/report_core_timing.tcl <project> <report-directory>
-# A negative setup/hold slack or an empty whole-design check exits unsuccessfully.
-# Other timing checks and unconstrained paths still require the normal STA report.
+# Negative slack or missing setup/hold/pulse-width checks exit unsuccessfully.
+# Unconstrained paths still require interface-specific review.
 
 package require ::quartus::project
 package require ::quartus::sta
@@ -29,14 +29,15 @@ foreach_in_collection corner [get_available_operating_conditions] {
     update_timing_netlist
     set model [get_operating_conditions_info $corner -model]
     set temperature [get_operating_conditions_info $corner -temperature]
-    foreach check {setup hold} {
+    foreach check {setup hold recovery removal} {
         set label "${model}_${temperature}_${check}"
         report_timing -$check -npaths 20 -detail full_path \
             -file [file join $destination "$label.rpt"]
         set paths [get_timing_paths -$check -npaths 1]
         if {[get_collection_size $paths] == 0} {
             puts $summary "$model\t$temperature\t$check\tno_paths"
-            set failed 1
+            # A fully synchronous reset design can have no asynchronous checks.
+            if {$check eq "setup" || $check eq "hold"} { set failed 1 }
         }
         foreach_in_collection path $paths {
             set slack [get_path_info $path -slack]
@@ -54,10 +55,26 @@ foreach_in_collection corner [get_available_operating_conditions] {
             puts $clock_summary "$model\t$temperature\t$check\t$name\t$slack"
         }
     }
+    set pulse_report [file join $destination "${model}_${temperature}_pulse_width.rpt"]
+    report_min_pulse_width -nworst 20 -detail summary -file $pulse_report
+    set stream [open $pulse_report r]
+    set pulse_slack no_paths
+    while {[gets $stream line] >= 0} {
+        if {![string match ";*" $line]} { continue }
+        set value [string trim [lindex [split $line ";"] 1]]
+        if {![string is double -strict $value]} { continue }
+        if {$pulse_slack eq "no_paths" || $value < $pulse_slack} {
+            set pulse_slack $value
+        }
+    }
+    close $stream
+    puts $summary "$model\t$temperature\tpulse_width\t$pulse_slack"
+    puts "RESULT ${model}_${temperature}_pulse_width $pulse_slack"
+    if {$pulse_slack eq "no_paths" || $pulse_slack < 0} { set failed 1 }
 }
 if {$corner_count == 0} { set failed 1 }
 close $summary
 close $clock_summary
 delete_timing_netlist
 project_close
-if {$failed} { error "Whole-design setup/hold timing failed; see $destination" }
+if {$failed} { error "Whole-design timing failed; see $destination" }

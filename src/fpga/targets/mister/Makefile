@@ -32,6 +32,7 @@ ROOT_DIR   = ../../../..
 # swept on so `build` can warn when it goes stale (tools/netlist_hash.sh).
 # Falls back to the qsf's own seed when the file is absent.
 SEED_FILE  = seeds/$(VARIANT).seed
+NETLIST_EXTRA_FILES = build_id.v variants/$(VARIANT).mk $(PROJECT).sdc files.qip
 SEED       = $(shell [ -f $(SEED_FILE) ] && cat $(SEED_FILE) || \
                      awk '/^set_global_assignment -name SEED /{print $$NF}' $(PROJECT).qsf)
 
@@ -189,8 +190,10 @@ help:
 	@echo ""
 
 # ── CPU generation (file target — MiSTer dual-issue variant) ─────────
-$(VEXII_OUT):
-	@printf "$(C_HEAD)[cpu]$(C_RESET) Generating VexiiRiscv ($(VARIANT), file missing)...\n"
+$(VEXII_OUT): $(VEXII_DIR)/../generate_vexii.sh \
+              $(VEXII_DIR)/../configs/$(VARIANT).cfg \
+              $(wildcard $(VEXII_DIR)/../patches/*.patch)
+	@printf "$(C_HEAD)[cpu]$(C_RESET) Generating VexiiRiscv ($(VARIANT))...\n"
 ifeq ($(USE_VEXII_CONTAINER),1)
 	@bash $(ROOT_DIR)/tools/vexii-container.sh $(VARIANT)
 else
@@ -237,8 +240,8 @@ sweep-all: sweep
 #
 # Explicit stages (not `quartus_sh --flow compile`) so the feature
 # include-list reaches synthesis: --verilog_macro is only valid on
-# quartus_map.  The sys/build_id.tcl PRE_FLOW script still runs ahead of
-# quartus_map (stamps build_id.v); quartus_asm emits the .rbf.
+# quartus_map. Explicit tool invocations do not run the framework's PRE_FLOW
+# hook, so build_id.v is refreshed here; quartus_asm emits the .rbf.
 build: $(VEXII_OUT) bootloader build_id.v
 	@# Apply the persisted seed.  Only rewrite on a real difference — unlike
 	@# the Pocket's generated qsf, mister.qsf is tracked.
@@ -253,7 +256,7 @@ build: $(VEXII_OUT) bootloader build_id.v
 	@# fine, shipping one is not.
 	@if [ -f "$(SEED_FILE).src" ] && [ -f $(ROOT_DIR)/tools/netlist_hash.sh ]; then \
 		. $(ROOT_DIR)/tools/netlist_hash.sh; \
-		now=$$(netlist_hash "$(PROJECT).qsf"); \
+		now=$$(netlist_hash "$(PROJECT).qsf" $(NETLIST_EXTRA_FILES)); \
 		want=$$(cat "$(SEED_FILE).src"); \
 		if [ "$$now" != "$$want" ]; then \
 			printf "$(C_ERR)[fpga] WARNING: netlist changed since mister was swept —$(C_RESET)\n"; \
@@ -263,13 +266,24 @@ build: $(VEXII_OUT) bootloader build_id.v
 	fi
 	@printf "$(C_HEAD)[fpga]$(C_RESET) Clean compile (Quartus 17.0.x, seed $(SEED))...\n"
 	@rm -rf db incremental_db
+	@rm -f output_files/$(PROJECT).sta.rpt output_files/$(PROJECT).sof \
+	       output_files/$(PROJECT).rbf
 	@# One container call for the whole map/fit/asm/sta chain — Q17's
 	@# per-tool startup adds up under Rosetta; one container start amortizes.
 	@$(Q) bash -c 'quartus_map $(PROJECT) $(VERILOG_MACROS) && \
 	               quartus_fit $(PROJECT) && \
 	               quartus_asm $(PROJECT) && \
-	               quartus_sta $(PROJECT)'
+	               quartus_sta $(PROJECT) && \
+	               quartus_sta -t $(abspath $(ROOT_DIR)/tools/report_core_timing.tcl) \
+	                   $(PROJECT) $(abspath output_files/timing)'
 	@printf "$(C_OK)[fpga] Done$(C_RESET) → output_files/$(PROJECT).rbf\n"
+
+# Explicit sign-off check: unlike quartus_sta's warning-only compile status,
+# this fails on setup/hold/recovery/removal/pulse-width violations at any corner.
+.PHONY: timing-check
+timing-check:
+	@$(Q) quartus_sta -t $(abspath $(ROOT_DIR)/tools/report_core_timing.tcl) \
+		$(PROJECT) $(abspath output_files/timing)
 
 # ── Test ─────────────────────────────────────────────────────────────
 test:
@@ -278,13 +292,15 @@ test:
 	@printf "$(C_OK)[test] Done$(C_RESET)\n"
 
 # ── RTL check ────────────────────────────────────────────────────────
-# build_id.v is gitignored (the framework PRE_FLOW script re-stamps it on
-# every full compile, which would keep the tree perpetually dirty); a
-# fresh clone needs a placeholder for standalone quartus_map / lint runs.
+# Refresh the OSD date for the explicit map/fit flow as well as fresh clones.
+# Override BUILD_DATE with YYMMDD to reproduce a saved build's exact inputs.
+BUILD_DATE ?= $(shell date +%y%m%d)
+.PHONY: build_id.v
 build_id.v:
-	@printf '`define BUILD_DATE "000000"\n' > $@
+	@printf '`define BUILD_DATE "%s"' '$(BUILD_DATE)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; else mv $@.tmp $@; fi
 
-check: build_id.v
+check: $(VEXII_OUT) bootloader build_id.v
 	@printf "$(C_HEAD)[check]$(C_RESET) Analysis & Synthesis...\n"
 	@$(Q) quartus_map $(PROJECT) $(VERILOG_MACROS)
 	@printf "$(C_OK)[check] Done$(C_RESET)\n"
@@ -505,12 +521,13 @@ SWEEP_MAX ?= 30
 # the headroom to pass; the Pocket variants never do.  Set 0 for the full range.
 SWEEP_STOP_ON_PASS ?= 1
 
-sweep: firmware
+sweep: $(VEXII_OUT) firmware build_id.v
 	@USE_CONTAINER=0 MAXJOBS=1 PROJECT=$(PROJECT) \
-		CLOCK_RE='emu|pll|pll_inst.*general\[0\]' \
+		CLOCK_RE='^emu[|]pll[|]pll_inst.*(general\[0\]|counter\[0\])' \
 		VARIANT_DEFS="$(INCLUDE_DEFS)" \
 		QRUN='$(Q)' \
 		SEED_FILE='$(SEED_FILE)' \
+		NETLIST_EXTRA_FILES='$(NETLIST_EXTRA_FILES)' \
 		STOP_ON_PASS='$(SWEEP_STOP_ON_PASS)' \
 		bash $(ROOT_DIR)/tools/sweep.sh $(SWEEP_MIN) $(SWEEP_MAX)
 

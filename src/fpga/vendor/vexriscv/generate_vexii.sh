@@ -128,6 +128,17 @@ fi
 echo "Generating VexiiRiscv [$VARIANT] (stock vexiiriscv.Generate, openfpgaOS cache sizing)..."
 cd "$VEXII_DIR"
 
+# Keep local generator fixes reproducible across fresh submodule checkouts.
+# Accept an already-applied patch, but stop if the source no longer matches.
+for source_patch in "$SCRIPT_DIR"/patches/*.patch; do
+    [ -f "$source_patch" ] || continue
+    if git apply --reverse --check "$source_patch" >/dev/null 2>&1; then
+        continue
+    fi
+    git apply --check "$source_patch"
+    git apply "$source_patch"
+done
+
 # sbt always emits the bare name VexiiRiscv.v here; clear any stale copy from
 # an interrupted run so the post-gen rename can't pick up an old netlist.
 # Each variant's final file is VexiiRiscv_<variant>.v (no shared default).
