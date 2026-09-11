@@ -186,7 +186,9 @@ always @(posedge clk or negedge reset_n) begin
 end
 
 // DUT
-axi_periph_slave dut (
+axi_periph_slave #(
+    .FREEZE_VIDEO_IN_MENU(`ifdef MISTER_MENU_CONTINUES 0 `else 1 `endif)
+) dut (
     .clk    (clk),
     .reset_n(reset_n),
 

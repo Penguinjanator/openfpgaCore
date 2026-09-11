@@ -1368,6 +1368,17 @@ axi-periph: $(AXI_PERIPH_DIR)/V$(AXI_PERIPH_TOP)
 	@printf "\n=== AXI periph slave ===\n"
 	./$(AXI_PERIPH_DIR)/V$(AXI_PERIPH_TOP)
 
+.PHONY: axi-periph-mister
+axi-periph-mister: obj_dir_axi_periph_mister/V$(AXI_PERIPH_TOP)
+	./obj_dir_axi_periph_mister/V$(AXI_PERIPH_TOP)
+
+obj_dir_axi_periph_mister/V$(AXI_PERIPH_TOP): $(AXI_PERIPH_SRCS) $(AXI_PERIPH_CPP)
+	$(VERILATOR) $(VERILATOR_FLAGS) $(AXI_PERIPH_FLAGS) \
+		+define+INCLUDE_ANALOGIZER +define+INCLUDE_LINK +define+MISTER_MENU_CONTINUES \
+		-CFLAGS "-DMISTER_MENU_CONTINUES" \
+		--top-module $(AXI_PERIPH_TOP) --Mdir obj_dir_axi_periph_mister \
+		-I$(COMMON_DIR) $(AXI_PERIPH_SRCS) $(AXI_PERIPH_CPP)
+
 # Full-feature config: the harness expects the analogizer SNAC path present
 # and the LINK caps bit set, so define both INCLUDE_ macros (post-polarity-flip
 # these gate the SNAC instances and FEAT_LINK).

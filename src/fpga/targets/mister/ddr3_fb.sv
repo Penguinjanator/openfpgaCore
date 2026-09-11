@@ -31,8 +31,8 @@
 // multiple of 8 bytes so lines land 64-bit-aligned in DDR3.
 //
 // Clocking: everything here runs on clk (= clk_ram_controller = clk_cpu,
-// 100 MHz).  DDRAM_CLK and FB_PAL_CLK are that same clock.  crt_vs
-// (clk_vid) and FB_VBL (clk_vid) are 2FF-synchronized in.
+// 100 MHz). DDRAM_CLK and FB_PAL_CLK are that same clock. Video timing
+// inputs cross through synchronizers before controlling the copy.
 //
 // DDR3 map: slots at SLOT0/SLOT1 (default 0x2200_0000/0x2280_0000),
 // above the framework ascal triple buffer which ends at 0x217F_FFFF.
@@ -166,6 +166,7 @@ module ddr3_fb #(
     // frame trigger (clk_vid domain)
     input  wire        clk_vid,
     input  wire        crt_vs,
+    input  wire        early_vblank, // swaps remain possible while high
 
     // framebuffer state snoops (clk domain — periph-slave outputs)
     input  wire [24:0] fb_display_addr,  // SDRAM halfword address
@@ -259,13 +260,17 @@ reg [2:0] vs_sync;
 always @(posedge clk) vs_sync <= {vs_sync[1:0], crt_vs};
 wire vs_rising = vs_sync[1] && !vs_sync[2];
 
+reg [2:0] early_vblank_sync;
+always @(posedge clk)
+    early_vblank_sync <= {early_vblank_sync[1:0], early_vblank};
+
 reg [2:0] vbl_sync;
 always @(posedge clk) vbl_sync <= {vbl_sync[1:0], FB_VBL};
 wire vbl_rising = vbl_sync[1] && !vbl_sync[2];
 
 // ---- frame DMA ----------------------------------------------------------
-// One copy per input frame: at vsync (+ a settle delay so the periph
-// slave's swap-at-vsync has flipped fb_display_addr), snapshot the
+// One copy per input frame: after the early-vblank swap window closes
+// and the periph slave's synchronized swap settles, snapshot the
 // displayed buffer and geometry, copy stride*height bytes linearly into
 // the inactive DDR3 slot, then publish base+geometry together.  The
 // displayed buffer is stable for >= 1 frame (triple-buffer contract);
@@ -280,9 +285,7 @@ localparam S_WRITE   = 3'd4;
 localparam S_PUBLISH = 3'd5;
 
 reg [2:0]  st;
-// 17 bits: the settle must outlast the OS's early-vblank swap window, not
-// just the slave's swap pulse.  See S_IDLE.
-reg [16:0] settle_cnt;
+reg [5:0] settle_cnt;
 
 // latched frame geometry
 reg [24:0] src_half;        // SDRAM halfword addr of frame base
@@ -351,7 +354,7 @@ always @(posedge clk) begin
         end
     end else if (!reset_n) begin
         st          <= S_IDLE;
-        settle_cnt  <= 17'd0;
+        settle_cnt  <= 6'd0;
         dma_req     <= 1'b0;
         dma_addr    <= 25'd0;
         dma_len     <= 11'd0;
@@ -387,31 +390,24 @@ always @(posedge clk) begin
             if (!en_q || !fb_supported)
                 FB_EN <= 1'b0;               // immediate fallback to VGA path
             if (vs_rising && en_q && fb_supported) begin
-                // NOTE (2026-08-08): 32 cycles only covers the slave's swap
-                // pulse, NOT the OS's early-vblank swap window
-                // (early_vblank_safe_vid, y_count < crt_v_active_start = 18
-                // lines x 31.74 us = 571 us AFTER vsync).  fb_display_addr can
-                // therefore still change -- and the app can hand that buffer
-                // back to the GPU -- long after src_half is latched here, so a
-                // published slot can hold part frame N-1 and part N+1:
-                // REGIONAL intermittent flashes of stale content, ~1% of
-                // frames.  Nor does this path consult the GPU's
-                // fb_write_drain_complete, so the copy can start before the
-                // GPU's writes have reached SDRAM.
-                // FIX PENDING and deliberately NOT a widened magic count here:
-                // the correct trigger is the FALLING edge of early_vblank
-                // (2FF-synced in from emu.sv:1180), which is raster-independent.
-                // Simply raising this to 60000 (600 us) does work around it but
-                // is tied to the raster AND breaks all six tb_ddr3_fb harness
-                // budgets, which is the test suite saying the same thing.
-                settle_cnt <= 17'd32;         // let the slave's swap settle
+                // A late CMD_FLIP can still swap buffers after vsync.
+                // Wait for the actual window to close before choosing a
+                // source; otherwise this copy can repeat the old frame or
+                // read it after the renderer has reclaimed it.
+                settle_cnt <= 6'd32;
                 st <= S_SETTLE;
             end
         end
 
         S_SETTLE: begin
-            settle_cnt <= settle_cnt - 17'd1;
-            if (settle_cnt == 17'd1) begin
+            // Match the peripheral's early-vblank synchronization, then
+            // allow its final swap to reach fb_display_addr. The delay is
+            // independent of the raster's blanking duration.
+            if (early_vblank_sync[2])
+                settle_cnt <= 6'd32;
+            else
+                settle_cnt <= settle_cnt - 6'd1;
+            if (!early_vblank_sync[2] && settle_cnt == 6'd1) begin
                 src_half   <= fb_display_addr;
                 cp_mode    <= color_mode;
                 cp_width   <= fb_width;

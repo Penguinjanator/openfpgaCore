@@ -799,6 +799,7 @@ axi_periph_slave #(
 	// CLK_FREQ_HZ (0xD4) so os.bin re-derives its timers (pocket os20
 	// idiom; 100 MHz builds return 0 there and firmware falls back).
 	.CLK_HZ(`ifdef INCLUDE_CLK90 32'd90_000_000 `else 32'd100_000_000 `endif),
+	.FREEZE_VIDEO_IN_MENU(0),
 	.INCLUDE_ANALOGIZER(`ifdef INCLUDE_ANALOGIZER 1 `else 0 `endif),
 	.INCLUDE_LINK(`ifdef INCLUDE_LINK 1 `else 0 `endif),
 	.INCLUDE_HW_MIXER(`ifdef INCLUDE_HW_MIXER 1 `else 0 `endif),
@@ -1401,6 +1402,7 @@ ddr3_fb fbpipe (
 	.enable(fb_direct_enable),
 	.clk_vid(clk_vid),
 	.crt_vs(crt_vs),
+	.early_vblank(early_vblank_safe_vid),
 	.fb_display_addr(fb_display_addr),
 	.color_mode(color_mode),
 	.fb_width(fb_width),

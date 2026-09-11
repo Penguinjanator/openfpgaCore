@@ -53,8 +53,10 @@ static uint64_t ddr_read(uint32_t byte_addr) {
 
 // pulse one input-frame vsync and wait for a copy to complete
 static void frame_vsync(int settle_cycles = 40000) {
+    tb->early_vblank = 1;
     tb->crt_vs = 1; steps(20);
     tb->crt_vs = 0;
+    tb->early_vblank = 0;
     steps(settle_cycles);
 }
 
@@ -83,6 +85,7 @@ int main(int argc, char** argv) {
     tb->reset_n = 0;
     tb->enable = 0;
     tb->crt_vs = 0;
+    tb->early_vblank = 0;
     tb->fb_vbl = 0;
     tb->pal_wr = 0;
     tb->pal_commit = 0;
@@ -198,6 +201,85 @@ int main(int argc, char** argv) {
         }
     }
     CHECK(pal_ok, "palette contents exact");
+
+    // A frame submitted after vsync can still be displayed during early
+    // vblank. The DDR3 copy must include that frame, not the old buffer.
+    tb->reset_n = 0;
+    tb->crt_vs = 0;
+    tb->early_vblank = 0;
+    steps(10);
+    tb->reset_n = 1;
+    tb->enable = 1;
+    tb->color_mode = 0;
+    tb->fb_width = 64;
+    tb->fb_height = 32;
+    tb->fb_stride = 64;
+    tb->fb_display_addr = SRC_HALF;
+    steps(10);
+    tb->early_vblank = 1;
+    tb->crt_vs = 1;
+    steps(20);
+    tb->crt_vs = 0;
+    steps(1000);
+    tb->fb_display_addr = SRC_HALF + 0x1000;
+    steps(1000);
+    CHECK(tb->ddr_write_cnt == 0, "copy waits until early swaps are closed");
+    CHECK(tb->FB_EN == 0, "old frame is not published during early vblank");
+    tb->early_vblank = 0;
+    steps(8000);
+    CHECK(tb->FB_EN == 1, "late frame published after early vblank");
+    CHECK(frame_matches(SRC_BYTE + 0x2000, SLOT0, 64, 32),
+          "copy includes the late early-vblank swap");
+    CHECK(tb->ddr_proto_err == 0, "late swap preserves Avalon protocol");
+
+    // Alternate on-time and last-moment submissions at DOOM resolution.
+    // Competing scanout reads must not make the copy miss a 60 Hz frame.
+    tb->reset_n = 0;
+    steps(10);
+    tb->reset_n = 1;
+    tb->fb_width = 320;
+    tb->fb_height = 200;
+    tb->fb_stride = 320;
+    steps(10);
+    unsigned scanout_requests = 0;
+    for (unsigned frame = 0; frame < 8; ++frame) {
+        const uint32_t source = SRC_HALF + frame * 0x10000;
+        const uint32_t destination = (frame & 1) ? SLOT1 : SLOT0;
+        const int blank_cycles = frame % 3 == 0 ? 57000 :
+                                 frame % 3 == 1 ? 64000 : 38000;
+        if (!(frame & 1)) tb->fb_display_addr = source;
+        tb->early_vblank = 1;
+        tb->crt_vs = 1;
+        steps(20);
+        tb->crt_vs = 0;
+        steps(blank_cycles - 24);
+        if (frame & 1) tb->fb_display_addr = source;
+        steps(4);
+        CHECK(tb->ddr_write_cnt == frame * 8000,
+              "full-size copy waits for the variable swap window");
+        tb->early_vblank = 0;
+        for (int cycle = 0; cycle < 200000; ++cycle) {
+            tb->vid_kick = cycle % 3180 == 0;
+            if (tb->vid_kick) {
+                tb->vid_kick_addr = VID_HALF + (cycle / 3180) * 320;
+                tb->vid_kick_len = 160;
+                ++scanout_requests;
+            }
+            step();
+        }
+        tb->vid_kick = 0;
+        CHECK(tb->ddr_write_cnt == (frame + 1) * 8000,
+              "full-size copy completes inside the frame budget");
+        CHECK(tb->FB_EN && tb->FB_BASE == destination &&
+              tb->FB_WIDTH == 320 && tb->FB_HEIGHT == 200,
+              "each full-size frame is published");
+        CHECK(frame_matches(source << 1, destination, 320, 200),
+              "early and late submissions produce consecutive exact frames");
+        steps(1666667 - blank_cycles - 200000);
+    }
+    CHECK(tb->vid_done_cnt == scanout_requests && tb->vid_err_cnt == 0,
+          "all full-size scanout requests complete with exact data");
+    CHECK(tb->ddr_proto_err == 0, "full-size sequence preserves Avalon protocol");
 
     printf("=== Results: %d passed, %d failed ===\n", pass, fail);
     delete tb;

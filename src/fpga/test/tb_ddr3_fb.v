@@ -27,6 +27,7 @@ module tb_ddr3_fb (
     // scenario controls
     input  wire        enable,
     input  wire        crt_vs,
+    input  wire        early_vblank,
     input  wire        fb_vbl,
     input  wire [24:0] fb_display_addr,
     input  wire [2:0]  color_mode,
@@ -129,6 +130,7 @@ ddr3_fb dut (
     .clk(clk), .reset_n(reset_n),
     .enable(enable),
     .clk_vid(clk), .crt_vs(crt_vs),
+    .early_vblank(early_vblank),
     .fb_display_addr(fb_display_addr),
     .color_mode(color_mode),
     .fb_width(fb_width), .fb_height(fb_height), .fb_stride(fb_stride),

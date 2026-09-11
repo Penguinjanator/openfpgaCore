@@ -25,6 +25,8 @@ module axi_periph_slave #(
     // bitstreams without this register read 0 → firmware falls back to its
     // compile-time OF_TARGET_CPU_FREQ_HZ.
     parameter CLK_HZ             = 32'd100_000_000,
+    // Pocket freezes presentation for its system menu; MiSTer's OSD is an overlay.
+    parameter FREEZE_VIDEO_IN_MENU = 1,
     // Hardware feature advertisement (HW_FEATURES register @ 0x98).
     // Per-feature switches so the shared capability bits live in exactly
     // one place (HW_FEATURES_RESOLVED below); a target without a given
@@ -987,6 +989,7 @@ always @(posedge clk) begin
     os_inmenu_sync <= {os_inmenu_sync[1:0], os_inmenu};
 end
 wire os_inmenu_s = os_inmenu_sync[2];
+wire video_frozen = FREEZE_VIDEO_IN_MENU && os_inmenu_s;
 
 function [9:0] clamp_v_total;
     input [9:0] vt;
@@ -1627,7 +1630,7 @@ always @(posedge clk) begin
         end
 
         // Vsync IRQ — set on every vsync rising edge, cleared by W1C at 0x9C
-        if (vsync_rising && !os_inmenu_s)
+        if (vsync_rising && !video_frozen)
             vsync_irq_pending <= 1'b1;
 
         // Triple buffer swap. Vsync is the normal consume point; the early
@@ -1636,13 +1639,13 @@ always @(posedge clk) begin
         // display frame, so a new GPU CMD_FLIP arriving after a real vsync
         // consume waits for the next frame instead of skipping a frame that
         // was already presented.
-        if (vsync_rising && !os_inmenu_s)
+        if (vsync_rising && !video_frozen)
             fb_swap_consumed_this_frame <= 1'b0;
-        if (!os_inmenu_s && fb_swap_pending && vsync_rising) begin
+        if (!video_frozen && fb_swap_pending && vsync_rising) begin
             fb_display_idx <= fb_ready_idx;
             fb_swap_pending <= 1'b0;
             fb_swap_consumed_this_frame <= 1'b1;
-        end else if (!os_inmenu_s && fb_swap_pending && early_vblank_s &&
+        end else if (!video_frozen && fb_swap_pending && early_vblank_s &&
                      !fb_swap_consumed_this_frame) begin
             fb_display_idx <= fb_ready_idx;
             fb_swap_pending <= 1'b0;

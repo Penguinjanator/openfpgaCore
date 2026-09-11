@@ -491,6 +491,32 @@ static void test_gpu_swap_side_port(void) {
 }
 
 static void test_gpu_swap_hold_during_os_menu(void) {
+#ifdef MISTER_MENU_CONTINUES
+    printf("test_gpu_swap_hold_during_os_menu (MiSTer OSD keeps presentation running):\n");
+    tb->os_inmenu_in = 1;
+    for (int i = 0; i < 4; ++i) tick();
+    for (unsigned frame = 0; frame < 12; ++frame) {
+        std::vector<uint32_t> r;
+        axi_write_single(0x4000009cu, 1);
+        tb->gpu_swap_idx_in = frame % 3;
+        tb->gpu_swap_req_in = 1;
+        tick();
+        tb->gpu_swap_req_in = 0;
+        for (int i = 0; i < 4; ++i) tick();
+        tb->vsync_in = 1;
+        tick(); tick();
+        tb->vsync_in = 0;
+        for (int i = 0; i < 5; ++i) tick();
+        axi_read_burst(0x40000018u, 0, r);
+        check_eq("osd-flip-drained", r[0] & 1u, 0u);
+        check_eq("osd-frame-presented", (r[0] >> 1) & 3u, frame % 3);
+        axi_read_burst(0x4000009cu, 0, r);
+        check_eq("osd-vblank-irq", r[0] & 1u, 1u);
+    }
+    tb->gpu_swap_idx_in = 0;
+    tb->os_inmenu_in = 0;
+    for (int i = 0; i < 4; ++i) tick();
+#else
     printf("test_gpu_swap_hold_during_os_menu (Pocket menu/screenshot freezes presentation):\n");
 
     auto read_swap_ctrl = [&]() -> uint32_t {
@@ -539,6 +565,7 @@ static void test_gpu_swap_hold_during_os_menu(void) {
     uint32_t released = read_swap_ctrl();
     check_eq("menu-hold-release-display", (released >> 1) & 0x3u, target);
     check_eq("menu-hold-release-clear", released & 1u, 0u);
+#endif
 }
 
 // =====================================================================

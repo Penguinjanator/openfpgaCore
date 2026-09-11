@@ -1137,14 +1137,13 @@ ARCHITECTURE rtl OF ascal IS
 		-- Just OR them all together
 		--v := (p.r OR p.g OR p.b);
 
-		-- Maximum
-		IF p.r > p.g THEN
+		-- Compare channels in parallel so selection does not feed
+		-- a second comparator on the HDMI pixel-clock path.
+		IF p.r > p.g AND p.r > p.b THEN
 			v := p.r;
-		ELSE
+		ELSIF p.g > p.b THEN
 			v := p.g;
-		END IF;
-
-		IF p.b > v THEN
+		ELSE
 			v := p.b;
 		END IF;
 
