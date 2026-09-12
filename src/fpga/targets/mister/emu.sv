@@ -1314,6 +1314,15 @@ wire        arb_burst_32bit;
 wire        isr_burst_data_valid;
 wire        isr_burst_data_done;
 
+// Register refill permission before the framebuffer request arbitration.
+// One cycle of delay is covered by the eight-sample queue; an active
+// framebuffer burst always drains normally.
+reg fbdma_audio_ready;
+always @(posedge clk_ram_controller) begin
+	if (!reset_n_cpu_core) fbdma_audio_ready <= 1'b0;
+	else fbdma_audio_ready <= !mixer_enable_mmio || audio_fifo_full;
+end
+
 video_burst_arb vburst_arb (
 	.clk(clk_ram_controller),
 	.reset_n(reset_n_cpu_core),
@@ -1323,7 +1332,8 @@ video_burst_arb vburst_arb (
 	.vid_32bit(video_burst_32bit),
 	.vid_data_valid(video_burst_data_valid),
 	.vid_data_done(video_burst_data_done),
-	.dma_req(fbdma_req),
+	// Let the mixer refill before starting another framebuffer burst.
+	.dma_req(fbdma_req && fbdma_audio_ready),
 	.dma_addr(fbdma_addr),
 	.dma_len(fbdma_len),
 	.dma_gnt(fbdma_gnt),

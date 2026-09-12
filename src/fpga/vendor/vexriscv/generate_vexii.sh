@@ -103,6 +103,7 @@ LSU_SB_SLOTS=2           # D$ store-buffer line slots
 LSU_SB_OPS=16            # D$ store-buffer op capacity
 EXTRA_FLAGS=""
 MAXFAN_HINT=0
+FETCH_READ_HOLD=0        # Preserve stalled reads using a registered selector.
 
 CONFIG="$SCRIPT_DIR/configs/$VARIANT.cfg"
 if [ ! -f "$CONFIG" ]; then
@@ -222,6 +223,12 @@ perl -pi -e 's/= \{\$urandom\};/= 0;/' "$OUTPUT"
 if grep -q '\$urandom' "$OUTPUT"; then
     echo "ERROR: unsupported \$urandom remains in generated Verilog"
     exit 1
+fi
+
+# Keep late fetch-ready signals off the MiSTer RAM read-enable ports.
+# The generated read and stall behavior remains cycle-for-cycle identical.
+if [ "$FETCH_READ_HOLD" = 1 ]; then
+    perl "$SCRIPT_DIR/retime_fetch_reads.pl" "$OUTPUT"
 fi
 
 echo ""

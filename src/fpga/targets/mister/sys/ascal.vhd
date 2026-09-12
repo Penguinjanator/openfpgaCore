@@ -459,7 +459,9 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL pal2_mem : arr_uv24(0 TO 255);
 	ATTRIBUTE ramstyle of pal1_mem : signal is "no_rw_check";
 	ATTRIBUTE ramstyle of pal2_mem : signal is "no_rw_check";
-	SIGNAL o_htotal,o_hsstart,o_hsend : uint12;
+	SIGNAL o_hsstart,o_hsend : uint12;
+	-- A signed limit also preserves the zero-total configuration.
+	SIGNAL o_htotal_limit : integer RANGE -1 TO 4094;
 	SIGNAL o_hmin,o_hmax,o_hdisp,o_v_hmin_adj : uint12;
 	SIGNAL o_hsize,o_vsize : uint12;
 	SIGNAL o_vtotal,o_vsstart,o_vsend : uint12;
@@ -1884,7 +1886,7 @@ BEGIN
 
 			o_run    <=run; -- <ASYNC> ?
 
-			o_htotal <=htotal; -- <ASYNC> ?
+			o_htotal_limit <= htotal-1; -- <ASYNC> ?
 			o_hsstart<=hsstart; -- <ASYNC> ?
 			o_hsend  <=hsend; -- <ASYNC> ?
 			o_hdisp  <=hdisp; -- <ASYNC> ?
@@ -2759,7 +2761,7 @@ BEGIN
 
 			IF o_ce='1' THEN
 				-- Output pixels count
-				IF o_hcpt+1<o_htotal THEN
+				IF o_hcpt<o_htotal_limit THEN
 					o_hcpt<=(o_hcpt+1) MOD 4096;
 				ELSE
 					o_hcpt<=0;

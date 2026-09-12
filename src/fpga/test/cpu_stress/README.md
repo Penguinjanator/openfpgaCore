@@ -21,3 +21,15 @@ checks read data, write delivery and protocol ordering. Success prints
 `CPU stress PASS` followed by the bench's normal boot marker.
 The last command increases scanout traffic to exercise instruction fetch and
 trap returns under heavier memory backpressure.
+
+From the repository root, also run:
+
+```sh
+python3 tools/check_vexii_interrupts.py
+```
+
+This isolated fixture connects the real peripheral timer to the CPU and enables
+periodic machine interrupts throughout the same workload. It checks that at
+least 200 interrupts complete while preserving the computation, synchronous
+trap count and memory checks. `--netlist` selects another generated CPU for
+comparison; `--output` selects an isolated build directory.

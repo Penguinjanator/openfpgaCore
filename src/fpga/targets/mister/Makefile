@@ -191,6 +191,7 @@ help:
 
 # ── CPU generation (file target — MiSTer dual-issue variant) ─────────
 $(VEXII_OUT): $(VEXII_DIR)/../generate_vexii.sh \
+              $(VEXII_DIR)/../retime_fetch_reads.pl \
               $(VEXII_DIR)/../configs/$(VARIANT).cfg \
               $(wildcard $(VEXII_DIR)/../patches/*.patch)
 	@printf "$(C_HEAD)[cpu]$(C_RESET) Generating VexiiRiscv ($(VARIANT))...\n"
