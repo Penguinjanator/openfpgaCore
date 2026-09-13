@@ -1,0 +1,454 @@
+{
+  "before-coarse-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-perfdemo"
+    ],
+    "start": 1789327746.1194859,
+    "hashes": "f2fa15eff47c292d733fc4edfabfc731cdce7655e46cec11dba7e171a97ed6a1  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789327825.8993194,
+    "frames": 930,
+    "format_version": 4
+  },
+  "before-repeat-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789328439.679052,
+    "hashes": "f2fa15eff47c292d733fc4edfabfc731cdce7655e46cec11dba7e171a97ed6a1  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328519.8159213,
+    "frames": 1193,
+    "format_version": 4
+  },
+  "before-repeat-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789328528.2577696,
+    "hashes": "f2fa15eff47c292d733fc4edfabfc731cdce7655e46cec11dba7e171a97ed6a1  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328608.4489524,
+    "frames": 1004,
+    "format_version": 4
+  },
+  "before-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789327403.975333,
+    "hashes": "f2fa15eff47c292d733fc4edfabfc731cdce7655e46cec11dba7e171a97ed6a1  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789327483.191948,
+    "frames": 1192,
+    "format_version": 4
+  },
+  "before-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789327487.1275284,
+    "hashes": "f2fa15eff47c292d733fc4edfabfc731cdce7655e46cec11dba7e171a97ed6a1  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789327565.1812012,
+    "frames": 1004,
+    "format_version": 4
+  },
+  "clip-coarse-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-perfdemo"
+    ],
+    "start": 1789329444.2308183,
+    "hashes": "1476aa58bde7828a6706b65e41e3392a049f1420481201fc5253357cc4bb6de9  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329524.926056,
+    "frames": 932,
+    "format_version": 4
+  },
+  "clip-repeat-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789329530.898534,
+    "hashes": "1476aa58bde7828a6706b65e41e3392a049f1420481201fc5253357cc4bb6de9  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329610.532285,
+    "frames": 1196,
+    "format_version": 4
+  },
+  "clip-repeat-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789329615.9573438,
+    "hashes": "1476aa58bde7828a6706b65e41e3392a049f1420481201fc5253357cc4bb6de9  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329696.4737248,
+    "frames": 1009,
+    "format_version": 4
+  },
+  "clip-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789329266.4531674,
+    "hashes": "1476aa58bde7828a6706b65e41e3392a049f1420481201fc5253357cc4bb6de9  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329348.6403906,
+    "frames": 1195,
+    "format_version": 4
+  },
+  "clip-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789329355.4499202,
+    "hashes": "1476aa58bde7828a6706b65e41e3392a049f1420481201fc5253357cc4bb6de9  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329434.748406,
+    "frames": 1008,
+    "format_version": 4
+  },
+  "combined-coarse-sigil2": {
+    "game": "SIGILII",
+    "core": "wc-counter",
+    "args": [
+      "-perfdemo"
+    ],
+    "start": 1789329167.6479402,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n1e493f624020acee67f69229760142dc6578e0cda6d910c497538ba7e1203972  /media/fat/.openfpgaOS-profile-20260913/wc-counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329247.429593,
+    "frames": 933,
+    "format_version": 4
+  },
+  "combined-repeat-sigil1": {
+    "game": "SIGIL",
+    "core": "wc-counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789328988.0777931,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n1e493f624020acee67f69229760142dc6578e0cda6d910c497538ba7e1203972  /media/fat/.openfpgaOS-profile-20260913/wc-counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329070.893072,
+    "frames": 1195,
+    "format_version": 4
+  },
+  "combined-repeat-sigil2": {
+    "game": "SIGILII",
+    "core": "wc-counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789329076.6139915,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n1e493f624020acee67f69229760142dc6578e0cda6d910c497538ba7e1203972  /media/fat/.openfpgaOS-profile-20260913/wc-counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329157.6782267,
+    "frames": 1010,
+    "format_version": 4
+  },
+  "combined-sigil1": {
+    "game": "SIGIL",
+    "core": "wc-counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789328632.5102026,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n1e493f624020acee67f69229760142dc6578e0cda6d910c497538ba7e1203972  /media/fat/.openfpgaOS-profile-20260913/wc-counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328713.4124913,
+    "frames": 1194,
+    "format_version": 4
+  },
+  "combined-sigil2": {
+    "game": "SIGILII",
+    "core": "wc-counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789328721.6822615,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n1e493f624020acee67f69229760142dc6578e0cda6d910c497538ba7e1203972  /media/fat/.openfpgaOS-profile-20260913/wc-counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328801.5750828,
+    "frames": 1009,
+    "format_version": 4
+  },
+  "masked-coarse-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-perfdemo"
+    ],
+    "start": 1789327837.6652668,
+    "hashes": "057426c0ef1fdf9a87610f3ac8b5cd938fa6be138dfc119d8e484c7c4097b5fa  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789327916.7264516,
+    "frames": 932,
+    "format_version": 4
+  },
+  "masked-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789327569.131245,
+    "hashes": "057426c0ef1fdf9a87610f3ac8b5cd938fa6be138dfc119d8e484c7c4097b5fa  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789327649.2702277,
+    "frames": 1193,
+    "format_version": 4
+  },
+  "masked-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789327656.9276583,
+    "hashes": "057426c0ef1fdf9a87610f3ac8b5cd938fa6be138dfc119d8e484c7c4097b5fa  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789327738.646158,
+    "frames": 1009,
+    "format_version": 4
+  },
+  "rotate-before-repeat-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789331405.2149453,
+    "hashes": "f2fa15eff47c292d733fc4edfabfc731cdce7655e46cec11dba7e171a97ed6a1  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789331483.6236784,
+    "frames": 1629,
+    "format_version": 4
+  },
+  "rotate-before-repeat-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789331487.5325198,
+    "hashes": "f2fa15eff47c292d733fc4edfabfc731cdce7655e46cec11dba7e171a97ed6a1  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789331566.0020123,
+    "frames": 1199,
+    "format_version": 4
+  },
+  "rotate-before-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789329711.9135818,
+    "hashes": "f2fa15eff47c292d733fc4edfabfc731cdce7655e46cec11dba7e171a97ed6a1  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329793.4795406,
+    "frames": 1628,
+    "format_version": 4
+  },
+  "rotate-before-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789329801.6102571,
+    "hashes": "f2fa15eff47c292d733fc4edfabfc731cdce7655e46cec11dba7e171a97ed6a1  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329882.618531,
+    "frames": 1199,
+    "format_version": 4
+  },
+  "rotate-combined-sigil1": {
+    "game": "SIGIL",
+    "core": "wc-counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789330625.9975564,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n1e493f624020acee67f69229760142dc6578e0cda6d910c497538ba7e1203972  /media/fat/.openfpgaOS-profile-20260913/wc-counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789330707.6664143,
+    "frames": 1619,
+    "format_version": 4
+  },
+  "rotate-software-repeat-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789331240.9624305,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789331319.3488162,
+    "frames": 1619,
+    "format_version": 4
+  },
+  "rotate-software-repeat-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789331323.1945734,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789331401.3959382,
+    "frames": 1171,
+    "format_version": 4
+  },
+  "rotate-software-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789329891.2203813,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789329972.6329467,
+    "frames": 1618,
+    "format_version": 4
+  },
+  "rotate-software-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789330521.8975246,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789330607.6207438,
+    "frames": 1172,
+    "format_version": 4
+  },
+  "rotate-walls-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789331570.0664506,
+    "hashes": "9c847d4883655e4b6dbfb9e18cc62d65c25b1204baa51d2e6aba0a6d4ac92bf7  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789331648.3862128,
+    "frames": 1619,
+    "format_version": 4
+  },
+  "rotate-walls-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-noperf"
+    ],
+    "start": 1789331652.1763513,
+    "hashes": "9c847d4883655e4b6dbfb9e18cc62d65c25b1204baa51d2e6aba0a6d4ac92bf7  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789331730.5778806,
+    "frames": 1181,
+    "format_version": 4
+  },
+  "rtl-control-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789328809.449357,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328890.3924513,
+    "frames": 1194,
+    "format_version": 4
+  },
+  "rtl-control-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-noperf",
+      "-perfdemo"
+    ],
+    "start": 1789328898.7419717,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328979.9565275,
+    "frames": 1011,
+    "format_version": 4
+  },
+  "skip-coarse-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-perfdemo"
+    ],
+    "start": 1789328175.6894915,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328255.1566021,
+    "frames": 934,
+    "format_version": 4
+  },
+  "skip-repeat-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789328263.553106,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328345.4118445,
+    "frames": 1194,
+    "format_version": 4
+  },
+  "skip-repeat-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789328354.891372,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328433.837793,
+    "frames": 1009,
+    "format_version": 4
+  },
+  "skip-sigil1": {
+    "game": "SIGIL",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789328000.9899406,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328081.2858293,
+    "frames": 1194,
+    "format_version": 4
+  },
+  "skip-sigil2": {
+    "game": "SIGILII",
+    "core": "counter",
+    "args": [
+      "-perfdemo",
+      "-noperf"
+    ],
+    "start": 1789328087.7278197,
+    "hashes": "208fa496c2e6e264be48f43bacc1bec73b0e407b372bcec1a49b242298301e45  /media/fat/.openfpgaOS-profile-20260913/profile.elf\n26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2  /media/fat/.openfpgaOS-profile-20260913/counter.rbf\nc43aac4daf0820fd5fc65f9f2de6178710954c258212d2dd910be1ae7da97582  /media/fat/games/OpenfpgaOS/boot.rom\n",
+    "end": 1789328167.5084403,
+    "frames": 1009,
+    "format_version": 4
+  }
+}

@@ -449,7 +449,8 @@ else
 		echo "  1. Unzip this archive into /media/fat/ (merge folders):"; \
 		echo "       _Computer/OpenfpgaOS.rbf    the core bitstream"; \
 		echo "       games/OpenfpgaOS/boot.rom   the OS kernel"; \
-		echo "  2. Install a game package (e.g. Doom) into games/OpenfpgaOS/."; \
+		echo "  2. Extract a game package (e.g. Doom) at the SD-card root and run"; \
+		echo "     its setup script from the MiSTer Scripts menu."; \
 		echo "  3. Launch a game .mgl from the MiSTer menu."; \
 		echo ""; \
 		echo "SDRAM speed is handled automatically: the core probes SDRAM at boot"; \

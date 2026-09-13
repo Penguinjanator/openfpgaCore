@@ -1,0 +1,99 @@
+--- a/src/fpga/common/gpu_core.v
++++ b/src/fpga/common/gpu_core.v
+@@ -110,6 +110,9 @@
+     // Retain masked opaque writes across words/columns. Read-modify-write
+     // traffic bypasses after draining; full tags preserve arbitrary aliases.
+     parameter GPU_WRITE_COMBINE = 1,
++    // Experimental lookup/merge overlap. Normal targets keep it disabled;
++    // see docs/SS1_DOOM_MASKED_20260913.md for timing and hardware results.
++    parameter GPU_WRITE_COMBINE_PIPE = 0,
+ 
+     // ----------------------------------------------------------------
+     // Edge-walker slope-divide layout, forwarded verbatim to
+@@ -4183,6 +4186,10 @@
+     // One synchronous read and one write port, two M10Ks at 256 entries.
+     (* ramstyle = "M10K, no_rw_check" *) reg [WORD_W-1:0] words [0:255];
+     reg [WORD_W-1:0] word_r;
++    // A new lookup can overlap the previous merge. Forward the written word
++    // on same-entry read/write collisions; M10K mixed-port data is undefined.
++    reg forward_valid;
++    reg [WORD_W-1:0] forward_word;
+     reg [2:0] phase;
+     reg initializing;
+     reg [7:0] walk;
+@@ -4196,9 +4203,11 @@
+     reg [GPU_ADDR_W-1:0] output_addr;
+     reg [31:0] output_data;
+     reg [3:0] output_strb;
+-    wire [TAG_W-1:0] old_tag = word_r[WORD_W-1:36];
+-    wire [31:0] old_data = word_r[35:4];
+-    wire [3:0] old_strb = word_r[3:0];
++    wire [WORD_W-1:0] lookup_word = (GPU_WRITE_COMBINE_PIPE && forward_valid)
++                                ? forward_word : word_r;
++    wire [TAG_W-1:0] old_tag = lookup_word[WORD_W-1:36];
++    wire [31:0] old_data = lookup_word[35:4];
++    wire [3:0] old_strb = lookup_word[3:0];
+     wire hit = (old_tag == input_tag);
+     wire output_free = !output_valid || fbwq_stage_can_load;
+     wire bypass = !fbwq_req_combine || ((fbwq_req_strb == 4'hf) && (dirty_count == 0));
+@@ -4215,9 +4224,12 @@
+     wire [31:0] merged_data = (input_data & byte_mask)
+                            | (old_data & ~byte_mask & {32{hit}});
+     wire [3:0] merged_strb = input_strb | (old_strb & {4{hit}});
+-    assign wc_input_ready = !initializing && (phase == WC_IDLE)
+-                         && ((fbwq_req_strb == 0) || !bypass
+-                             || ((dirty_count == 0) && output_free));
++    assign wc_input_ready = !initializing
++                         && (((phase == WC_IDLE)
++                              && ((fbwq_req_strb == 0) || !bypass
++                                  || ((dirty_count == 0) && output_free)))
++                             || (GPU_WRITE_COMBINE_PIPE && apply && !bypass
++                                 && (fbwq_req_strb != 0)));
+     // Initialization blocks incoming writes but contains no older work to
+     // drain. An empty fence/flip can retire while the RAM walk finishes.
+     assign wc_busy = (phase != WC_IDLE) || (dirty_count != 0) || output_valid;
+@@ -4248,7 +4260,18 @@
+             dirty_count <= 0;
+             flush_pending <= 0;
+             output_valid <= 0;
++            forward_valid <= 0;
+         end else begin
++            if (ram_read) begin
++                forward_valid <= apply && (ram_write_addr == ram_read_addr);
++                forward_word <= ram_write_data;
++            end
++            if (GPU_WRITE_COMBINE_PIPE && read_input) begin
++                input_index <= address_index;
++                input_tag <= address_word;
++                input_data <= fbwq_req_data;
++                input_strb <= fbwq_req_strb;
++            end
+             if (tex_flush_req) flush_pending <= 1;
+             else if ((dirty_count == 0) && (phase == WC_IDLE)) flush_pending <= 0;
+             if (output_valid && fbwq_stage_can_load) output_valid <= 0;
+@@ -4266,10 +4289,12 @@
+                             output_data <= fbwq_req_data;
+                             output_strb <= fbwq_req_strb;
+                         end else begin
+-                            input_index <= address_index;
+-                            input_tag <= address_word;
+-                            input_data <= fbwq_req_data;
+-                            input_strb <= fbwq_req_strb;
++                            if (!GPU_WRITE_COMBINE_PIPE) begin
++                                input_index <= address_index;
++                                input_tag <= address_word;
++                                input_data <= fbwq_req_data;
++                                input_strb <= fbwq_req_strb;
++                            end
+                             phase <= WC_APPLY;
+                         end
+                     end else if ((dirty_count != 0)
+@@ -4286,7 +4311,7 @@
+                         output_strb <= old_strb;
+                     end
+                     if (old_strb == 0) dirty_count <= dirty_count + 1'b1;
+-                    phase <= WC_IDLE;
++                    phase <= (GPU_WRITE_COMBINE_PIPE && read_input) ? WC_APPLY : WC_IDLE;
+                 end
+                 WC_SCAN_READ: phase <= WC_SCAN_APPLY;
+                 WC_SCAN_APPLY: if ((old_strb == 0) || output_free) begin

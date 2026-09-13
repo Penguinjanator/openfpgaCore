@@ -1,0 +1,42 @@
+/home/alberto/Repos/Doom/build/ss1-opt-20260913/release-mister/app.elf  :
+section               size        addr
+.text               640308   272629760
+.eh_frame               84   273270068
+.init_array              8   273270152
+.data               285556   273270160
+.bss              45456388   273563648
+.app_fasttext         9984       16384
+.app_fastdata         4240       26368
+.debug_info          38538           0
+.debug_abbrev        11348           0
+.debug_loclists      65667           0
+.debug_aranges         984           0
+.debug_rnglists       5166           0
+.debug_line          95179           0
+.debug_str            3204           0
+.debug_line_str       1598           0
+.debug_frame          1548           0
+Total             46619800
+
+
+/home/alberto/Repos/Doom/build/ss1-opt-20260913/release-pocket/app.elf  :
+section               size        addr
+.text               640308   272629760
+.eh_frame               84   273270068
+.init_array              8   273270152
+.data               285556   273270160
+.bss              45454716   273563648
+.app_fasttext         9984       16384
+.app_fastdata         4240       26368
+.debug_info          38538           0
+.debug_abbrev        11348           0
+.debug_loclists      65667           0
+.debug_aranges         984           0
+.debug_rnglists       5166           0
+.debug_line          95179           0
+.debug_str            3204           0
+.debug_line_str       1598           0
+.debug_frame          1548           0
+Total             46618128
+
+

@@ -1,0 +1,1362 @@
+{
+  "batch-demo-fixed-coarse-sigil2": {
+    "frames": 929,
+    "duration_s": 30.147923,
+    "fps": 30.781556659807045,
+    "mean_ms": {
+      "frame_interval": 32.51079870828848,
+      "frame_active": 25.796548977395048,
+      "display": 25.332694294940797,
+      "view": 23.723767491926804,
+      "bsp": 15.71178471474704,
+      "planes": 3.347114101184069,
+      "masked": 4.44089235737352,
+      "present": 0.26862755651237885,
+      "gpu_wait": 0.45233692142088266,
+      "vsync_wait": 0.06939289558665232,
+      "flip": 0.05288374596340151,
+      "cache": 0.9251829924650161,
+      "dma_wait": 0.21120775026910654,
+      "ring_wait": 0.02679763186221744,
+      "prepare": 25.540181916038755,
+      "pacing_wait": 0.06939289558665232
+    },
+    "interval_ms": {
+      "median": 33.324,
+      "p95": 66.65,
+      "p99": 83.31372999999999
+    },
+    "intervals_over_25ms": 617,
+    "interval_samples": 928,
+    "prepare_p95_ms": 47.941999999999936,
+    "view_p95_ms": 46.28119999999998,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      6,
+      1
+    ],
+    "min_health": 33,
+    "gpu_columns_mean": 1384.465016146394,
+    "gpu_spans_mean": 358.7664155005382,
+    "gpu": {
+      "clock": {
+        "total": 3014791888,
+        "per_frame": 3248698.1551724137,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 486999665,
+        "per_frame": 524784.1217672414,
+        "percent_clock": 16.15367438589844
+      },
+      "read_beats": {
+        "total": 14721756,
+        "per_frame": 15863.961206896553,
+        "percent_clock": 0.4883174874722895
+      },
+      "write_beats": {
+        "total": 15631834,
+        "per_frame": 16844.64870689655,
+        "percent_clock": 0.5185045794444568
+      },
+      "read_address_stall": {
+        "total": 46679930,
+        "per_frame": 50301.64870689655,
+        "percent_clock": 1.5483632613515907
+      },
+      "write_address_stall": {
+        "total": 313697579,
+        "per_frame": 338036.1842672414,
+        "percent_clock": 10.405281381067587
+      },
+      "write_data_stall": {
+        "total": 314945413,
+        "per_frame": 339380.8329741379,
+        "percent_clock": 10.446671767082849
+      },
+      "texture_requests": {
+        "total": 55855720,
+        "per_frame": 60189.35344827586,
+        "percent_clock": 1.8527222466773468
+      },
+      "texture_fills": {
+        "total": 1866636,
+        "per_frame": 2011.4612068965516,
+        "percent_clock": 0.061915915570487964
+      },
+      "texture_request_stall": {
+        "total": 1773842,
+        "per_frame": 1911.467672413793,
+        "percent_clock": 0.058837958502560496
+      },
+      "combiner_stall": {
+        "total": 178339359,
+        "per_frame": 192176.0334051724,
+        "percent_clock": 5.915478269324573
+      },
+      "fragment_stall": {
+        "total": 194341804,
+        "per_frame": 209420.0474137931,
+        "percent_clock": 6.446275936111979
+      },
+      "fragment_cycles": {
+        "total": 363982058,
+        "per_frame": 392222.0452586207,
+        "percent_clock": 12.073206759272002
+      },
+      "dma_busy": {
+        "total": 30529256,
+        "per_frame": 32897.90517241379,
+        "percent_clock": 1.0126488704417
+      },
+      "writes_outstanding": {
+        "total": 384124928,
+        "per_frame": 413927.724137931,
+        "percent_clock": 12.741341434842019
+      }
+    },
+    "measured_clock_mhz": 99.99998633405028,
+    "midi": {
+      "handler_us": 3292858,
+      "handler_cpu_percent": 10.92233783401928,
+      "calls": 30147,
+      "mean_handler_us": 109.22672239360467,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 26.40607183851907,
+    "angle_balanced_bsp_ms": 16.709394842003633,
+    "angle_bins": 32,
+    "simulation_hz": 34.828269927583406
+  },
+  "batch-demo-fixed-sigil1": {
+    "frames": 1192,
+    "duration_s": 29.9803,
+    "fps": 39.7260867969967,
+    "mean_ms": {
+      "frame_interval": 25.187275167785234,
+      "frame_active": 22.47045469798658,
+      "display": 0.0,
+      "view": 0.0,
+      "bsp": 0.0,
+      "planes": 0.0,
+      "masked": 0.0,
+      "present": 0.0,
+      "gpu_wait": 0.0,
+      "vsync_wait": 0.0,
+      "flip": 0.0,
+      "cache": 0.0,
+      "dma_wait": 0.0,
+      "ring_wait": 0.0,
+      "prepare": 21.55815855704698,
+      "pacing_wait": 0.7847206375838927
+    },
+    "interval_ms": {
+      "median": 16.71,
+      "p95": 49.987,
+      "p99": 49.9932
+    },
+    "intervals_over_25ms": 546,
+    "interval_samples": 1191,
+    "prepare_p95_ms": 36.5594,
+    "view_p95_ms": 0.0,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      3,
+      2
+    ],
+    "min_health": 39,
+    "gpu_columns_mean": 0,
+    "gpu_spans_mean": 0,
+    "gpu": {
+      "clock": {
+        "total": 2998029955,
+        "per_frame": 2517237.5776658272,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 691690485,
+        "per_frame": 580764.4710327456,
+        "percent_clock": 23.07150013115863
+      },
+      "read_beats": {
+        "total": 25764905,
+        "per_frame": 21633.001679261124,
+        "percent_clock": 0.859394515289291
+      },
+      "write_beats": {
+        "total": 21442886,
+        "per_frame": 18004.10243492863,
+        "percent_clock": 0.7152325467675322
+      },
+      "read_address_stall": {
+        "total": 90169581,
+        "per_frame": 75709.13602015113,
+        "percent_clock": 3.0076277540062137
+      },
+      "write_address_stall": {
+        "total": 414896894,
+        "per_frame": 348360.11251049535,
+        "percent_clock": 13.838984273924641
+      },
+      "write_data_stall": {
+        "total": 417093830,
+        "per_frame": 350204.72712006717,
+        "percent_clock": 13.91226359511141
+      },
+      "texture_requests": {
+        "total": 75969276,
+        "per_frame": 63786.12594458438,
+        "percent_clock": 2.533973213753296
+      },
+      "texture_fills": {
+        "total": 3952439,
+        "per_frame": 3318.5885810243494,
+        "percent_clock": 0.13183453999211292
+      },
+      "texture_request_stall": {
+        "total": 4187613,
+        "per_frame": 3516.0478589420654,
+        "percent_clock": 0.139678824523286
+      },
+      "combiner_stall": {
+        "total": 213464618,
+        "per_frame": 179231.41729638958,
+        "percent_clock": 7.1201629471377315
+      },
+      "fragment_stall": {
+        "total": 230076737,
+        "per_frame": 193179.46011754827,
+        "percent_clock": 7.674264115216287
+      },
+      "fragment_cycles": {
+        "total": 525710225,
+        "per_frame": 441402.3719563392,
+        "percent_clock": 17.535189203938426
+      },
+      "dma_busy": {
+        "total": 40489241,
+        "per_frame": 33996.00419815281,
+        "percent_clock": 1.3505282337981177
+      },
+      "writes_outstanding": {
+        "total": 530279025,
+        "per_frame": 445238.47607052897,
+        "percent_clock": 17.687582611228446
+      }
+    },
+    "measured_clock_mhz": 99.99999849901435,
+    "midi": {
+      "handler_us": 3311724,
+      "handler_cpu_percent": 11.04633375916852,
+      "calls": 29980,
+      "mean_handler_us": 110.46444296197465,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 20.813288801347838,
+    "angle_balanced_bsp_ms": 0.0,
+    "angle_bins": 32,
+    "simulation_hz": 35.0229984356394
+  },
+  "batch-demo-fixed-sigil2": {
+    "frames": 1004,
+    "duration_s": 30.068107,
+    "fps": 33.357603789290756,
+    "mean_ms": {
+      "frame_interval": 30.000600597609562,
+      "frame_active": 23.70531673306773,
+      "display": 0.0,
+      "view": 0.0,
+      "bsp": 0.0,
+      "planes": 0.0,
+      "masked": 0.0,
+      "present": 0.0,
+      "gpu_wait": 0.0,
+      "vsync_wait": 0.0,
+      "flip": 0.0,
+      "cache": 0.0,
+      "dma_wait": 0.0,
+      "ring_wait": 0.0,
+      "prepare": 23.44085657370518,
+      "pacing_wait": 0.13066334661354584
+    },
+    "interval_ms": {
+      "median": 33.323,
+      "p95": 64.88149999999963,
+      "p99": 83.313
+    },
+    "intervals_over_25ms": 586,
+    "interval_samples": 1003,
+    "prepare_p95_ms": 45.719399999999986,
+    "view_p95_ms": 0.0,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      6,
+      1
+    ],
+    "min_health": 33,
+    "gpu_columns_mean": 0,
+    "gpu_spans_mean": 0,
+    "gpu": {
+      "clock": {
+        "total": 3006810680,
+        "per_frame": 2997817.228315055,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 527237709,
+        "per_frame": 525660.7268195414,
+        "percent_clock": 17.53478236947063
+      },
+      "read_beats": {
+        "total": 15772832,
+        "per_frame": 15725.655034895313,
+        "percent_clock": 0.5245701734703164
+      },
+      "write_beats": {
+        "total": 16923253,
+        "per_frame": 16872.635094715853,
+        "percent_clock": 0.5628306801145192
+      },
+      "read_address_stall": {
+        "total": 50735601,
+        "per_frame": 50583.84945164507,
+        "percent_clock": 1.6873560193686687
+      },
+      "write_address_stall": {
+        "total": 340464426,
+        "per_frame": 339446.0877367896,
+        "percent_clock": 11.323108177865059
+      },
+      "write_data_stall": {
+        "total": 341800137,
+        "per_frame": 340777.8035892323,
+        "percent_clock": 11.36753102792624
+      },
+      "texture_requests": {
+        "total": 60495238,
+        "per_frame": 60314.29511465603,
+        "percent_clock": 2.0119403726476053
+      },
+      "texture_fills": {
+        "total": 1991612,
+        "per_frame": 1985.655034895314,
+        "percent_clock": 0.06623669435682596
+      },
+      "texture_request_stall": {
+        "total": 1924914,
+        "per_frame": 1919.1565304087737,
+        "percent_clock": 0.06401846357682886
+      },
+      "combiner_stall": {
+        "total": 193841395,
+        "per_frame": 193261.61016949153,
+        "percent_clock": 6.446744262595209
+      },
+      "fragment_stall": {
+        "total": 211162513,
+        "per_frame": 210530.92023928216,
+        "percent_clock": 7.0228070694494145
+      },
+      "fragment_cycles": {
+        "total": 394616878,
+        "per_frame": 393436.5682951147,
+        "percent_clock": 13.124101248702496
+      },
+      "dma_busy": {
+        "total": 32597335,
+        "per_frame": 32499.83549351944,
+        "percent_clock": 1.0841166428210238
+      },
+      "writes_outstanding": {
+        "total": 416630198,
+        "per_frame": 415384.0458624128,
+        "percent_clock": 13.856216514436486
+      }
+    },
+    "measured_clock_mhz": 99.9999993348434,
+    "midi": {
+      "handler_us": 3291301,
+      "handler_cpu_percent": 10.946153011893964,
+      "calls": 30068,
+      "mean_handler_us": 109.46191964879607,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 24.250089860650085,
+    "angle_balanced_bsp_ms": 0.0,
+    "angle_bins": 32,
+    "simulation_hz": 34.88746398301696
+  },
+  "batch-profile-rotate-sigil1": {
+    "frames": 1631,
+    "duration_s": 29.986405,
+    "fps": 54.35796655184241,
+    "mean_ms": {
+      "frame_interval": 18.395508277130592,
+      "frame_active": 17.282086450030658,
+      "display": 0.0,
+      "view": 0.0,
+      "bsp": 0.0,
+      "planes": 0.0,
+      "masked": 0.0,
+      "present": 0.0,
+      "gpu_wait": 0.0,
+      "vsync_wait": 0.0,
+      "flip": 0.0,
+      "cache": 0.0,
+      "dma_wait": 0.0,
+      "ring_wait": 0.0,
+      "prepare": 15.440207847946045,
+      "pacing_wait": 1.730006131207848
+    },
+    "interval_ms": {
+      "median": 16.663,
+      "p95": 33.325,
+      "p99": 33.38078
+    },
+    "intervals_over_25ms": 191,
+    "interval_samples": 1630,
+    "prepare_p95_ms": 26.8335,
+    "view_p95_ms": 0.0,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      3,
+      1
+    ],
+    "min_health": 100,
+    "gpu_columns_mean": 0,
+    "gpu_spans_mean": 0,
+    "gpu": {
+      "clock": {
+        "total": 2998640560,
+        "per_frame": 1839656.7852760737,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 670259495,
+        "per_frame": 411202.14417177916,
+        "percent_clock": 22.352111951690535
+      },
+      "read_beats": {
+        "total": 21155504,
+        "per_frame": 12978.836809815952,
+        "percent_clock": 0.7055031630733362
+      },
+      "write_beats": {
+        "total": 24683493,
+        "per_frame": 15143.247239263803,
+        "percent_clock": 0.8231561104475956
+      },
+      "read_address_stall": {
+        "total": 40869121,
+        "per_frame": 25073.08036809816,
+        "percent_clock": 1.3629216367299455
+      },
+      "write_address_stall": {
+        "total": 404824524,
+        "per_frame": 248358.60368098159,
+        "percent_clock": 13.500268401625302
+      },
+      "write_data_stall": {
+        "total": 407653042,
+        "per_frame": 250093.89079754602,
+        "percent_clock": 13.594595078777965
+      },
+      "texture_requests": {
+        "total": 90344121,
+        "per_frame": 55425.84110429448,
+        "percent_clock": 3.0128359565709335
+      },
+      "texture_fills": {
+        "total": 1407109,
+        "per_frame": 863.2570552147239,
+        "percent_clock": 0.04692489719408051
+      },
+      "texture_request_stall": {
+        "total": 3282788,
+        "per_frame": 2013.9803680981595,
+        "percent_clock": 0.10947587529463684
+      },
+      "combiner_stall": {
+        "total": 145256891,
+        "per_frame": 89114.65705521472,
+        "percent_clock": 4.844091450560517
+      },
+      "fragment_stall": {
+        "total": 165330952,
+        "per_frame": 101430.03190184048,
+        "percent_clock": 5.513530171151957
+      },
+      "fragment_cycles": {
+        "total": 415876771,
+        "per_frame": 255139.12331288343,
+        "percent_clock": 13.868843653605486
+      },
+      "dma_busy": {
+        "total": 59268829,
+        "per_frame": 36361.244785276074,
+        "percent_clock": 1.9765232882730033
+      },
+      "writes_outstanding": {
+        "total": 517265594,
+        "per_frame": 317340.8552147239,
+        "percent_clock": 17.25000324813855
+      }
+    },
+    "measured_clock_mhz": 100.00000200090675,
+    "midi": {
+      "handler_us": 3232113,
+      "handler_cpu_percent": 10.7785944997408,
+      "calls": 29986,
+      "mean_handler_us": 107.78740078703395,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 16.428599421112686,
+    "angle_balanced_bsp_ms": 0.0,
+    "angle_bins": 32,
+    "simulation_hz": 35.01586802419296
+  },
+  "batch-profile-rotate-sigil2": {
+    "frames": 1199,
+    "duration_s": 30.007877,
+    "fps": 39.92285092344253,
+    "mean_ms": {
+      "frame_interval": 25.042964970809006,
+      "frame_active": 23.33760133444537,
+      "display": 0.0,
+      "view": 0.0,
+      "bsp": 0.0,
+      "planes": 0.0,
+      "masked": 0.0,
+      "present": 0.0,
+      "gpu_wait": 0.0,
+      "vsync_wait": 0.0,
+      "flip": 0.0,
+      "cache": 0.0,
+      "dma_wait": 0.0,
+      "ring_wait": 0.0,
+      "prepare": 23.18354295246038,
+      "pacing_wait": 0.02549040867389491
+    },
+    "interval_ms": {
+      "median": 33.195,
+      "p95": 33.33815,
+      "p99": 33.428059999999995
+    },
+    "intervals_over_25ms": 602,
+    "interval_samples": 1198,
+    "prepare_p95_ms": 30.151999999999997,
+    "view_p95_ms": 0.0,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      6,
+      1
+    ],
+    "min_health": 100,
+    "gpu_columns_mean": 0,
+    "gpu_spans_mean": 0,
+    "gpu": {
+      "clock": {
+        "total": 3000787683,
+        "per_frame": 2504831.1210350585,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 578849656,
+        "per_frame": 483180.0133555927,
+        "percent_clock": 19.289923751663174
+      },
+      "read_beats": {
+        "total": 19716289,
+        "per_frame": 16457.670283806343,
+        "percent_clock": 0.6570371210098038
+      },
+      "write_beats": {
+        "total": 18942505,
+        "per_frame": 15811.773789649416,
+        "percent_clock": 0.6312510914155202
+      },
+      "read_address_stall": {
+        "total": 50365220,
+        "per_frame": 42041.085141903175,
+        "percent_clock": 1.6783999842883919
+      },
+      "write_address_stall": {
+        "total": 329879307,
+        "per_frame": 275358.3530884808,
+        "percent_clock": 10.9930905431539
+      },
+      "write_data_stall": {
+        "total": 331803647,
+        "per_frame": 276964.6469115192,
+        "percent_clock": 11.057218372353603
+      },
+      "texture_requests": {
+        "total": 67117580,
+        "per_frame": 56024.69115191987,
+        "percent_clock": 2.236665405561117
+      },
+      "texture_fills": {
+        "total": 2330295,
+        "per_frame": 1945.1544240400667,
+        "percent_clock": 0.0776561105339621
+      },
+      "texture_request_stall": {
+        "total": 1975536,
+        "per_frame": 1649.0283806343907,
+        "percent_clock": 0.06583391458155355
+      },
+      "combiner_stall": {
+        "total": 176759570,
+        "per_frame": 147545.550918197,
+        "percent_clock": 5.890439067094771
+      },
+      "fragment_stall": {
+        "total": 196036641,
+        "per_frame": 163636.59515859766,
+        "percent_clock": 6.532839431146119
+      },
+      "fragment_cycles": {
+        "total": 416860955,
+        "per_frame": 347964.0692821369,
+        "percent_clock": 13.891717743364252
+      },
+      "dma_busy": {
+        "total": 40973042,
+        "per_frame": 34201.20367278798,
+        "percent_clock": 1.3654095633662997
+      },
+      "writes_outstanding": {
+        "total": 420271648,
+        "per_frame": 350811.05843071785,
+        "percent_clock": 14.005377667367611
+      }
+    },
+    "measured_clock_mhz": 99.99999943348209,
+    "midi": {
+      "handler_us": 3306437,
+      "handler_cpu_percent": 11.018563559161484,
+      "calls": 30008,
+      "mean_handler_us": 110.18518395094641,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 23.759341796024803,
+    "angle_balanced_bsp_ms": 0.0,
+    "angle_bins": 32,
+    "simulation_hz": 34.99081257897718
+  },
+  "before-demo-fixed-coarse-sigil2": {
+    "frames": 902,
+    "duration_s": 30.105965,
+    "fps": 29.927623977507448,
+    "mean_ms": {
+      "frame_interval": 33.44121507760532,
+      "frame_active": 26.57052549889135,
+      "display": 26.12008425720621,
+      "view": 24.474146341463417,
+      "bsp": 16.420049889135253,
+      "planes": 3.3655343680709535,
+      "masked": 4.464739467849224,
+      "present": 0.26614855875831483,
+      "gpu_wait": 0.46094235033259423,
+      "vsync_wait": 0.0609589800443459,
+      "flip": 0.05144567627494457,
+      "cache": 0.9452549889135254,
+      "dma_wait": 0.2100421286031042,
+      "ring_wait": 0.026541019955654103,
+      "prepare": 26.32329268292683,
+      "pacing_wait": 0.0609589800443459
+    },
+    "interval_ms": {
+      "median": 33.325,
+      "p95": 66.65,
+      "p99": 83.365
+    },
+    "intervals_over_25ms": 621,
+    "interval_samples": 901,
+    "prepare_p95_ms": 48.66849999999998,
+    "view_p95_ms": 47.02269999999999,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      6,
+      1
+    ],
+    "min_health": 33,
+    "gpu_columns_mean": 1382.8525498891352,
+    "gpu_spans_mean": 357.2560975609756,
+    "gpu": {
+      "clock": {
+        "total": 3010595668,
+        "per_frame": 3341393.6381798,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 475338083,
+        "per_frame": 527567.2397336293,
+        "percent_clock": 15.788838336958639
+      },
+      "read_beats": {
+        "total": 14271988,
+        "per_frame": 15840.164261931188,
+        "percent_clock": 0.4740586107825357
+      },
+      "write_beats": {
+        "total": 15190798,
+        "per_frame": 16859.931187569367,
+        "percent_clock": 0.504577820311937
+      },
+      "read_address_stall": {
+        "total": 45760283,
+        "per_frame": 50788.327413984465,
+        "percent_clock": 1.5199743853481158
+      },
+      "write_address_stall": {
+        "total": 307308816,
+        "per_frame": 341075.2674805771,
+        "percent_clock": 10.207575174123315
+      },
+      "write_data_stall": {
+        "total": 308515760,
+        "per_frame": 342414.82796892343,
+        "percent_clock": 10.247665047792795
+      },
+      "texture_requests": {
+        "total": 54258397,
+        "per_frame": 60220.19644839068,
+        "percent_clock": 1.8022478932232358
+      },
+      "texture_fills": {
+        "total": 1810679,
+        "per_frame": 2009.6326304106549,
+        "percent_clock": 0.06014354631696095
+      },
+      "texture_request_stall": {
+        "total": 1743775,
+        "per_frame": 1935.377358490566,
+        "percent_clock": 0.057921261846444666
+      },
+      "combiner_stall": {
+        "total": 174971547,
+        "per_frame": 194197.05549389566,
+        "percent_clock": 5.81185806050924
+      },
+      "fragment_stall": {
+        "total": 190502053,
+        "per_frame": 211434.02108768036,
+        "percent_clock": 6.327719627875316
+      },
+      "fragment_cycles": {
+        "total": 355509681,
+        "per_frame": 394572.34295227524,
+        "percent_clock": 11.808615975195776
+      },
+      "dma_busy": {
+        "total": 29683085,
+        "per_frame": 32944.60044395117,
+        "percent_clock": 0.9859538866512446
+      },
+      "writes_outstanding": {
+        "total": 375777672,
+        "per_frame": 417067.3385127636,
+        "percent_clock": 12.481837929755502
+      }
+    },
+    "measured_clock_mhz": 99.99997236428064,
+    "midi": {
+      "handler_us": 3316046,
+      "handler_cpu_percent": 11.014581329646798,
+      "calls": 30106,
+      "mean_handler_us": 110.14568524546603,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 27.1774401696333,
+    "angle_balanced_bsp_ms": 17.413804448637716,
+    "angle_bins": 32,
+    "simulation_hz": 34.87680929676229
+  },
+  "before-demo-fixed-sigil1": {
+    "frames": 1167,
+    "duration_s": 29.947762,
+    "fps": 38.93446194744035,
+    "mean_ms": {
+      "frame_interval": 25.70001028277635,
+      "frame_active": 22.955775492716366,
+      "display": 0.0,
+      "view": 0.0,
+      "bsp": 0.0,
+      "planes": 0.0,
+      "masked": 0.0,
+      "present": 0.0,
+      "gpu_wait": 0.0,
+      "vsync_wait": 0.0,
+      "flip": 0.0,
+      "cache": 0.0,
+      "dma_wait": 0.0,
+      "ring_wait": 0.0,
+      "prepare": 22.12128877463582,
+      "pacing_wait": 0.7095072836332477
+    },
+    "interval_ms": {
+      "median": 16.741,
+      "p95": 49.987,
+      "p99": 49.99735
+    },
+    "intervals_over_25ms": 558,
+    "interval_samples": 1166,
+    "prepare_p95_ms": 37.472300000000004,
+    "view_p95_ms": 0.0,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      3,
+      2
+    ],
+    "min_health": 39,
+    "gpu_columns_mean": 0,
+    "gpu_spans_mean": 0,
+    "gpu": {
+      "clock": {
+        "total": 2994775712,
+        "per_frame": 2568418.2778730704,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 676498472,
+        "per_frame": 580187.3687821613,
+        "percent_clock": 22.589286713168054
+      },
+      "read_beats": {
+        "total": 25188281,
+        "per_frame": 21602.299313893654,
+        "percent_clock": 0.8410740376673658
+      },
+      "write_beats": {
+        "total": 20984243,
+        "per_frame": 17996.777873070325,
+        "percent_clock": 0.7006949774541246
+      },
+      "read_address_stall": {
+        "total": 88401272,
+        "per_frame": 75815.8421955403,
+        "percent_clock": 2.9518495039804837
+      },
+      "write_address_stall": {
+        "total": 405713550,
+        "per_frame": 347953.30188679247,
+        "percent_clock": 13.547376799348104
+      },
+      "write_data_stall": {
+        "total": 407858658,
+        "per_frame": 349793.01715265866,
+        "percent_clock": 13.619005135032964
+      },
+      "texture_requests": {
+        "total": 74386120,
+        "per_frame": 63795.98627787307,
+        "percent_clock": 2.48386280488173
+      },
+      "texture_fills": {
+        "total": 3865840,
+        "per_frame": 3315.4716981132074,
+        "percent_clock": 0.12908612770264113
+      },
+      "texture_request_stall": {
+        "total": 4040279,
+        "per_frame": 3465.0763293310465,
+        "percent_clock": 0.13491090447310267
+      },
+      "combiner_stall": {
+        "total": 208532396,
+        "per_frame": 178844.25042881648,
+        "percent_clock": 6.963205797496464
+      },
+      "fragment_stall": {
+        "total": 224806199,
+        "per_frame": 192801.1998284734,
+        "percent_clock": 7.506612201348052
+      },
+      "fragment_cycles": {
+        "total": 514134069,
+        "per_frame": 440938.30960548884,
+        "percent_clock": 17.16769863398705
+      },
+      "dma_busy": {
+        "total": 39487166,
+        "per_frame": 33865.493996569465,
+        "percent_clock": 1.3185350021965183
+      },
+      "writes_outstanding": {
+        "total": 518539910,
+        "per_frame": 444716.9039451115,
+        "percent_clock": 17.31481619549077
+      }
+    },
+    "measured_clock_mhz": 99.99998370495932,
+    "midi": {
+      "handler_us": 3342376,
+      "handler_cpu_percent": 11.160687065697932,
+      "calls": 29948,
+      "mean_handler_us": 111.60598370508882,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 21.40765743080901,
+    "angle_balanced_bsp_ms": 0.0,
+    "angle_bins": 32,
+    "simulation_hz": 35.02765916197678
+  },
+  "before-demo-fixed-sigil2": {
+    "frames": 978,
+    "duration_s": 30.029803,
+    "fps": 32.534345962908915,
+    "mean_ms": {
+      "frame_interval": 30.760650306748467,
+      "frame_active": 24.34463292433538,
+      "display": 0.0,
+      "view": 0.0,
+      "bsp": 0.0,
+      "planes": 0.0,
+      "masked": 0.0,
+      "present": 0.0,
+      "gpu_wait": 0.0,
+      "vsync_wait": 0.0,
+      "flip": 0.0,
+      "cache": 0.0,
+      "dma_wait": 0.0,
+      "ring_wait": 0.0,
+      "prepare": 24.103655419222903,
+      "pacing_wait": 0.106079754601227
+    },
+    "interval_ms": {
+      "median": 33.324,
+      "p95": 66.57,
+      "p99": 83.31739999999999
+    },
+    "intervals_over_25ms": 592,
+    "interval_samples": 977,
+    "prepare_p95_ms": 46.026199999999996,
+    "view_p95_ms": 0.0,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      6,
+      1
+    ],
+    "min_health": 33,
+    "gpu_columns_mean": 0,
+    "gpu_spans_mean": 0,
+    "gpu": {
+      "clock": {
+        "total": 3002979515,
+        "per_frame": 3073674.0174002047,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 515522379,
+        "per_frame": 527658.5250767656,
+        "percent_clock": 17.167029492707012
+      },
+      "read_beats": {
+        "total": 15334635,
+        "per_frame": 15695.634595701125,
+        "percent_clock": 0.5106473395307194
+      },
+      "write_beats": {
+        "total": 16478949,
+        "per_frame": 16866.887410440122,
+        "percent_clock": 0.5487532937766311
+      },
+      "read_address_stall": {
+        "total": 50001570,
+        "per_frame": 51178.679631525076,
+        "percent_clock": 1.665065304316603
+      },
+      "write_address_stall": {
+        "total": 333624506,
+        "per_frame": 341478.5117707267,
+        "percent_clock": 11.109782945022854
+      },
+      "write_data_stall": {
+        "total": 334924717,
+        "per_frame": 342809.3316274309,
+        "percent_clock": 11.15308030997341
+      },
+      "texture_requests": {
+        "total": 58896765,
+        "per_frame": 60283.28045035824,
+        "percent_clock": 1.9612776146426694
+      },
+      "texture_fills": {
+        "total": 1938402,
+        "per_frame": 1984.0348004094167,
+        "percent_clock": 0.064549291472606
+      },
+      "texture_request_stall": {
+        "total": 1897303,
+        "per_frame": 1941.9682702149437,
+        "percent_clock": 0.06318068406803634
+      },
+      "combiner_stall": {
+        "total": 190458824,
+        "per_frame": 194942.50153531219,
+        "percent_clock": 6.34232844575365
+      },
+      "fragment_stall": {
+        "total": 207327478,
+        "per_frame": 212208.2681678608,
+        "percent_clock": 6.904059017532126
+      },
+      "fragment_cycles": {
+        "total": 386294826,
+        "per_frame": 395388.7676560901,
+        "percent_clock": 12.863718319437154
+      },
+      "dma_busy": {
+        "total": 31779781,
+        "per_frame": 32527.923234390993,
+        "percent_clock": 1.0582749846030834
+      },
+      "writes_outstanding": {
+        "total": 407921869,
+        "per_frame": 417524.9426816786,
+        "percent_clock": 13.583904484276843
+      }
+    },
+    "measured_clock_mhz": 99.99997385930237,
+    "midi": {
+      "handler_us": 3315369,
+      "handler_cpu_percent": 11.040262235486527,
+      "calls": 30030,
+      "mean_handler_us": 110.4018981018981,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 24.859179460778517,
+    "angle_balanced_bsp_ms": 0.0,
+    "angle_bins": 32,
+    "simulation_hz": 34.93196408914171
+  },
+  "before-profile-rotate-sigil1": {
+    "frames": 1618,
+    "duration_s": 30.000451,
+    "fps": 53.89918971551461,
+    "mean_ms": {
+      "frame_interval": 18.55226019777503,
+      "frame_active": 17.45643201483313,
+      "display": 0.0,
+      "view": 0.0,
+      "bsp": 0.0,
+      "planes": 0.0,
+      "masked": 0.0,
+      "present": 0.0,
+      "gpu_wait": 0.0,
+      "vsync_wait": 0.0,
+      "flip": 0.0,
+      "cache": 0.0,
+      "dma_wait": 0.0,
+      "ring_wait": 0.0,
+      "prepare": 16.17235723114957,
+      "pacing_wait": 1.1715067985166872
+    },
+    "interval_ms": {
+      "median": 16.663,
+      "p95": 33.326,
+      "p99": 33.36108
+    },
+    "intervals_over_25ms": 203,
+    "interval_samples": 1617,
+    "prepare_p95_ms": 27.651349999999994,
+    "view_p95_ms": 0.0,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      3,
+      1
+    ],
+    "min_health": 100,
+    "gpu_columns_mean": 0,
+    "gpu_spans_mean": 0,
+    "gpu": {
+      "clock": {
+        "total": 3000045268,
+        "per_frame": 1855315.5646258504,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 664446127,
+        "per_frame": 410912.88002473715,
+        "percent_clock": 22.147870036739725
+      },
+      "read_beats": {
+        "total": 20987558,
+        "per_frame": 12979.318491032776,
+        "percent_clock": 0.6995747105506676
+      },
+      "write_beats": {
+        "total": 24492234,
+        "per_frame": 15146.712430426716,
+        "percent_clock": 0.8163954811364533
+      },
+      "read_address_stall": {
+        "total": 40477657,
+        "per_frame": 25032.56462585034,
+        "percent_clock": 1.3492348742785705
+      },
+      "write_address_stall": {
+        "total": 400192350,
+        "per_frame": 247490.63079777366,
+        "percent_clock": 13.339543715178367
+      },
+      "write_data_stall": {
+        "total": 403020530,
+        "per_frame": 249239.6598639456,
+        "percent_clock": 13.433814959354807
+      },
+      "texture_requests": {
+        "total": 89636133,
+        "per_frame": 55433.60111317254,
+        "percent_clock": 2.987826015697307
+      },
+      "texture_fills": {
+        "total": 1397742,
+        "per_frame": 864.404452690167,
+        "percent_clock": 0.04659069697744307
+      },
+      "texture_request_stall": {
+        "total": 3254620,
+        "per_frame": 2012.7520098948671,
+        "percent_clock": 0.10848569635649911
+      },
+      "combiner_stall": {
+        "total": 143487740,
+        "per_frame": 88737.0068027211,
+        "percent_clock": 4.782852496611061
+      },
+      "fragment_stall": {
+        "total": 163379806,
+        "per_frame": 101038.8410636982,
+        "percent_clock": 5.445911358161546
+      },
+      "fragment_cycles": {
+        "total": 411983216,
+        "per_frame": 254782.44650587506,
+        "percent_clock": 13.732566651390941
+      },
+      "dma_busy": {
+        "total": 58988740,
+        "per_frame": 36480.358688930115,
+        "percent_clock": 1.9662616637556685
+      },
+      "writes_outstanding": {
+        "total": 512010451,
+        "per_frame": 316642.208410637,
+        "percent_clock": 17.066757507340387
+      }
+    },
+    "measured_clock_mhz": 100.00000559991581,
+    "midi": {
+      "handler_us": 3163130,
+      "handler_cpu_percent": 10.543608161090646,
+      "calls": 30001,
+      "mean_handler_us": 105.43415219492684,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 17.241432491535637,
+    "angle_balanced_bsp_ms": 0.0,
+    "angle_bins": 32,
+    "simulation_hz": 34.99947384124325
+  },
+  "before-profile-rotate-sigil2": {
+    "frames": 1163,
+    "duration_s": 30.007363,
+    "fps": 38.7238292148497,
+    "mean_ms": {
+      "frame_interval": 25.820436801375752,
+      "frame_active": 24.084551160791058,
+      "display": 0.0,
+      "view": 0.0,
+      "bsp": 0.0,
+      "planes": 0.0,
+      "masked": 0.0,
+      "present": 0.0,
+      "gpu_wait": 0.0,
+      "vsync_wait": 0.0,
+      "flip": 0.0,
+      "cache": 0.0,
+      "dma_wait": 0.0,
+      "ring_wait": 0.0,
+      "prepare": 23.935231298366293,
+      "pacing_wait": 0.023890799656061907
+    },
+    "interval_ms": {
+      "median": 33.274,
+      "p95": 33.37975,
+      "p99": 33.46717
+    },
+    "intervals_over_25ms": 633,
+    "interval_samples": 1162,
+    "prepare_p95_ms": 31.151799999999987,
+    "view_p95_ms": 0.0,
+    "cpu_hz": [
+      100000000
+    ],
+    "viewport": [
+      320,
+      168
+    ],
+    "episode_map": [
+      6,
+      1
+    ],
+    "min_health": 100,
+    "gpu_columns_mean": 0,
+    "gpu_spans_mean": 0,
+    "gpu": {
+      "clock": {
+        "total": 3000736306,
+        "per_frame": 2582389.247848537,
+        "percent_clock": 100.0
+      },
+      "busy": {
+        "total": 559630742,
+        "per_frame": 481609.93287435453,
+        "percent_clock": 18.649780751511326
+      },
+      "read_beats": {
+        "total": 19084293,
+        "per_frame": 16423.660068846817,
+        "percent_clock": 0.6359870063171089
+      },
+      "write_beats": {
+        "total": 18380479,
+        "per_frame": 15817.968158347676,
+        "percent_clock": 0.6125322962650221
+      },
+      "read_address_stall": {
+        "total": 48358626,
+        "per_frame": 41616.717728055075,
+        "percent_clock": 1.6115586665614863
+      },
+      "write_address_stall": {
+        "total": 318677958,
+        "per_frame": 274249.53356282273,
+        "percent_clock": 10.619992078704167
+      },
+      "write_data_stall": {
+        "total": 320544491,
+        "per_frame": 275855.8442340792,
+        "percent_clock": 10.682194578679518
+      },
+      "texture_requests": {
+        "total": 65102357,
+        "per_frame": 56026.1247848537,
+        "percent_clock": 2.169546083400505
+      },
+      "texture_fills": {
+        "total": 2257223,
+        "per_frame": 1942.5327022375216,
+        "percent_clock": 0.07522230445529858
+      },
+      "texture_request_stall": {
+        "total": 1891303,
+        "per_frame": 1627.6273666092943,
+        "percent_clock": 0.06302796404396888
+      },
+      "combiner_stall": {
+        "total": 171112295,
+        "per_frame": 147256.7082616179,
+        "percent_clock": 5.70234361006195
+      },
+      "fragment_stall": {
+        "total": 189859121,
+        "per_frame": 163389.94922547333,
+        "percent_clock": 6.327084476579129
+      },
+      "fragment_cycles": {
+        "total": 403075914,
+        "per_frame": 346881.165232358,
+        "percent_clock": 13.432566973447349
+      },
+      "dma_busy": {
+        "total": 39766524,
+        "per_frame": 34222.48192771084,
+        "percent_clock": 1.3252255428271544
+      },
+      "writes_outstanding": {
+        "total": 406099275,
+        "per_frame": 349483.02495697077,
+        "percent_clock": 13.53332094486279
+      }
+    },
+    "measured_clock_mhz": 100.00000019995093,
+    "midi": {
+      "handler_us": 3166623,
+      "handler_cpu_percent": 10.552819986214717,
+      "calls": 30007,
+      "mean_handler_us": 105.52947645549372,
+      "envelope_budget_overruns": 0,
+      "stopped": false
+    },
+    "angle_balanced_prepare_ms": 24.56023331740287,
+    "angle_balanced_bsp_ms": 0.0,
+    "angle_bins": 32,
+    "simulation_hz": 34.99141194112925
+  }
+}

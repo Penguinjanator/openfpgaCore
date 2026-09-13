@@ -1,0 +1,7 @@
+quiet PASS: 64 request aborts, 64 response aborts; 128 pixel checks, 0 failures
+quiet stream 1675697 1441994 13.95% fewer cycles
+quiet combined 1675697 1384583 17.37% fewer cycles
+delayed PASS: 64 request aborts, 64 response aborts; 128 pixel checks, 0 failures
+delayed stream 3880945 3683518 5.09% fewer cycles
+delayed combined 3880945 2314362 40.37% fewer cycles
+PASS: 788 cases per mode and 256 resets; framebuffer and consumed arithmetic match

@@ -1,0 +1,2559 @@
+make: Entering directory '/home/alberto/Repos/openfpgaOS/src/fpga/test'
+verilator --cc --exe --build -Wall -Wno-fatal -Wno-BADVLTPRAGMA -CFLAGS "-std=c++17 -O2" -I../targets/pocket/third_party/analogizer --trace \
+	-CFLAGS "-std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI" \
+	+define+INCLUDE_TRANSLUC -GINCLUDE_COMPACT_SPAN=1 -GINCLUDE_COLUMN_LIST=1 -GGPU_EW_PARALLEL_DIVS=0 -GINCLUDE_PARAM_TRI=0 -GINCLUDE_VERT_TRI=0 -GINCLUDE_PARAM_TRI_RECS=0 -GGPU_Z_READ_WINDOW=1 -GGPU_CB_READ_WINDOW=4 -GINCLUDE_DIRECT_COLOR=0 -GINCLUDE_XFORM_RGB=0 -GINCLUDE_VTX_CACHE=0 -GINCLUDE_GPU_LIGHT=0 -GINCLUDE_GPU_XFORM_MAC=0 -GINCLUDE_CLIP_TRI=0 -GINCLUDE_PALETTE=1 -GINCLUDE_COMBINE=0 -GINCLUDE_PARAM_SPAN_Q29=1 -GINCLUDE_TEX_MEM=0 \
+	--top-module tb_gpu --Mdir obj_dir_gpu_acceptance_os25x -I../common \
+	tb_gpu.v altsyncram_stub.v ../common/gpu_core.v ../common/gpu_edge_walker.v ../common/gpu_tex_cache.v tb_gpu_acceptance_main.cpp
+verilator --cc --exe --build -Wall -Wno-fatal -Wno-BADVLTPRAGMA -CFLAGS "-std=c++17 -O2" -I../targets/pocket/third_party/analogizer --trace \
+	-GGPU_WRITE_COMBINE_PIPE=1 \
+	+define+INCLUDE_TRANSLUC \
+	-GINCLUDE_PARAM_TRI=1 -GINCLUDE_VERT_TRI=1 -GINCLUDE_PARAM_TRI_RECS=1 \
+	-GINCLUDE_COMPACT_SPAN=1 -GINCLUDE_COLUMN_LIST=1 \
+	-GINCLUDE_TEX_MEM=0 \
+	-GGPU_Z_READ_WINDOW=4 -GGPU_EW_PARALLEL_DIVS=1 \
+	+define+INCLUDE_EARLY_Z_CAPTURE \
+	-GGPU_TEX_CACHE_SET_BITS=11 \
+	-GINCLUDE_DIRECT_COLOR=0 -GINCLUDE_XFORM_RGB=0 -GINCLUDE_CLIP_TRI=1 \
+	-GINCLUDE_VTX_CACHE=0 -GINCLUDE_GPU_LIGHT=0 -GINCLUDE_PALETTE=1 \
+	-GINCLUDE_COMBINE=1 -GINCLUDE_PARAM_SPAN_Q29=1 \
+	--top-module tb_gpu --Mdir obj_dir_gpu_acceptance_misterx -I../common \
+	tb_gpu.v altsyncram_stub.v ../common/gpu_core.v ../common/gpu_edge_walker.v ../common/gpu_tex_cache.v tb_gpu_acceptance_main.cpp
+%Warning-PINCONNECTEMPTY: tb_gpu.v:338:6: Instance pin connected by name with empty reference: 'dbg_state'
+  338 |     .dbg_state(),
+      |      ^~~~~~~~~
+                          ... For warning description see https://verilator.org/warn/PINCONNECTEMPTY?v=5.052
+                          ... Use "/* verilator lint_off PINCONNECTEMPTY */" and lint_on around source to disable this message.
+%Warning-PINCONNECTEMPTY: tb_gpu.v:339:6: Instance pin connected by name with empty reference: 'dbg_setup_step'
+  339 |     .dbg_setup_step(),
+      |      ^~~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu.v:340:6: Instance pin connected by name with empty reference: 'dbg_aux'
+  340 |     .dbg_aux(),
+      |      ^~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu.v:341:6: Instance pin connected by name with empty reference: 'dbg_frag'
+  341 |     .dbg_frag()
+      |      ^~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_arvalid'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:248:24: ... Location of port declaration
+  248 |     output wire        gpu_tex_mem_arvalid,
+      |                        ^~~~~~~~~~~~~~~~~~~
+                     ... For warning description see https://verilator.org/warn/PINMISSING?v=5.052
+                     ... Use "/* verilator lint_off PINMISSING */" and lint_on around source to disable this message.
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_araddr'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:250:24: ... Location of port declaration
+  250 |     output wire [31:0] gpu_tex_mem_araddr,
+      |                        ^~~~~~~~~~~~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_arlen'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:251:24: ... Location of port declaration
+  251 |     output wire [7:0]  gpu_tex_mem_arlen,
+      |                        ^~~~~~~~~~~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_up_wr'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:263:24: ... Location of port declaration
+  263 |     output reg         gpu_tex_mem_up_wr,
+      |                        ^~~~~~~~~~~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_up_addr'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:264:24: ... Location of port declaration
+  264 |     output reg  [21:0] gpu_tex_mem_up_addr,
+      |                        ^~~~~~~~~~~~~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_up_wdata'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:265:24: ... Location of port declaration
+  265 |     output reg  [31:0] gpu_tex_mem_up_wdata,
+      |                        ^~~~~~~~~~~~~~~~~~~~
+%Warning-DECLFILENAME: altsyncram_stub.v:26:8: Filename 'altsyncram_stub' does not match MODULE name: 'altsyncram'
+   26 | module altsyncram #(
+      |        ^~~~~~~~~~
+                       ... For warning description see https://verilator.org/warn/DECLFILENAME?v=5.052
+                       ... Use "/* verilator lint_off DECLFILENAME */" and lint_on around source to disable this message.
+%Warning-PINCONNECTEMPTY: tb_gpu.v:338:6: Instance pin connected by name with empty reference: 'dbg_state'
+  338 |     .dbg_state(),
+      |      ^~~~~~~~~
+                          ... For warning description see https://verilator.org/warn/PINCONNECTEMPTY?v=5.052
+                          ... Use "/* verilator lint_off PINCONNECTEMPTY */" and lint_on around source to disable this message.
+%Warning-PINCONNECTEMPTY: tb_gpu.v:339:6: Instance pin connected by name with empty reference: 'dbg_setup_step'
+  339 |     .dbg_setup_step(),
+      |      ^~~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu.v:340:6: Instance pin connected by name with empty reference: 'dbg_aux'
+  340 |     .dbg_aux(),
+      |      ^~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu.v:341:6: Instance pin connected by name with empty reference: 'dbg_frag'
+  341 |     .dbg_frag()
+      |      ^~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_arvalid'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:248:24: ... Location of port declaration
+  248 |     output wire        gpu_tex_mem_arvalid,
+      |                        ^~~~~~~~~~~~~~~~~~~
+                     ... For warning description see https://verilator.org/warn/PINMISSING?v=5.052
+                     ... Use "/* verilator lint_off PINMISSING */" and lint_on around source to disable this message.
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_araddr'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:250:24: ... Location of port declaration
+  250 |     output wire [31:0] gpu_tex_mem_araddr,
+      |                        ^~~~~~~~~~~~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_arlen'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:251:24: ... Location of port declaration
+  251 |     output wire [7:0]  gpu_tex_mem_arlen,
+      |                        ^~~~~~~~~~~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_up_wr'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:263:24: ... Location of port declaration
+  263 |     output reg         gpu_tex_mem_up_wr,
+      |                        ^~~~~~~~~~~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_up_addr'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:264:24: ... Location of port declaration
+  264 |     output reg  [21:0] gpu_tex_mem_up_addr,
+      |                        ^~~~~~~~~~~~~~~~~~~
+%Warning-PINMISSING: tb_gpu.v:281:3: Instance has missing pin: 'gpu_tex_mem_up_wdata'
+  281 | ) gpu (
+      |   ^~~
+                     ../common/../common/gpu_core.v:265:24: ... Location of port declaration
+  265 |     output reg  [31:0] gpu_tex_mem_up_wdata,
+      |                        ^~~~~~~~~~~~~~~~~~~~
+%Warning-DECLFILENAME: altsyncram_stub.v:26:8: Filename 'altsyncram_stub' does not match MODULE name: 'altsyncram'
+   26 | module altsyncram #(
+      |        ^~~~~~~~~~
+                       ... For warning description see https://verilator.org/warn/DECLFILENAME?v=5.052
+                       ... Use "/* verilator lint_off DECLFILENAME */" and lint_on around source to disable this message.
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:4035:18: Operator VAR 'CBW_ARLEN' expects 2 bits on the Initial value, but Initial value's SUB generates 32 or 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 4035 | localparam [1:0] CBW_ARLEN = CBW_WORDS - 1;      
+      |                  ^~~~~~~~~
+                     ... For warning description see https://verilator.org/warn/WIDTHTRUNC?v=5.052
+                     ... Use "/* verilator lint_off WIDTHTRUNC */" and lint_on around source to disable this message.
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:4035:18: Operator VAR 'CBW_ARLEN' expects 2 bits on the Initial value, but Initial value's SUB generates 32 or 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 4035 | localparam [1:0] CBW_ARLEN = CBW_WORDS - 1;      
+      |                  ^~~~~~~~~
+                     ... For warning description see https://verilator.org/warn/WIDTHTRUNC?v=5.052
+                     ... Use "/* verilator lint_off WIDTHTRUNC */" and lint_on around source to disable this message.
+%Warning-WIDTHTRUNC: ../common/../common/gpu_edge_walker.v:615:29: Operator ASSIGNDLY expects 32 bits on the Assign RHS, but Assign RHS's SHIFTRS generates 43 bits.
+                                                                 : ... note: In instance 'tb_gpu.gpu.g_tri_walker.tri_walker'
+  615 |                 bot_mid_off <= mul_p_pipe >>> 4;    
+      |                             ^~
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:922:23: Operator ASSIGN expects 16 bits on the Assign RHS, but Assign RHS's DIVS generates 32 bits.
+                                                          : ... note: In instance 'tb_gpu.gpu'
+  922 |         recip_lut[ri] = (16777216) / (1024 + ri);
+      |                       ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2866:18: Operator SHIFTRS expects 16 bits on the LHS, but LHS's VARREF 'pr' generates 14 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2866 |         ar = (pr >>> 5) + $signed({2'b0, dr});
+      |                  ^~~
+                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.052
+                      ... Use "/* verilator lint_off WIDTHEXPAND */" and lint_on around source to disable this message.
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2866:25: Operator ADD expects 16 bits on the RHS, but RHS's SIGNED generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2866 |         ar = (pr >>> 5) + $signed({2'b0, dr});
+      |                         ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2867:18: Operator SHIFTRS expects 16 bits on the LHS, but LHS's VARREF 'pg' generates 14 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2867 |         ag = (pg >>> 6) + $signed({2'b0, dg});
+      |                  ^~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2867:25: Operator ADD expects 16 bits on the RHS, but RHS's SIGNED generates 8 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2867 |         ag = (pg >>> 6) + $signed({2'b0, dg});
+      |                         ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2868:18: Operator SHIFTRS expects 16 bits on the LHS, but LHS's VARREF 'pb' generates 14 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2868 |         ab = (pb >>> 5) + $signed({2'b0, db});
+      |                  ^~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2868:25: Operator ADD expects 16 bits on the RHS, but RHS's SIGNED generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2868 |         ab = (pb >>> 5) + $signed({2'b0, db});
+      |                         ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2891:47: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2891 |         pr = src[15:11] * a + dst[15:11] * na + {d, 3'b100};    
+      |                                               ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2892:47: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2892 |         pg = src[10:5]  * a + dst[10:5]  * na + {d, 3'b100};    
+      |                                               ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2893:47: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2893 |         pb = src[4:0]   * a + dst[4:0]   * na + {d, 3'b100};
+      |                                               ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h0' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h1' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h2' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h4' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h5' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h6' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3743:28: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3743 |         spanprod_calc_step <= 3'd0;
+      |                            ^~
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:4065:37: Operator ASSIGNW expects 8 bits on the Assign RHS, but Assign RHS's SHIFTR generates 32 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 4065 | wire [7:0]  blend_sram_lut_byte_w   = sram_rdata >> {transluc_rd_addr[1:0], 3'b0};
+      |                                     ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4522:32: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4522 | wire [12:0] cb_dsum_r  = cb_sr + {cb_dith_w, 3'b100};    
+      |                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4523:32: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4523 | wire [12:0] cb_dsum_g  = cb_sg + {cb_dith_w, 3'b100};    
+      |                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4524:32: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4524 | wire [12:0] cb_dsum_b  = cb_sb + {cb_dith_w, 3'b100};
+      |                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4626:80: Operator SUB expects 13 bits on the LHS, but LHS's CONST '7'h40' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4626 | wire [12:0] cbm_sum_r_w = cbm_src_w[15:11] * sp_a6 + cbm_dst_w[15:11] * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4626:80: Operator SUB expects 13 bits on the RHS, but RHS's VARREF 'sp_a6' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4626 | wire [12:0] cbm_sum_r_w = cbm_src_w[15:11] * sp_a6 + cbm_dst_w[15:11] * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4627:80: Operator SUB expects 13 bits on the LHS, but LHS's CONST '7'h40' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4627 | wire [12:0] cbm_sum_g_w = cbm_src_w[10:5]  * sp_a6 + cbm_dst_w[10:5]  * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4627:80: Operator SUB expects 13 bits on the RHS, but RHS's VARREF 'sp_a6' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4627 | wire [12:0] cbm_sum_g_w = cbm_src_w[10:5]  * sp_a6 + cbm_dst_w[10:5]  * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4628:80: Operator SUB expects 13 bits on the LHS, but LHS's CONST '7'h40' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4628 | wire [12:0] cbm_sum_b_w = cbm_src_w[4:0]   * sp_a6 + cbm_dst_w[4:0]   * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4628:80: Operator SUB expects 13 bits on the RHS, but RHS's VARREF 'sp_a6' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4628 | wire [12:0] cbm_sum_b_w = cbm_src_w[4:0]   * sp_a6 + cbm_dst_w[4:0]   * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:5552:30: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h7' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 5552 |         spanprod_launch_step <= 3'd7;
+      |                              ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6667:36: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6667 |                 spanprod_calc_step <= 3'd0;
+      |                                    ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6684:36: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6684 |                 spanprod_calc_step <= 3'd0;
+      |                                    ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6717:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6717 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6768:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6768 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6801:33: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6801 |                     xf_row      <= 2'd0;
+      |                                 ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6820:33: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6820 |                     xf_row      <= 2'd0;
+      |                                 ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6845:33: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6845 |                     xf_row      <= 2'd0;
+      |                                 ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6862:33: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6862 |                     xf_row      <= 2'd0;
+      |                                 ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7229:33: Operator ADD expects 64 bits on the RHS, but RHS's SIGNED generates 32 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7229 |                                 + $signed({1'b0, drv_prod_r[54:DERIV_SPLIT]});
+      |                                 ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7236:59: Operator NEQ expects 4 bits on the RHS, but RHS's CONST '3'h3' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7236 |                     q29_shamt_r <= (vt_q29_en && (dv_attr != 3'd3))
+      |                                                           ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7237:34: Operator COND expects 6 bits on the Conditional True, but Conditional True's VARREF 'vt_q29_shift' generates 5 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7237 |                                  ? vt_q29_shift
+      |                                  ^
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7236:33: Operator ASSIGNDLY expects 5 bits on the Assign RHS, but Assign RHS's COND generates 6 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7236 |                     q29_shamt_r <= (vt_q29_en && (dv_attr != 3'd3))
+      |                                 ^~
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7250:34: Operator ASSIGNDLY expects 57 bits on the Assign RHS, but Assign RHS's SHIFTRS generates 64 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7250 |                     drv_q_coarse <= (drv_qsum_r >>> 7) >>> {q29_shamt_r[4:3], 3'b000};
+      |                                  ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7260:44: Operator NEGATE expects 64 bits on the LHS, but LHS's VARREF 'drv_q_fine' generates 57 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7260 |                     qsigned = dd_detsign ? -drv_q_fine : drv_q_fine;
+      |                                            ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7260:42: Operator COND expects 64 bits on the Conditional False, but Conditional False's VARREF 'drv_q_fine' generates 57 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7260 |                     qsigned = dd_detsign ? -drv_q_fine : drv_q_fine;
+      |                                          ^
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7297:34: Operator ASSIGNDLY expects 32 bits on the Assign RHS, but Assign RHS's SHIFTRS generates 64 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7297 |                         a0_eff_r <= $signed({{19{deriv_a0_q[31]}}, deriv_a0_q, 13'b0})
+      |                                  ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7296:47: Operator NEQ expects 4 bits on the RHS, but RHS's CONST '3'h3' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7296 |                     if (vt_q29_en && (dv_attr != 3'd3))
+      |                                               ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h1' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h2' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h4' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h5' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h6' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7452:44: Operator ADD expects 64 bits on the RHS, but RHS's VARREF 'xf_transl' generates 32 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7452 |                     camv = (xf_acc >>> 16) + xf_transl;    
+      |                                            ^
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7452:26: Operator ASSIGN expects 32 bits on the Assign RHS, but Assign RHS's ADD generates 64 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7452 |                     camv = (xf_acc >>> 16) + xf_transl;    
+      |                          ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7572:34: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7572 |                         xf_row   <= 2'd0;
+      |                                  ^~
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7590:31: Bit extraction of array[0:0] requires 1 bit index, not 5 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7590 |                         vc_mem[xf_load_slot] <= { vt_brow[0], vt_lrow[0], vt_rrow[0],
+      |                               ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7605:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7605 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7718:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7718 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7762:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7762 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7774:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7774 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7850:36: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7850 |                 spanprod_calc_step <= 3'd0;
+      |                                    ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7855:45: Operator FUNCREF 'spanprod_next_calc' expects 4 bits on the Function Argument, but Function Argument's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7855 |                     spanprod_launch_step <= spanprod_next_calc(3'd0);
+      |                                             ^~~~~~~~~~~~~~~~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h5' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h1' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h2' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h3' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8236:100: Operator SUB expects 14 bits on the LHS, but LHS's SIGNED generates 6 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8236 |                     p2_pr   <= $signed({1'b0, p1_pixel_color[15:11]}) * ($signed({1'b0, p1_R})     - 6'sd16);
+      |                                                                                                    ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8236:100: Operator SUB expects 14 bits on the RHS, but RHS's CONST '6'sh10' generates 6 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8236 |                     p2_pr   <= $signed({1'b0, p1_pixel_color[15:11]}) * ($signed({1'b0, p1_R})     - 6'sd16);
+      |                                                                                                    ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8237:100: Operator SUB expects 14 bits on the LHS, but LHS's SIGNED generates 7 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8237 |                     p2_pg   <= $signed({1'b0, p1_pixel_color[10:5]})  * ($signed({1'b0, p1_light}) - 7'sd32);
+      |                                                                                                    ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8237:100: Operator SUB expects 14 bits on the RHS, but RHS's CONST '7'sh20' generates 7 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8237 |                     p2_pg   <= $signed({1'b0, p1_pixel_color[10:5]})  * ($signed({1'b0, p1_light}) - 7'sd32);
+      |                                                                                                    ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8238:100: Operator SUB expects 14 bits on the LHS, but LHS's SIGNED generates 6 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8238 |                     p2_pb   <= $signed({1'b0, p1_pixel_color[4:0]})   * ($signed({1'b0, p1_B})     - 6'sd16);
+      |                                                                                                    ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8238:100: Operator SUB expects 14 bits on the RHS, but RHS's CONST '6'sh10' generates 6 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8238 |                     p2_pb   <= $signed({1'b0, p1_pixel_color[4:0]})   * ($signed({1'b0, p1_B})     - 6'sd16);
+      |                                                                                                    ^
+%Warning-WIDTHTRUNC: tb_gpu.v:200:13: Operator ASSIGN expects 16 bits on the Assign RHS, but Assign RHS's DIV generates 32 bits.
+                                    : ... note: In instance 'tb_gpu'
+  200 |         lut = 16777216 / (1024 + {22'd0, normalized[30:21]});
+      |             ^
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:922:23: Operator ASSIGN expects 16 bits on the Assign RHS, but Assign RHS's DIVS generates 32 bits.
+                                                          : ... note: In instance 'tb_gpu.gpu'
+  922 |         recip_lut[ri] = (16777216) / (1024 + ri);
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5337:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5337 |     spanprod_pl_origin_we = 1'b0;
+      |                           ^
+                 ... For warning description see https://verilator.org/warn/BLKSEQ?v=5.052
+                 ... Use "/* verilator lint_off BLKSEQ */" and lint_on around source to disable this message.
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5338:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5338 |     spanprod_pl_origin_wa = 4'd0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5339:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5339 |     spanprod_pl_origin_wd = 0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5340:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5340 |     spanprod_pl_du_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5341:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5341 |     spanprod_pl_du_wa = 4'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5342:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5342 |     spanprod_pl_du_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5343:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5343 |     spanprod_pl_dv_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5344:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5344 |     spanprod_pl_dv_wa = 4'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5345:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5345 |     spanprod_pl_dv_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5346:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5346 |     spanprod_u_we = 1'b0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5347:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5347 |     spanprod_u_wa = 2'd0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5348:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5348 |     spanprod_u_wd = 0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5349:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5349 |     spanprod_v_we = 1'b0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5350:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5350 |     spanprod_v_wa = 2'd0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5351:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5351 |     spanprod_v_wd = 0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5352:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5352 |     spanprod_count_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5353:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5353 |     spanprod_count_wa = 2'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5354:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5354 |     spanprod_count_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5355:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5355 |     spanprod_direct_fb_addr_we = 1'b0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5356:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5356 |     spanprod_direct_fb_addr_wa = 2'd0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5357:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5357 |     spanprod_direct_fb_addr_wd = 0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5358:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5358 |     spanprod_direct_tex_addr_we = 1'b0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5359:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5359 |     spanprod_direct_tex_addr_wa = 2'd0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5360:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5360 |     spanprod_direct_tex_addr_wd = 0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5361:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5361 |     spanprod_direct_s_we = 1'b0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5362:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5362 |     spanprod_direct_s_wa = 2'd0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5363:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5363 |     spanprod_direct_s_wd = 0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5364:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5364 |     spanprod_direct_t_we = 1'b0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5365:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5365 |     spanprod_direct_t_wa = 2'd0;
+      |                          ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2866:18: Operator SHIFTRS expects 16 bits on the LHS, but LHS's VARREF 'pr' generates 14 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2866 |         ar = (pr >>> 5) + $signed({2'b0, dr});
+      |                  ^~~
+                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.052
+                      ... Use "/* verilator lint_off WIDTHEXPAND */" and lint_on around source to disable this message.
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5366:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5366 |     spanprod_direct_t_wd = 0;
+      |                          ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2866:25: Operator ADD expects 16 bits on the RHS, but RHS's SIGNED generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2866 |         ar = (pr >>> 5) + $signed({2'b0, dr});
+      |                         ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5367:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5367 |     spanprod_direct_sstep_we = 1'b0;
+      |                              ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2867:18: Operator SHIFTRS expects 16 bits on the LHS, but LHS's VARREF 'pg' generates 14 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2867 |         ag = (pg >>> 6) + $signed({2'b0, dg});
+      |                  ^~~
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5368:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5368 |     spanprod_direct_sstep_wa = 2'd0;
+      |                              ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2867:25: Operator ADD expects 16 bits on the RHS, but RHS's SIGNED generates 8 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2867 |         ag = (pg >>> 6) + $signed({2'b0, dg});
+      |                         ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5369:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5369 |     spanprod_direct_sstep_wd = 0;
+      |                              ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2868:18: Operator SHIFTRS expects 16 bits on the LHS, but LHS's VARREF 'pb' generates 14 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2868 |         ab = (pb >>> 5) + $signed({2'b0, db});
+      |                  ^~~
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5370:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5370 |     spanprod_direct_tstep_we = 1'b0;
+      |                              ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2868:25: Operator ADD expects 16 bits on the RHS, but RHS's SIGNED generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2868 |         ab = (pb >>> 5) + $signed({2'b0, db});
+      |                         ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5371:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5371 |     spanprod_direct_tstep_wa = 2'd0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5372:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5372 |     spanprod_direct_tstep_wd = 0;
+      |                              ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2891:47: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2891 |         pr = src[15:11] * a + dst[15:11] * na + {d, 3'b100};    
+      |                                               ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2892:47: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2892 |         pg = src[10:5]  * a + dst[10:5]  * na + {d, 3'b100};    
+      |                                               ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:2893:47: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2893 |         pb = src[4:0]   * a + dst[4:0]   * na + {d, 3'b100};
+      |                                               ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h0' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h1' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h2' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h4' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h5' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3461:5: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h6' generates 3 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 3461 |     case (dv_attr)
+      |     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:3743:28: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3743 |         spanprod_calc_step <= 3'd0;
+      |                            ^~
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:4065:37: Operator ASSIGNW expects 8 bits on the Assign RHS, but Assign RHS's SHIFTR generates 32 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 4065 | wire [7:0]  blend_sram_lut_byte_w   = sram_rdata >> {transluc_rd_addr[1:0], 3'b0};
+      |                                     ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4522:32: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4522 | wire [12:0] cb_dsum_r  = cb_sr + {cb_dith_w, 3'b100};    
+      |                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4523:32: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4523 | wire [12:0] cb_dsum_g  = cb_sg + {cb_dith_w, 3'b100};    
+      |                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4524:32: Operator ADD expects 13 bits on the RHS, but RHS's REPLICATE generates 6 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4524 | wire [12:0] cb_dsum_b  = cb_sb + {cb_dith_w, 3'b100};
+      |                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4626:80: Operator SUB expects 13 bits on the LHS, but LHS's CONST '7'h40' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4626 | wire [12:0] cbm_sum_r_w = cbm_src_w[15:11] * sp_a6 + cbm_dst_w[15:11] * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4626:80: Operator SUB expects 13 bits on the RHS, but RHS's VARREF 'sp_a6' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4626 | wire [12:0] cbm_sum_r_w = cbm_src_w[15:11] * sp_a6 + cbm_dst_w[15:11] * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4627:80: Operator SUB expects 13 bits on the LHS, but LHS's CONST '7'h40' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4627 | wire [12:0] cbm_sum_g_w = cbm_src_w[10:5]  * sp_a6 + cbm_dst_w[10:5]  * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4627:80: Operator SUB expects 13 bits on the RHS, but RHS's VARREF 'sp_a6' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4627 | wire [12:0] cbm_sum_g_w = cbm_src_w[10:5]  * sp_a6 + cbm_dst_w[10:5]  * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4628:80: Operator SUB expects 13 bits on the LHS, but LHS's CONST '7'h40' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4628 | wire [12:0] cbm_sum_b_w = cbm_src_w[4:0]   * sp_a6 + cbm_dst_w[4:0]   * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:4628:80: Operator SUB expects 13 bits on the RHS, but RHS's VARREF 'sp_a6' generates 7 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 4628 | wire [12:0] cbm_sum_b_w = cbm_src_w[4:0]   * sp_a6 + cbm_dst_w[4:0]   * (7'd64 - sp_a6);
+      |                                                                                ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:5552:30: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h7' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 5552 |         spanprod_launch_step <= 3'd7;
+      |                              ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6667:36: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6667 |                 spanprod_calc_step <= 3'd0;
+      |                                    ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6684:36: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6684 |                 spanprod_calc_step <= 3'd0;
+      |                                    ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6717:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6717 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6768:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6768 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6801:33: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6801 |                     xf_row      <= 2'd0;
+      |                                 ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6820:33: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6820 |                     xf_row      <= 2'd0;
+      |                                 ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6845:33: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6845 |                     xf_row      <= 2'd0;
+      |                                 ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:6862:33: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 6862 |                     xf_row      <= 2'd0;
+      |                                 ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7229:33: Operator ADD expects 64 bits on the RHS, but RHS's SIGNED generates 32 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7229 |                                 + $signed({1'b0, drv_prod_r[54:DERIV_SPLIT]});
+      |                                 ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7236:59: Operator NEQ expects 4 bits on the RHS, but RHS's CONST '3'h3' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7236 |                     q29_shamt_r <= (vt_q29_en && (dv_attr != 3'd3))
+      |                                                           ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7237:34: Operator COND expects 6 bits on the Conditional True, but Conditional True's VARREF 'vt_q29_shift' generates 5 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7237 |                                  ? vt_q29_shift
+      |                                  ^
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7236:33: Operator ASSIGNDLY expects 5 bits on the Assign RHS, but Assign RHS's COND generates 6 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7236 |                     q29_shamt_r <= (vt_q29_en && (dv_attr != 3'd3))
+      |                                 ^~
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7250:34: Operator ASSIGNDLY expects 57 bits on the Assign RHS, but Assign RHS's SHIFTRS generates 64 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7250 |                     drv_q_coarse <= (drv_qsum_r >>> 7) >>> {q29_shamt_r[4:3], 3'b000};
+      |                                  ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7260:44: Operator NEGATE expects 64 bits on the LHS, but LHS's VARREF 'drv_q_fine' generates 57 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7260 |                     qsigned = dd_detsign ? -drv_q_fine : drv_q_fine;
+      |                                            ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7260:42: Operator COND expects 64 bits on the Conditional False, but Conditional False's VARREF 'drv_q_fine' generates 57 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7260 |                     qsigned = dd_detsign ? -drv_q_fine : drv_q_fine;
+      |                                          ^
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7297:34: Operator ASSIGNDLY expects 32 bits on the Assign RHS, but Assign RHS's SHIFTRS generates 64 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7297 |                         a0_eff_r <= $signed({{19{deriv_a0_q[31]}}, deriv_a0_q, 13'b0})
+      |                                  ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7296:47: Operator NEQ expects 4 bits on the RHS, but RHS's CONST '3'h3' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7296 |                     if (vt_q29_en && (dv_attr != 3'd3))
+      |                                               ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h1' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h2' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h4' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h5' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7328:21: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h6' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7328 |                     case (dv_attr)
+      |                     ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7452:44: Operator ADD expects 64 bits on the RHS, but RHS's VARREF 'xf_transl' generates 32 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7452 |                     camv = (xf_acc >>> 16) + xf_transl;    
+      |                                            ^
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7452:26: Operator ASSIGN expects 32 bits on the Assign RHS, but Assign RHS's ADD generates 64 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7452 |                     camv = (xf_acc >>> 16) + xf_transl;    
+      |                          ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7572:34: Operator ASSIGNDLY expects 3 bits on the Assign RHS, but Assign RHS's CONST '2'h0' generates 2 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7572 |                         xf_row   <= 2'd0;
+      |                                  ^~
+%Warning-WIDTHTRUNC: ../common/../common/gpu_core.v:7590:31: Bit extraction of array[0:0] requires 1 bit index, not 5 bits.
+                                                           : ... note: In instance 'tb_gpu.gpu'
+ 7590 |                         vc_mem[xf_load_slot] <= { vt_brow[0], vt_lrow[0], vt_rrow[0],
+      |                               ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7605:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7605 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7718:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7718 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7762:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7762 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7774:40: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7774 |                     spanprod_calc_step <= 3'd0;
+      |                                        ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7850:36: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7850 |                 spanprod_calc_step <= 3'd0;
+      |                                    ^~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7855:45: Operator FUNCREF 'spanprod_next_calc' expects 4 bits on the Function Argument, but Function Argument's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7855 |                     spanprod_launch_step <= spanprod_next_calc(3'd0);
+      |                                             ^~~~~~~~~~~~~~~~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h0' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h5' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h1' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h2' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:7884:13: Operator CASE expects 4 bits on the Case Item, but Case Item's CONST '3'h3' generates 3 bits.
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 7884 |             case (spanprod_calc_step)
+      |             ^~~~
+%Warning-UNUSEDSIGNAL: tb_gpu.v:123:24: Bits of signal are not used: 'bd_addr'[23:20]
+                                      : ... note: In instance 'tb_gpu'
+  123 |     input  wire [23:0] bd_addr,     
+      |                        ^~~~~~~
+                       ... For warning description see https://verilator.org/warn/UNUSEDSIGNAL?v=5.052
+                       ... Use "/* verilator lint_off UNUSEDSIGNAL */" and lint_on around source to disable this message.
+%Warning-UNUSEDSIGNAL: tb_gpu.v:127:24: Bits of signal are not used: 'bd_rd_addr'[23:20]
+                                      : ... note: In instance 'tb_gpu'
+  127 |     input  wire [23:0] bd_rd_addr,
+      |                        ^~~~~~~~~~
+%Warning-UNUSEDSIGNAL: tb_gpu.v:153:13: Bits of signal are not used: 'gpu_wr_awaddr'[31:26,1:0]
+                                      : ... note: In instance 'tb_gpu'
+  153 | wire [31:0] gpu_wr_awaddr;
+      |             ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: tb_gpu.v:170:13: Bits of signal are not used: 'gpu_sram_addr'[21:16]
+                                      : ... note: In instance 'tb_gpu'
+  170 | wire [21:0] gpu_sram_addr;
+      |             ^~~~~~~~~~~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8236:100: Operator SUB expects 14 bits on the LHS, but LHS's SIGNED generates 6 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8236 |                     p2_pr   <= $signed({1'b0, p1_pixel_color[15:11]}) * ($signed({1'b0, p1_R})     - 6'sd16);
+      |                                                                                                    ^
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8236:100: Operator SUB expects 14 bits on the RHS, but RHS's CONST '6'sh10' generates 6 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8236 |                     p2_pr   <= $signed({1'b0, p1_pixel_color[15:11]}) * ($signed({1'b0, p1_R})     - 6'sd16);
+      |                                                                                                    ^
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:857:13: Bits of signal are not used: 'cmap_resp_data_b'[15:8]
+                                                            : ... note: In instance 'tb_gpu.gpu'
+  857 | wire [15:0] cmap_resp_data_b;
+      |             ^~~~~~~~~~~~~~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8237:100: Operator SUB expects 14 bits on the LHS, but LHS's SIGNED generates 7 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8237 |                     p2_pg   <= $signed({1'b0, p1_pixel_color[10:5]})  * ($signed({1'b0, p1_light}) - 7'sd32);
+      |                                                                                                    ^
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1497:12: Signal is not used: 'sp_const_alpha'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1497 | reg [7:0]  sp_const_alpha;      
+      |            ^~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1518:20: Bits of signal are not used: 'sp_s_clamp_min'[15:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1518 | wire signed [31:0] sp_s_clamp_min = spanprod_clamp0_min;
+      |                    ^~~~~~~~~~~~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8237:100: Operator SUB expects 14 bits on the RHS, but RHS's CONST '7'sh20' generates 7 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8237 |                     p2_pg   <= $signed({1'b0, p1_pixel_color[10:5]})  * ($signed({1'b0, p1_light}) - 7'sd32);
+      |                                                                                                    ^
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1519:20: Bits of signal are not used: 'sp_s_clamp_max'[15:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1519 | wire signed [31:0] sp_s_clamp_max = spanprod_clamp0_max;
+      |                    ^~~~~~~~~~~~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8238:100: Operator SUB expects 14 bits on the LHS, but LHS's SIGNED generates 6 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8238 |                     p2_pb   <= $signed({1'b0, p1_pixel_color[4:0]})   * ($signed({1'b0, p1_B})     - 6'sd16);
+      |                                                                                                    ^
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1520:20: Bits of signal are not used: 'sp_t_clamp_min'[15:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1520 | wire signed [31:0] sp_t_clamp_min = spanprod_clamp1_min;
+      |                    ^~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1521:20: Bits of signal are not used: 'sp_t_clamp_max'[15:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1521 | wire signed [31:0] sp_t_clamp_max = spanprod_clamp1_max;
+      |                    ^~~~~~~~~~~~~~
+%Warning-WIDTHEXPAND: ../common/../common/gpu_core.v:8238:100: Operator SUB expects 14 bits on the RHS, but RHS's CONST '6'sh10' generates 6 bits.
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 8238 |                     p2_pb   <= $signed({1'b0, p1_pixel_color[4:0]})   * ($signed({1'b0, p1_B})     - 6'sd16);
+      |                                                                                                    ^
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1758:17: Bits of function variable are not used: 'flags'[7,4:3,1]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1758 |     input [7:0] flags;
+      |                 ^~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2721:16: Bits of function variable are not used: 'normalized'[31,19:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2721 |     reg [31:0] normalized;
+      |                ^~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2817:18: Bits of function variable are not used: 'pr'[11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2817 |     reg   [11:0] pr, pg, pb;
+      |                  ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2817:22: Bits of function variable are not used: 'pg'[5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2817 |     reg   [11:0] pr, pg, pb;
+      |                      ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2817:26: Bits of function variable are not used: 'pb'[11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2817 |     reg   [11:0] pr, pg, pb;
+      |                          ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2838:18: Bits of function variable are not used: 'pr'[10,4:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2838 |     reg   [10:0] pr, pb;    
+      |                  ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2838:22: Bits of function variable are not used: 'pb'[10,4:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2838 |     reg   [10:0] pr, pb;    
+      |                      ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2839:18: Bits of function variable are not used: 'pg'[12,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2839 |     reg   [12:0] pg;        
+      |                  ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2888:18: Bits of function variable are not used: 'pr'[12:11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2888 |     reg   [12:0] pr, pg, pb;
+      |                  ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2888:22: Bits of function variable are not used: 'pg'[12,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2888 |     reg   [12:0] pr, pg, pb;
+      |                      ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2888:26: Bits of function variable are not used: 'pb'[12:11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2888 |     reg   [12:0] pr, pg, pb;
+      |                          ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2990:5: Signal is not used: 'cmd_is_clear_rect'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2990 | reg cmd_is_clear_rect;
+      |     ^~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2991:5: Signal is not used: 'cmd_is_set_fb'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2991 | reg cmd_is_set_fb;
+      |     ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2995:5: Signal is not used: 'cmd_is_set_tri_state'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2995 | reg cmd_is_set_tri_state;
+      |     ^~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2999:5: Signal is not used: 'cmd_is_set_object_state'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2999 | reg cmd_is_set_object_state;      
+      |     ^~~~~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3003:5: Signal is not used: 'cmd_is_load_verts'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3003 | reg cmd_is_load_verts;
+      |     ^~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3004:5: Signal is not used: 'cmd_is_load_vert_clip'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3004 | reg cmd_is_load_vert_clip;            
+      |     ^~~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3006:5: Signal is not used: 'cmd_is_set_light_state'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3006 | reg cmd_is_set_light_state;       
+      |     ^~~~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3007:5: Signal is not used: 'cmd_is_load_vert_lit'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3007 | reg cmd_is_load_vert_lit;         
+      |     ^~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3670:53: Signal is not used: 'vc_mem'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3670 | (* ramstyle = "M10K, no_rw_check" *) reg [VC_W-1:0] vc_mem [0:VC_SLOTS-1];
+      |                                                     ^~~~~~
+%Warning-UNDRIVEN: ../common/../common/gpu_core.v:3671:16: Signal is not driven: 'vc_q'
+                                                         : ... note: In instance 'tb_gpu.gpu'
+ 3671 | reg [VC_W-1:0] vc_q;             
+      |                ^~~~
+                   ... For warning description see https://verilator.org/warn/UNDRIVEN?v=5.052
+                   ... Use "/* verilator lint_off UNDRIVEN */" and lint_on around source to disable this message.
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3672:16: Signal is not used: 'vc_raddr'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3672 | reg [4:0]      vc_raddr;         
+      |                ^~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3676:12: Bits of signal are not used: 'xf_load_slot'[4:1]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3676 | reg [4:0]  xf_load_slot;        
+      |            ^~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3687:12: Signal is not used: 'lt_enable'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3687 | reg        lt_enable;
+      |            ^~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3813:43: Bits of signal are not used: 'tx_mul_q'[31:26]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3813 | (* multstyle = "dsp" *) reg signed [31:0] tx_mul_q;
+      |                                           ^~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4041:13: Bits of signal are not used: 'blend_lut_src_byte'[0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4041 | wire [7:0]  blend_lut_src_byte = fb_lane_read(blend_group_src_data, blend_lane_iter);
+      |             ^~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4219:22: Bits of signal are not used: 'folded'[23:8]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4219 |     wire [TAG_W-1:0] folded = address_word ^ (address_word >> 10) ^ (address_word >> 18);
+      |                      ^~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4522:13: Bits of signal are not used: 'cb_dsum_r'[12:11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4522 | wire [12:0] cb_dsum_r  = cb_sr + {cb_dith_w, 3'b100};    
+      |             ^~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4523:13: Bits of signal are not used: 'cb_dsum_g'[12,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4523 | wire [12:0] cb_dsum_g  = cb_sg + {cb_dith_w, 3'b100};    
+      |             ^~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4524:13: Bits of signal are not used: 'cb_dsum_b'[12:11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4524 | wire [12:0] cb_dsum_b  = cb_sb + {cb_dith_w, 3'b100};
+      |             ^~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4559:23: Signal is not used: 'p2b_fb_word_addr_w'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4559 | wire [GPU_ADDR_W-1:0] p2b_fb_word_addr_w
+      |                       ^~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:5158:15: Bits of function variable are not used: 'pair'[0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 5158 |     reg [1:0] pair;
+      |               ^~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:5179:13: Bits of signal are not used: 'recip_norm_pipe'[31,20:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 5179 | wire [31:0] recip_norm_pipe = recip_norm_abs_r << recip_norm_clz_r;
+      |             ^~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9181:32: Bits of signal are not used: 'recip_funnel'[12:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9181 |                     reg [44:0] recip_funnel;
+      |                                ^~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9218:39: Bits of signal are not used: 'xy_shifted'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9218 |                     reg signed [63:0] xy_shifted;
+      |                                       ^~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9237:39: Bits of signal are not used: 'recip_shifted'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9237 |                     reg signed [63:0] recip_shifted;
+      |                                       ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9294:39: Bits of signal are not used: 's_projected64'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9294 |                     reg signed [63:0] s_projected64;
+      |                                       ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9295:39: Bits of signal are not used: 't_projected64'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9295 |                     reg signed [63:0] t_projected64;
+      |                                       ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9558:39: Bits of signal are not used: 's_step_projected'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9558 |                     reg signed [63:0] s_step_projected;
+      |                                       ^~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9559:39: Bits of signal are not used: 't_step_projected'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9559 |                     reg signed [63:0] t_step_projected;
+      |                                       ^~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_edge_walker.v:175:13: Bits of signal are not used: 'div_rem0'[13]
+                                                                   : ... note: In instance 'tb_gpu.gpu.g_tri_walker.tri_walker'
+  175 | reg  [13:0] div_rem0,      div_rem1,      div_rem2;
+      |             ^~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_edge_walker.v:175:28: Bits of signal are not used: 'div_rem1'[13]
+                                                                   : ... note: In instance 'tb_gpu.gpu.g_tri_walker.tri_walker'
+  175 | reg  [13:0] div_rem0,      div_rem1,      div_rem2;
+      |                            ^~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_edge_walker.v:175:43: Bits of signal are not used: 'div_rem2'[13]
+                                                                   : ... note: In instance 'tb_gpu.gpu.g_tri_walker.tri_walker'
+  175 | reg  [13:0] div_rem0,      div_rem1,      div_rem2;
+      |                                           ^~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_edge_walker.v:234:13: Bits of signal are not used: 'div_rem'[13]
+                                                                   : ... note: In instance 'tb_gpu.gpu.g_tri_walker.tri_walker'
+  234 | reg  [13:0] div_rem;
+      |             ^~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_edge_walker.v:266:20: Bits of signal are not used: 'ceil_sum_l'[15:0]
+                                                                   : ... note: In instance 'tb_gpu.gpu.g_tri_walker.tri_walker'
+  266 | wire signed [31:0] ceil_sum_l = xl + 32'sh0000FFFF;
+      |                    ^~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_edge_walker.v:267:20: Bits of signal are not used: 'ceil_sum_r'[15:0]
+                                                                   : ... note: In instance 'tb_gpu.gpu.g_tri_walker.tri_walker'
+  267 | wire signed [31:0] ceil_sum_r = xr + 32'sh0000FFFF;
+      |                    ^~~~~~~~~~
+%Warning-WIDTHTRUNC: tb_gpu.v:200:13: Operator ASSIGN expects 16 bits on the Assign RHS, but Assign RHS's DIV generates 32 bits.
+                                    : ... note: In instance 'tb_gpu'
+  200 |         lut = 16777216 / (1024 + {22'd0, normalized[30:21]});
+      |             ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5337:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5337 |     spanprod_pl_origin_we = 1'b0;
+      |                           ^
+                 ... For warning description see https://verilator.org/warn/BLKSEQ?v=5.052
+                 ... Use "/* verilator lint_off BLKSEQ */" and lint_on around source to disable this message.
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5338:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5338 |     spanprod_pl_origin_wa = 4'd0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5339:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5339 |     spanprod_pl_origin_wd = 0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5340:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5340 |     spanprod_pl_du_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5341:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5341 |     spanprod_pl_du_wa = 4'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5342:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5342 |     spanprod_pl_du_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5343:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5343 |     spanprod_pl_dv_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5344:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5344 |     spanprod_pl_dv_wa = 4'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5345:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5345 |     spanprod_pl_dv_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5346:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5346 |     spanprod_u_we = 1'b0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5347:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5347 |     spanprod_u_wa = 2'd0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5348:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5348 |     spanprod_u_wd = 0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5349:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5349 |     spanprod_v_we = 1'b0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5350:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5350 |     spanprod_v_wa = 2'd0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5351:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5351 |     spanprod_v_wd = 0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5352:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5352 |     spanprod_count_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5353:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5353 |     spanprod_count_wa = 2'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5354:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5354 |     spanprod_count_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5355:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5355 |     spanprod_direct_fb_addr_we = 1'b0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5356:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5356 |     spanprod_direct_fb_addr_wa = 2'd0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5357:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5357 |     spanprod_direct_fb_addr_wd = 0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5358:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5358 |     spanprod_direct_tex_addr_we = 1'b0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5359:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5359 |     spanprod_direct_tex_addr_wa = 2'd0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5360:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5360 |     spanprod_direct_tex_addr_wd = 0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5361:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5361 |     spanprod_direct_s_we = 1'b0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5362:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5362 |     spanprod_direct_s_wa = 2'd0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5363:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5363 |     spanprod_direct_s_wd = 0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5364:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5364 |     spanprod_direct_t_we = 1'b0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5365:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5365 |     spanprod_direct_t_wa = 2'd0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5366:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5366 |     spanprod_direct_t_wd = 0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5367:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5367 |     spanprod_direct_sstep_we = 1'b0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5368:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5368 |     spanprod_direct_sstep_wa = 2'd0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5369:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5369 |     spanprod_direct_sstep_wd = 0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5370:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5370 |     spanprod_direct_tstep_we = 1'b0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5371:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5371 |     spanprod_direct_tstep_wa = 2'd0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5372:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5372 |     spanprod_direct_tstep_wd = 0;
+      |                              ^
+%Warning-UNUSEDSIGNAL: tb_gpu.v:123:24: Bits of signal are not used: 'bd_addr'[23:20]
+                                      : ... note: In instance 'tb_gpu'
+  123 |     input  wire [23:0] bd_addr,     
+      |                        ^~~~~~~
+                       ... For warning description see https://verilator.org/warn/UNUSEDSIGNAL?v=5.052
+                       ... Use "/* verilator lint_off UNUSEDSIGNAL */" and lint_on around source to disable this message.
+%Warning-UNUSEDSIGNAL: tb_gpu.v:127:24: Bits of signal are not used: 'bd_rd_addr'[23:20]
+                                      : ... note: In instance 'tb_gpu'
+  127 |     input  wire [23:0] bd_rd_addr,
+      |                        ^~~~~~~~~~
+%Warning-UNUSEDSIGNAL: tb_gpu.v:153:13: Bits of signal are not used: 'gpu_wr_awaddr'[31:26,1:0]
+                                      : ... note: In instance 'tb_gpu'
+  153 | wire [31:0] gpu_wr_awaddr;
+      |             ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: tb_gpu.v:170:13: Bits of signal are not used: 'gpu_sram_addr'[21:16]
+                                      : ... note: In instance 'tb_gpu'
+  170 | wire [21:0] gpu_sram_addr;
+      |             ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:857:13: Bits of signal are not used: 'cmap_resp_data_b'[15:8]
+                                                            : ... note: In instance 'tb_gpu.gpu'
+  857 | wire [15:0] cmap_resp_data_b;
+      |             ^~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1497:12: Signal is not used: 'sp_const_alpha'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1497 | reg [7:0]  sp_const_alpha;      
+      |            ^~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1518:20: Bits of signal are not used: 'sp_s_clamp_min'[15:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1518 | wire signed [31:0] sp_s_clamp_min = spanprod_clamp0_min;
+      |                    ^~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1519:20: Bits of signal are not used: 'sp_s_clamp_max'[15:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1519 | wire signed [31:0] sp_s_clamp_max = spanprod_clamp0_max;
+      |                    ^~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1520:20: Bits of signal are not used: 'sp_t_clamp_min'[15:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1520 | wire signed [31:0] sp_t_clamp_min = spanprod_clamp1_min;
+      |                    ^~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1521:20: Bits of signal are not used: 'sp_t_clamp_max'[15:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1521 | wire signed [31:0] sp_t_clamp_max = spanprod_clamp1_max;
+      |                    ^~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:1758:17: Bits of function variable are not used: 'flags'[7,4:3,1]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 1758 |     input [7:0] flags;
+      |                 ^~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2721:16: Bits of function variable are not used: 'normalized'[31,19:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2721 |     reg [31:0] normalized;
+      |                ^~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2817:18: Bits of function variable are not used: 'pr'[11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2817 |     reg   [11:0] pr, pg, pb;
+      |                  ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2817:22: Bits of function variable are not used: 'pg'[5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2817 |     reg   [11:0] pr, pg, pb;
+      |                      ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2817:26: Bits of function variable are not used: 'pb'[11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2817 |     reg   [11:0] pr, pg, pb;
+      |                          ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2838:18: Bits of function variable are not used: 'pr'[10,4:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2838 |     reg   [10:0] pr, pb;    
+      |                  ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2838:22: Bits of function variable are not used: 'pb'[10,4:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2838 |     reg   [10:0] pr, pb;    
+      |                      ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2839:18: Bits of function variable are not used: 'pg'[12,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2839 |     reg   [12:0] pg;        
+      |                  ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2888:18: Bits of function variable are not used: 'pr'[12:11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2888 |     reg   [12:0] pr, pg, pb;
+      |                  ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2888:22: Bits of function variable are not used: 'pg'[12,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2888 |     reg   [12:0] pr, pg, pb;
+      |                      ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2888:26: Bits of function variable are not used: 'pb'[12:11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 2888 |     reg   [12:0] pr, pg, pb;
+      |                          ^~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2990:5: Signal is not used: 'cmd_is_clear_rect'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2990 | reg cmd_is_clear_rect;
+      |     ^~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2991:5: Signal is not used: 'cmd_is_set_fb'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2991 | reg cmd_is_set_fb;
+      |     ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2995:5: Signal is not used: 'cmd_is_set_tri_state'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2995 | reg cmd_is_set_tri_state;
+      |     ^~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:2999:5: Signal is not used: 'cmd_is_set_object_state'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 2999 | reg cmd_is_set_object_state;      
+      |     ^~~~~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3003:5: Signal is not used: 'cmd_is_load_verts'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3003 | reg cmd_is_load_verts;
+      |     ^~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3004:5: Signal is not used: 'cmd_is_load_vert_clip'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3004 | reg cmd_is_load_vert_clip;            
+      |     ^~~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3006:5: Signal is not used: 'cmd_is_set_light_state'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3006 | reg cmd_is_set_light_state;       
+      |     ^~~~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3007:5: Signal is not used: 'cmd_is_load_vert_lit'
+                                                            : ... note: In instance 'tb_gpu.gpu'
+ 3007 | reg cmd_is_load_vert_lit;         
+      |     ^~~~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3055:19: Signal is not used: 'tri_clip_x0'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3055 | reg signed [15:0] tri_clip_x0, tri_clip_x1;
+      |                   ^~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3055:32: Signal is not used: 'tri_clip_x1'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3055 | reg signed [15:0] tri_clip_x0, tri_clip_x1;
+      |                                ^~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3056:19: Signal is not used: 'tri_clip_y0'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3056 | reg signed [15:0] tri_clip_y0, tri_clip_y1;
+      |                   ^~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3056:32: Signal is not used: 'tri_clip_y1'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3056 | reg signed [15:0] tri_clip_y0, tri_clip_y1;
+      |                                ^~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3066:20: Signal is not used: 'tri_rec_ready'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3066 | wire               tri_rec_ready = (state == S_TRI_FILL);
+      |                    ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3670:53: Signal is not used: 'vc_mem'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3670 | (* ramstyle = "M10K, no_rw_check" *) reg [VC_W-1:0] vc_mem [0:VC_SLOTS-1];
+      |                                                     ^~~~~~
+%Warning-UNDRIVEN: ../common/../common/gpu_core.v:3671:16: Signal is not driven: 'vc_q'
+                                                         : ... note: In instance 'tb_gpu.gpu'
+ 3671 | reg [VC_W-1:0] vc_q;             
+      |                ^~~~
+                   ... For warning description see https://verilator.org/warn/UNDRIVEN?v=5.052
+                   ... Use "/* verilator lint_off UNDRIVEN */" and lint_on around source to disable this message.
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3672:16: Signal is not used: 'vc_raddr'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3672 | reg [4:0]      vc_raddr;         
+      |                ^~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3676:12: Bits of signal are not used: 'xf_load_slot'[4:1]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3676 | reg [4:0]  xf_load_slot;        
+      |            ^~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3687:12: Signal is not used: 'lt_enable'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3687 | reg        lt_enable;
+      |            ^~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:3813:43: Bits of signal are not used: 'tx_mul_q'[31:26]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 3813 | (* multstyle = "dsp" *) reg signed [31:0] tx_mul_q;
+      |                                           ^~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4041:13: Bits of signal are not used: 'blend_lut_src_byte'[0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4041 | wire [7:0]  blend_lut_src_byte = fb_lane_read(blend_group_src_data, blend_lane_iter);
+      |             ^~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4219:22: Bits of signal are not used: 'folded'[23:8]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4219 |     wire [TAG_W-1:0] folded = address_word ^ (address_word >> 10) ^ (address_word >> 18);
+      |                      ^~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4522:13: Bits of signal are not used: 'cb_dsum_r'[12:11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4522 | wire [12:0] cb_dsum_r  = cb_sr + {cb_dith_w, 3'b100};    
+      |             ^~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4523:13: Bits of signal are not used: 'cb_dsum_g'[12,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4523 | wire [12:0] cb_dsum_g  = cb_sg + {cb_dith_w, 3'b100};    
+      |             ^~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4524:13: Bits of signal are not used: 'cb_dsum_b'[12:11,5:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4524 | wire [12:0] cb_dsum_b  = cb_sb + {cb_dith_w, 3'b100};
+      |             ^~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:4559:23: Signal is not used: 'p2b_fb_word_addr_w'
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 4559 | wire [GPU_ADDR_W-1:0] p2b_fb_word_addr_w
+      |                       ^~~~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:5158:15: Bits of function variable are not used: 'pair'[0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 5158 |     reg [1:0] pair;
+      |               ^~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:5179:13: Bits of signal are not used: 'recip_norm_pipe'[31,20:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 5179 | wire [31:0] recip_norm_pipe = recip_norm_abs_r << recip_norm_clz_r;
+      |             ^~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9181:32: Bits of signal are not used: 'recip_funnel'[12:0]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9181 |                     reg [44:0] recip_funnel;
+      |                                ^~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9218:39: Bits of signal are not used: 'xy_shifted'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9218 |                     reg signed [63:0] xy_shifted;
+      |                                       ^~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9237:39: Bits of signal are not used: 'recip_shifted'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9237 |                     reg signed [63:0] recip_shifted;
+      |                                       ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9294:39: Bits of signal are not used: 's_projected64'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9294 |                     reg signed [63:0] s_projected64;
+      |                                       ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9295:39: Bits of signal are not used: 't_projected64'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9295 |                     reg signed [63:0] t_projected64;
+      |                                       ^~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9558:39: Bits of signal are not used: 's_step_projected'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9558 |                     reg signed [63:0] s_step_projected;
+      |                                       ^~~~~~~~~~~~~~~~
+%Warning-UNUSEDSIGNAL: ../common/../common/gpu_core.v:9559:39: Bits of signal are not used: 't_step_projected'[63:32]
+                                                             : ... note: In instance 'tb_gpu.gpu'
+ 9559 |                     reg signed [63:0] t_step_projected;
+      |                                       ^~~~~~~~~~~~~~~~
+make[1]: Entering directory '/home/alberto/Repos/openfpgaOS/src/fpga/test/obj_dir_gpu_acceptance_os25x'
+g++  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -Os  -c -o tb_gpu_acceptance_main.o ../tb_gpu_acceptance_main.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -c -o verilated.o /usr/share/verilator/include/verilated.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -c -o verilated_dpi.o /usr/share/verilator/include/verilated_dpi.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -c -o verilated_vcd_c.o /usr/share/verilator/include/verilated_vcd_c.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -c -o verilated_threads.o /usr/share/verilator/include/verilated_threads.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -c -x c++-header Vtb_gpu__pch.h -o Vtb_gpu__pch.h.fast.gch
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -c -x c++-header Vtb_gpu__pch.h -o Vtb_gpu__pch.h.slow.gch
+make[1]: Entering directory '/home/alberto/Repos/openfpgaOS/src/fpga/test/obj_dir_gpu_acceptance_misterx'
+g++  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -Os  -c -o tb_gpu_acceptance_main.o ../tb_gpu_acceptance_main.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -o verilated.o /usr/share/verilator/include/verilated.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -o verilated_dpi.o /usr/share/verilator/include/verilated_dpi.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.fast -c Vtb_gpu.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.fast -c Vtb_gpu___024root__0.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -o verilated_vcd_c.o /usr/share/verilator/include/verilated_vcd_c.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -o verilated_threads.o /usr/share/verilator/include/verilated_threads.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.fast -c Vtb_gpu___024root__1.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -x c++-header Vtb_gpu__pch.h -o Vtb_gpu__pch.h.fast.gch
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -x c++-header Vtb_gpu__pch.h -o Vtb_gpu__pch.h.slow.gch
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.fast -c Vtb_gpu__Dpi.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.slow -c Vtb_gpu__ConstPool__0__Slow.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.fast -c Vtb_gpu__Trace__0.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.slow -c Vtb_gpu___024root__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.slow -c Vtb_gpu___024root__0__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.slow -c Vtb_gpu__Syms__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.slow -c Vtb_gpu__ConstPool__0__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.slow -c Vtb_gpu___024root__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.slow -c Vtb_gpu__Trace__0__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.slow -c Vtb_gpu__TraceDecls__0__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.slow -c Vtb_gpu___024root__0__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.slow -c Vtb_gpu__Syms__Slow.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.fast -c Vtb_gpu.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.slow -c Vtb_gpu__Trace__0__Slow.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.fast -c Vtb_gpu___024root__0.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.fast -c Vtb_gpu___024root__1.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_NO_PARAM_TRI -DGPU_TEST_NO_VERT_TRI   -include Vtb_gpu__pch.h.slow -c Vtb_gpu__TraceDecls__0__Slow.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.fast -c Vtb_gpu__Dpi.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=1 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=1 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu__pch.h.fast -c Vtb_gpu__Trace__0.cpp
+g++    tb_gpu_acceptance_main.o verilated.o verilated_dpi.o verilated_vcd_c.o verilated_threads.o Vtb_gpu__ALL.a    -pthread -lpthread -latomic   -o Vtb_gpu
+rm Vtb_gpu__ALL.verilator_deplist.tmp
+make[1]: Leaving directory '/home/alberto/Repos/openfpgaOS/src/fpga/test/obj_dir_gpu_acceptance_os25x'
+- V e r i l a t i o n   R e p o r t: Verilator 5.052 2026-09-05 rev v5.052
+- Verilator: Built from 1.208 MB sources in 6 modules, into 5.307 MB in 11 C++ files needing 0.005 MB
+- Verilator: Walltime 15.800 s (elab=0.075, cvt=2.967, bld=12.615); cpu 2.411 s on 1 threads; allocated 108.379 MB
+./obj_dir_gpu_acceptance_os25x/Vtb_gpu
+g++    tb_gpu_acceptance_main.o verilated.o verilated_dpi.o verilated_vcd_c.o verilated_threads.o Vtb_gpu__ALL.a    -pthread -lpthread -latomic   -o Vtb_gpu
+rm Vtb_gpu__ALL.verilator_deplist.tmp
+make[1]: Leaving directory '/home/alberto/Repos/openfpgaOS/src/fpga/test/obj_dir_gpu_acceptance_misterx'
+- V e r i l a t i o n   R e p o r t: Verilator 5.052 2026-09-05 rev v5.052
+- Verilator: Built from 1.209 MB sources in 6 modules, into 5.706 MB in 11 C++ files needing 0.006 MB
+- Verilator: Walltime 19.454 s (elab=0.069, cvt=3.164, bld=16.118); cpu 2.632 s on 1 threads; allocated 111.902 MB
+
+=== GPU acceptance suite (EXACT shipped MiSTer GPU config) ===
+./obj_dir_gpu_acceptance_misterx/Vtb_gpu
+=== GPU Acceptance Suite ===
+
+GPU initialized after hard reset (25 cycles)
+
+TEST fence_no_writes
+  PASS fence_no_writes.fb_unchanged
+TEST multi_fence_in_order
+  PASS multi_fence_in_order
+TEST fence_after_clear_drains
+  PASS fence_after_clear_drains.fb
+TEST fence_token_high_bits
+  PASS fence_token_high_bits
+TEST set_fb_two_bases
+  PASS set_fb_two_bases.A
+  PASS set_fb_two_bases.B
+TEST set_fb_unusual_stride
+  PASS set_fb_unusual_stride.rect
+  PASS set_fb_unusual_stride.border
+TEST set_texture_does_not_affect_direct_span
+  PASS set_texture_negative.A
+  PASS set_texture_negative.B
+  PASS set_texture_negative.border
+TEST single_lane_span_explicit_colormap_slots
+  PASS single_lane_span_explicit_colormap_slots.s0
+  PASS single_lane_span_explicit_colormap_slots.s1
+  PASS single_lane_span_explicit_colormap_slots.s2
+  PASS single_lane_span_explicit_colormap_slots.border
+TEST per_span_colormap_explicit_slots
+  PASS per_span_colormap_explicit_slots.inv
+  PASS per_span_colormap_explicit_slots.id_explicit0
+  PASS per_span_colormap_explicit_slots.ex_inv
+TEST clear_color_replication
+  PASS clear_color_replication.0x00
+  PASS clear_color_replication.0x7f
+  PASS clear_color_replication.0xff
+TEST clear_drains_framebuffer_writes
+  PASS clear_drains_framebuffer_writes.fb
+  PASS clear_drains_framebuffer_writes.aw_count_reduced
+TEST clear_no_op_when_flag_clear
+  PASS clear_no_op_when_flag_clear
+TEST clear_does_not_touch_rows_200_to_239
+  PASS clear_does_not_touch_rows_200_to_239.cleared
+  PASS clear_does_not_touch_rows_200_to_239.preserved
+TEST clear_rect_edge_lanes
+  PASS clear_rect_edge.lane0_w1
+  PASS clear_rect_edge.lane0_w2
+  PASS clear_rect_edge.lane0_w3
+  PASS clear_rect_edge.lane0_w4
+  PASS clear_rect_edge.lane0_w5
+  PASS clear_rect_edge.lane0_w6
+  PASS clear_rect_edge.lane0_w7
+  PASS clear_rect_edge.lane1_w1
+  PASS clear_rect_edge.lane1_w2
+  PASS clear_rect_edge.lane1_w3
+  PASS clear_rect_edge.lane1_w4
+  PASS clear_rect_edge.lane1_w5
+  PASS clear_rect_edge.lane1_w6
+  PASS clear_rect_edge.lane1_w7
+  PASS clear_rect_edge.lane2_w1
+  PASS clear_rect_edge.lane2_w2
+  PASS clear_rect_edge.lane2_w3
+  PASS clear_rect_edge.lane2_w4
+  PASS clear_rect_edge.lane2_w5
+  PASS clear_rect_edge.lane2_w6
+  PASS clear_rect_edge.lane2_w7
+  PASS clear_rect_edge.lane3_w1
+  PASS clear_rect_edge.lane3_w2
+  PASS clear_rect_edge.lane3_w3
+  PASS clear_rect_edge.lane3_w4
+  PASS clear_rect_edge.lane3_w5
+  PASS clear_rect_edge.lane3_w6
+  PASS clear_rect_edge.lane3_w7
+  PASS clear_rect_edge_lanes.all_rows_match
+TEST clear_rect_zero_dimensions
+  PASS clear_rect_zero_dimensions
+TEST span_raw_count_boundary
+  PASS span_raw_count.0.border
+  PASS span_raw_count.1
+  PASS span_raw_count.1.border
+  PASS span_raw_count.2
+  PASS span_raw_count.2.border
+  PASS span_raw_count.3
+  PASS span_raw_count.3.border
+  PASS span_raw_count.4
+  PASS span_raw_count.4.border
+  PASS span_raw_count.5
+  PASS span_raw_count.5.border
+  PASS span_raw_count.16
+  PASS span_raw_count.16.border
+  PASS span_raw_count.127
+  PASS span_raw_count.127.border
+  PASS span_raw_count.128
+  PASS span_raw_count.128.border
+  PASS span_raw_count.320
+  PASS span_raw_count.320.border
+TEST span_raw_count_4096_preserved
+  PASS span_raw_count_4096_preserved.fb
+TEST span_raw_negative_stride
+  PASS span_raw_negative_stride.fb
+  PASS span_raw_negative_stride.border
+TEST span_raw_mask_zero_means_identity
+  PASS span_raw_mask_zero_means_identity.fb
+  PASS span_raw_mask_zero_means_identity.border
+TEST span_affine_group_repeatable
+  PASS span_affine_group_repeatable.fb
+  PASS span_affine_group_repeatable.rows_equal
+TEST span_colormap_explicit_per_span_id
+  PASS span_colormap.slot5_inv
+  PASS span_colormap.slot15_const
+TEST palookup_base_register
+  PASS palookup_base_register
+TEST span_colormap_light_wraps_mod_64
+  PASS light_wraps.row64_to_0
+  PASS light_wraps.row65_to_1
+TEST skip_zero_only_discards_0xff
+  PASS skip_zero_only_discards_0xff
+TEST skip_zero_with_colormap
+  PASS skip_zero_with_colormap
+TEST transluc_basic_blend
+  PASS transluc_basic_blend.fb
+TEST transluc_overdraw_same_word
+  PASS transluc_overdraw_same_word.fb
+TE=== GPU Acceptance Suite ===
+
+GPU initialized after hard reset (25 cycles)
+
+TEST fence_no_writes
+  PASS fence_no_writes.fb_unchanged
+TEST multi_fence_in_order
+  PASS multi_fence_in_order
+TEST fence_after_clear_drains
+  PASS fence_after_clear_drains.fb
+TEST fence_token_high_bits
+  PASS fence_token_high_bits
+TEST set_fb_two_bases
+  PASS set_fb_two_bases.A
+  PASS set_fb_two_bases.B
+TEST set_fb_unusual_stride
+  PASS set_fb_unusual_stride.rect
+  PASS set_fb_unusual_stride.border
+TEST set_texture_does_not_affect_direct_span
+  PASS set_texture_negative.A
+  PASS set_texture_negative.B
+  PASS set_texture_negative.border
+TEST single_lane_span_explicit_colormap_slots
+  PASS single_lane_span_explicit_colormap_slots.s0
+  PASS single_lane_span_explicit_colormap_slots.s1
+  PASS single_lane_span_explicit_colormap_slots.s2
+  PASS single_lane_span_explicit_colormap_slots.border
+TEST per_span_colormap_explicit_slots
+  PASS per_span_colormap_explicit_slots.inv
+  PASS per_span_colormap_explicit_slots.id_explicit0
+  PASS per_span_colormap_explicit_slots.ex_inv
+TEST clear_color_replication
+  PASS clear_color_replication.0x00
+  PASS clear_color_replication.0x7f
+  PASS clear_color_replication.0xff
+TEST clear_drains_framebuffer_writes
+  PASS clear_drains_framebuffer_writes.fb
+  PASS clear_drains_framebuffer_writes.aw_count_reduced
+TEST clear_no_op_when_flag_clear
+  PASS clear_no_op_when_flag_clear
+TEST clear_does_not_touch_rows_200_to_239
+  PASS clear_does_not_touch_rows_200_to_239.cleared
+  PASS clear_does_not_touch_rows_200_to_239.preserved
+TEST clear_rect_edge_lanes
+  PASS clear_rect_edge.lane0_w1
+  PASS clear_rect_edge.lane0_w2
+  PASS clear_rect_edge.lane0_w3
+  PASS clear_rect_edge.lane0_w4
+  PASS clear_rect_edge.lane0_w5
+  PASS clear_rect_edge.lane0_w6
+  PASS clear_rect_edge.lane0_w7
+  PASS clear_rect_edge.lane1_w1
+  PASS clear_rect_edge.lane1_w2
+  PASS clear_rect_edge.lane1_w3
+  PASS clear_rect_edge.lane1_w4
+  PASS clear_rect_edge.lane1_w5
+  PASS clear_rect_edge.lane1_w6
+  PASS clear_rect_edge.lane1_w7
+  PASS clear_rect_edge.lane2_w1
+  PASS clear_rect_edge.lane2_w2
+  PASS clear_rect_edge.lane2_w3
+  PASS clear_rect_edge.lane2_w4
+  PASS clear_rect_edge.lane2_w5
+  PASS clear_rect_edge.lane2_w6
+  PASS clear_rect_edge.lane2_w7
+  PASS clear_rect_edge.lane3_w1
+  PASS clear_rect_edge.lane3_w2
+  PASS clear_rect_edge.lane3_w3
+  PASS clear_rect_edge.lane3_w4
+  PASS clear_rect_edge.lane3_w5
+  PASS clear_rect_edge.lane3_w6
+  PASS clear_rect_edge.lane3_w7
+  PASS clear_rect_edge_lanes.all_rows_match
+TEST clear_rect_zero_dimensions
+  PASS clear_rect_zero_dimensions
+TEST span_raw_count_boundary
+  PASS span_raw_count.0.border
+  PASS span_raw_count.1
+  PASS span_raw_count.1.border
+  PASS span_raw_count.2
+  PASS span_raw_count.2.border
+  PASS span_raw_count.3
+  PASS span_raw_count.3.border
+  PASS span_raw_count.4
+  PASS span_raw_count.4.border
+  PASS span_raw_count.5
+  PASS span_raw_count.5.border
+  PASS span_raw_count.16
+  PASS span_raw_count.16.border
+  PASS span_raw_count.127
+  PASS span_raw_count.127.border
+  PASS span_raw_count.128
+  PASS span_raw_count.128.border
+  PASS span_raw_count.320
+  PASS span_raw_count.320.border
+TEST span_raw_count_4096_preserved
+  PASS span_raw_count_4096_preserved.fb
+TEST span_raw_negative_stride
+  PASS span_raw_negative_stride.fb
+  PASS span_raw_negative_stride.border
+TEST span_raw_mask_zero_means_identity
+  PASS span_raw_mask_zero_means_identity.fb
+  PASS span_raw_mask_zero_means_identity.border
+TEST span_affine_group_repeatable
+  PASS span_affine_group_repeatable.fb
+  PASS span_affine_group_repeatable.rows_equal
+TEST span_colormap_explicit_per_span_id
+  PASS span_colormap.slot5_inv
+  PASS span_colormap.slot15_const
+TEST palookup_base_register
+  PASS palookup_base_register
+TEST span_colormap_light_wraps_mod_64
+  PASS light_wraps.row64_to_0
+  PASS light_wraps.row65_to_1
+TEST skip_zero_only_discards_0xff
+  PASS skip_zero_only_discards_0xff
+TEST skip_zero_with_colormap
+  PASS skip_zero_with_colormap
+TEST transluc_basic_blend
+  PASS transluc_basic_blend.fb
+TEST transluc_overdraw_same_word
+  PASS transluc_overdraw_same_word.fb
+TEST transluc_duplicate_lane_order
+  PASS transluc_duplicate_lane_order.fb
+TEST persp_constant_z_matches_affine
+  PASS persp_constant_z_matches_affine (diffs=0, tolerance=2)
+TEST persp_span_group_varcount_const_z_equals_single_lane_spans
+  PASS persp_span_group_varcount_const_z_equals_single_lane_spans
+TEST persp_span_group_doom_wall_layout_matches_reference
+  PASS persp_span_group_doom_wall_layout_matches_reference.fb
+TEST persp_span_group_doom_wall_layout_8lane_chunk_positions
+  PASS persp_span_group_doom_wall_layout_8lane_chunk_positions.fb
+TEST persp_span_group_doom_wall_negative_t_wrap
+  PASS persp_span_group_doom_wall_negative_t_wrap.fb
+TEST persp_span_group_doom_wall_7lane_partial_chunk
+  PASS persp_span_group_doom_wall_7lane_partial_chunk.fb
+TEST persp_span_group_doom_wall_nonunit_z_equals_single_lane_spans
+  PASS persp_span_group_doom_wall_nonunit_z_equals_single_lane_spans
+TEST persp_span_group_doom_wall_cpu_fixeddiv_reference
+  PASS persp_span_group_doom_wall_cpu_fixeddiv_reference
+TEST persp_span_group_quake_rows_match_single_lane_spans
+  PASS persp_span_group_quake_rows_match_single_lane_spans
+TEST persp_span_group_quake_payload_cpu_oracle
+  persp_quake_payload_exact_oracle diffs: exact=1 segment16=0 split_gpu=0
+  PASS persp_quake_payload_exact_oracle
+TEST persp_span_group_quake_payload_edge_cases
+  persp_quake_payload_negative_minor diffs: exact=7 segment16=0 split_gpu=0
+  PASS persp_quake_payload_negative_minor
+  persp_quake_payload_tiny_positive_zi diffs: exact=7 segment16=0 split_gpu=0
+  PASS persp_quake_payload_tiny_positive_zi
+  persp_quake_payload_baked_sadjust diffs: exact=10 segment16=0 split_gpu=0
+  PASS persp_quake_payload_baked_sadjust
+TEST param_span_list_affine_rows
+  PASS param_span_list_affine_rows.fb
+TEST param_span_list_affine_columns
+  PASS param_span_list_affine_columns.fb
+TEST param_span_list_affine_clamp
+  PASS param_span_list_affine_clamp
+TEST param_span_list_zero_counts_skip
+  PASS param_span_list_zero_counts_skip.fb
+TEST param_span_list_streams_many_records
+  PASS param_span_list_streams_many_records.fb
+TEST param_span_list_unsupported_noop
+  PASS param_span_list_unsupported_noop.fb
+TEST param_span_list_colormap_skip_zero
+  PASS param_span_list_colormap_skip_zero.fb
+TEST param_tri_wrong_size_noop_drains
+  PASS param_tri_wrong_size_noop_drains.fb
+TEST param_tri_degenerate_noop
+  PASS param_tri_degenerate_noop.fb
+TEST param_tri_unsupported_header_noop
+  PASS param_tri_unsupported_header_noop.fb
+TEST vert_tri_wrong_size_noop
+  PASS vert_tri_wrong_size_noop.fb
+TEST param_span_list_persp_matches_helper
+  PASS param_span_list_persp_matches_helper
+TEST param_span_quake_projection_math_no_z
+  PASS param_span_quake_projection_math_no_z_abs_fb
+  PASS param_span_quake_projection_math_no_z_rebased_fb
+TEST param_span_quake_projection_math_z_write
+  PASS param_span_quake_projection_math_z_write_abs_fb
+  PASS param_span_quake_projection_math_z_write_rebased_fb
+  PASS param_span_quake_projection_math_z_write_abs_z
+  PASS param_span_quake_projection_math_z_write_rebased_z
+TEST param_span_q29_high_angle_floor_no_flatten
+  PASS param_span_q29_high_angle_floor_no_flatten
+TEST param_q29_tail_counts_and_boundaries
+  PASS param_q29_tail_counts_and_boundaries
+TEST param_q29_record_counts_and_odd_pairs
+  PASS param_q29_record_counts_and_odd_pairs.1
+  PASS param_q29_record_counts_and_odd_pairs.2
+  PASS param_q29_record_counts_and_odd_pairs.3
+  PASS param_q29_record_counts_and_odd_pairs.4
+  PASS param_q29_record_counts_and_odd_pairs.5
+  PASS param_q29_record_counts_and_odd_pairs.7
+  PASS param_q29_record_counts_and_odd_pairs.8
+  PASS param_q29_record_counts_and_odd_pairs.9
+  PASS param_q29_record_counts_and_odd_pairs.16
+  PASS param_q29_record_counts_and_odd_pairs.63
+  PASS param_q29_record_counts_and_odd_pairs.64
+  PASS param_q29_record_counts_and_odd_pairs.65
+  PASS param_q29_record_counts_and_odd_pairs.511
+  PASS param_q29_record_counts_and_odd_pairs.512
+TEST param_q29_axis_y_multichunk_wall_repro
+  PASS param_q29_axis_y_multichunk_wall_repro.1
+  PASS param_q29_axis_y_multichunk_wall_repro.2
+  PASS param_q29_ST transluc_duplicate_lane_order
+  PASS transluc_duplicate_lane_order.fb
+TEST persp_constant_z_matches_affine
+  PASS persp_constant_z_matches_affine (diffs=0, tolerance=2)
+TEST persp_span_group_varcount_const_z_equals_single_lane_spans
+  PASS persp_span_group_varcount_const_z_equals_single_lane_spans
+TEST persp_span_group_doom_wall_layout_matches_reference
+  PASS persp_span_group_doom_wall_layout_matches_reference.fb
+TEST persp_span_group_doom_wall_layout_8lane_chunk_positions
+  PASS persp_span_group_doom_wall_layout_8lane_chunk_positions.fb
+TEST persp_span_group_doom_wall_negative_t_wrap
+  PASS persp_span_group_doom_wall_negative_t_wrap.fb
+TEST persp_span_group_doom_wall_7lane_partial_chunk
+  PASS persp_span_group_doom_wall_7lane_partial_chunk.fb
+TEST persp_span_group_doom_wall_nonunit_z_equals_single_lane_spans
+  PASS persp_span_group_doom_wall_nonunit_z_equals_single_lane_spans
+TEST persp_span_group_doom_wall_cpu_fixeddiv_reference
+  PASS persp_span_group_doom_wall_cpu_fixeddiv_reference
+TEST persp_span_group_quake_rows_match_single_lane_spans
+  PASS persp_span_group_quake_rows_match_single_lane_spans
+TEST persp_span_group_quake_payload_cpu_oracle
+  persp_quake_payload_exact_oracle diffs: exact=1 segment16=0 split_gpu=0
+  PASS persp_quake_payload_exact_oracle
+TEST persp_span_group_quake_payload_edge_cases
+  persp_quake_payload_negative_minor diffs: exact=7 segment16=0 split_gpu=0
+  PASS persp_quake_payload_negative_minor
+  persp_quake_payload_tiny_positive_zi diffs: exact=7 segment16=0 split_gpu=0
+  PASS persp_quake_payload_tiny_positive_zi
+  persp_quake_payload_baked_sadjust diffs: exact=10 segment16=0 split_gpu=0
+  PASS persp_quake_payload_baked_sadjust
+TEST param_span_list_affine_rows
+  PASS param_span_list_affine_rows.fb
+TEST param_span_list_affine_columns
+  PASS param_span_list_affine_columns.fb
+TEST param_span_list_affine_clamp
+  PASS param_span_list_affine_clamp
+TEST param_span_list_zero_counts_skip
+  PASS param_span_list_zero_counts_skip.fb
+TEST param_span_list_streams_many_records
+  PASS param_span_list_streams_many_records.fb
+TEST param_span_list_unsupported_noop
+  PASS param_span_list_unsupported_noop.fb
+TEST param_span_list_colormap_skip_zero
+  PASS param_span_list_colormap_skip_zero.fb
+TEST param_tri_wrong_size_noop_drains
+  PASS param_tri_wrong_size_noop_drains.fb
+TEST param_tri_degenerate_noop
+  PASS param_tri_degenerate_noop.fb
+TEST param_tri_unsupported_header_noop
+  PASS param_tri_unsupported_header_noop.fb
+TEST param_tri_affine_basic
+  PASS param_tri_affine_basic.fb
+TEST param_tri_clip_all_sides
+  PASS param_tri_clip_all_sides.fb
+TEST param_tri_shared_edge_adjacency
+  PASS param_tri_shared_edge_adjacency.fb
+TEST param_tri_fuzz_affine
+  PASS param_tri_fuzz_affine.fb
+TEST vert_tri_equivalence_vs_param
+  PASS vert_tri_equivalence_vs_param.large
+  PASS vert_tri_equivalence_vs_param.thin_sliver
+  PASS vert_tri_equivalence_vs_param.steep_gradient
+  PASS vert_tri_equivalence_vs_param.partial_clip
+  PASS vert_tri_equivalence_vs_param.degenerate_collinear
+TEST texture_mirror_s
+  PASS texture_mirror_s
+TEST texture_mirror_t
+  PASS texture_mirror_t
+TEST vert_tri_sliver_renders_in_range
+  PASS vert_tri_sliver_renders_in_range.equiv
+  PASS vert_tri_sliver_renders_in_range.painted
+TEST vert_tri_shared_edge_adjacency
+  PASS vert_tri_shared_edge_adjacency
+TEST vert_tri_sticky_semantics
+  PASS vert_tri_sticky_semantics.one_a_three_b
+  PASS vert_tri_sticky_semantics.noop_without_a
+  PASS vert_tri_sticky_semantics.soft_reset_clears
+TEST vert_tri_wrong_size_noop
+  PASS vert_tri_wrong_size_noop.fb
+TEST param_tri_recs_equivalence_vs_param
+  PASS param_tri_recs_equivalence_vs_param.fb
+  PASS param_tri_recs_equivalence_vs_param.vs_0x49
+TEST param_tri_recs_sticky_semantics
+  PASS param_tri_recs_sticky_semantics.fb
+  PASS param_tri_recs_sticky_semantics.soft_reset
+TEST param_tri_recs_wrong_size_noop
+  PASS param_tri_recs_wrong_size_noop.fb
+TEST param_span_list_persp_matches_helper
+  PASS param_span_list_persp_matches_helper
+TEST param_span_quake_projection_math_no_z
+  PASS param_span_quake_projection_math_no_z_abs_fb
+  PASS paxis_y_multichunk_wall_repro.3
+  PASS param_q29_axis_y_multichunk_wall_repro.4
+  PASS param_q29_axis_y_multichunk_wall_repro.5
+  PASS param_q29_axis_y_multichunk_wall_repro.6
+  PASS param_q29_axis_y_multichunk_wall_repro.7
+  PASS param_q29_axis_y_multichunk_wall_repro.8
+  PASS param_q29_axis_y_multichunk_wall_repro.9
+  PASS param_q29_axis_y_multichunk_wall_repro.16
+  PASS param_q29_axis_y_multichunk_wall_repro.17
+  PASS param_q29_axis_y_multichunk_wall_repro.33
+  PASS param_q29_axis_y_multichunk_wall_repro.64
+  PASS param_q29_axis_y_multichunk_wall_repro.65
+  PASS param_q29_axis_y_multichunk_wall_repro.127
+  PASS param_q29_axis_y_multichunk_wall_repro.128
+TEST doom_real_capture_replay_no_black_columns
+  PASS doom_real_capture_replay_no_black_columns
+TEST doom_real_capture_frame_no_black_columns
+  PASS doom_real_capture_frame_no_black_columns
+TEST param_q29_zero_counts_mixed_no_drop
+  PASS param_q29_zero_counts_mixed_no_drop.fb
+  PASS param_q29_zero_counts_mixed_no_drop.zero_guards
+TEST param_q48_multichunk_drop_repro.rc5
+  PASS param_q48_multichunk_drop_repro.rc5
+    rc=5 painted=4 transparent=1 (no drop)
+TEST param_q48_multichunk_drop_repro.rc6
+  PASS param_q48_multichunk_drop_repro.rc6
+    rc=6 painted=4 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc7
+  PASS param_q48_multichunk_drop_repro.rc7
+    rc=7 painted=5 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc8
+  PASS param_q48_multichunk_drop_repro.rc8
+    rc=8 painted=6 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc9
+  PASS param_q48_multichunk_drop_repro.rc9
+    rc=9 painted=7 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc17
+  PASS param_q48_multichunk_drop_repro.rc17
+    rc=17 painted=15 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc5
+  PASS param_q48_multichunk_drop_repro.rc5
+    rc=5 painted=5 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc6
+  PASS param_q48_multichunk_drop_repro.rc6
+    rc=6 painted=6 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc7
+  PASS param_q48_multichunk_drop_repro.rc7
+    rc=7 painted=7 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc8
+  PASS param_q48_multichunk_drop_repro.rc8
+    rc=8 painted=8 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc9
+  PASS param_q48_multichunk_drop_repro.rc9
+    rc=9 painted=9 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc17
+  PASS param_q48_multichunk_drop_repro.rc17
+    rc=17 painted=17 transparent=0 (no drop)
+  PASS param_q48_multichunk_distinct_column_drop_repro.summary_no_drops
+TEST param_q4c_multilane_drop_repro.lanes5
+  PASS param_q4c_multilane_drop_repro.lanes5
+    lanes=5 painted=5 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes6
+  PASS param_q4c_multilane_drop_repro.lanes6
+    lanes=6 painted=6 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes7
+  PASS param_q4c_multilane_drop_repro.lanes7
+    lanes=7 painted=7 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes8
+  PASS param_q4c_multilane_drop_repro.lanes8
+    lanes=8 painted=8 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes9
+  PASS param_q4c_multilane_drop_repro.lanes9
+    lanes=9 painted=9 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes17
+  PASS param_q4c_multilane_drop_repro.lanes17
+    lanes=17 painted=17 transparent=0 (no drop)
+  PASS param_q4c_multilane_distinct_column_drop_repro.summary_no_drops
+TEST portb_starve_doom.cols80_stride16
+  PASS portb_starve_doom.cols80_stride16
+    cols=80 painted=80 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=5866
+TEST portb_starve_quake.cols80_stride16
+  PASS portb_starve_quake.cols80_stride16
+    cols=80 painted=80 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=6036
+TEST portb_starve_doom.cols96_stride16
+  PASS portb_starve_doom.cols96_stride16
+    cols=96 painted=96 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=6157
+TEST portb_starve_quake.cols96_stride16
+  PASS portb_starve_quake.cols96_stride16
+    cols=96 painted=96 transparent=aram_span_quake_projection_math_no_z_rebased_fb
+TEST param_span_quake_projection_math_z_write
+  PASS param_span_quake_projection_math_z_write_abs_fb
+  PASS param_span_quake_projection_math_z_write_rebased_fb
+  PASS param_span_quake_projection_math_z_write_abs_z
+  PASS param_span_quake_projection_math_z_write_rebased_z
+TEST param_span_q29_high_angle_floor_no_flatten
+  PASS param_span_q29_high_angle_floor_no_flatten
+TEST param_q29_tail_counts_and_boundaries
+  PASS param_q29_tail_counts_and_boundaries
+TEST param_q29_record_counts_and_odd_pairs
+  PASS param_q29_record_counts_and_odd_pairs.1
+  PASS param_q29_record_counts_and_odd_pairs.2
+  PASS param_q29_record_counts_and_odd_pairs.3
+  PASS param_q29_record_counts_and_odd_pairs.4
+  PASS param_q29_record_counts_and_odd_pairs.5
+  PASS param_q29_record_counts_and_odd_pairs.7
+  PASS param_q29_record_counts_and_odd_pairs.8
+  PASS param_q29_record_counts_and_odd_pairs.9
+  PASS param_q29_record_counts_and_odd_pairs.16
+  PASS param_q29_record_counts_and_odd_pairs.63
+  PASS param_q29_record_counts_and_odd_pairs.64
+  PASS param_q29_record_counts_and_odd_pairs.65
+  PASS param_q29_record_counts_and_odd_pairs.511
+  PASS param_q29_record_counts_and_odd_pairs.512
+TEST param_q29_axis_y_multichunk_wall_repro
+  PASS param_q29_axis_y_multichunk_wall_repro.1
+  PASS param_q29_axis_y_multichunk_wall_repro.2
+  PASS param_q29_axis_y_multichunk_wall_repro.3
+  PASS param_q29_axis_y_multichunk_wall_repro.4
+  PASS param_q29_axis_y_multichunk_wall_repro.5
+  PASS param_q29_axis_y_multichunk_wall_repro.6
+  PASS param_q29_axis_y_multichunk_wall_repro.7
+  PASS param_q29_axis_y_multichunk_wall_repro.8
+  PASS param_q29_axis_y_multichunk_wall_repro.9
+  PASS param_q29_axis_y_multichunk_wall_repro.16
+  PASS param_q29_axis_y_multichunk_wall_repro.17
+  PASS param_q29_axis_y_multichunk_wall_repro.33
+  PASS param_q29_axis_y_multichunk_wall_repro.64
+  PASS param_q29_axis_y_multichunk_wall_repro.65
+  PASS param_q29_axis_y_multichunk_wall_repro.127
+  PASS param_q29_axis_y_multichunk_wall_repro.128
+TEST doom_real_capture_replay_no_black_columns
+  PASS doom_real_capture_replay_no_black_columns
+TEST doom_real_capture_frame_no_black_columns
+  PASS doom_real_capture_frame_no_black_columns
+TEST param_q29_zero_counts_mixed_no_drop
+  PASS param_q29_zero_counts_mixed_no_drop.fb
+  PASS param_q29_zero_counts_mixed_no_drop.zero_guards
+TEST param_q48_multichunk_drop_repro.rc5
+  PASS param_q48_multichunk_drop_repro.rc5
+    rc=5 painted=4 transparent=1 (no drop)
+TEST param_q48_multichunk_drop_repro.rc6
+  PASS param_q48_multichunk_drop_repro.rc6
+    rc=6 painted=4 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc7
+  PASS param_q48_multichunk_drop_repro.rc7
+    rc=7 painted=5 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc8
+  PASS param_q48_multichunk_drop_repro.rc8
+    rc=8 painted=6 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc9
+  PASS param_q48_multichunk_drop_repro.rc9
+    rc=9 painted=7 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc17
+  PASS param_q48_multichunk_drop_repro.rc17
+    rc=17 painted=15 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc5
+  PASS param_q48_multichunk_drop_repro.rc5
+    rc=5 painted=5 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc6
+  PASS param_q48_multichunk_drop_repro.rc6
+    rc=6 painted=6 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc7
+  PASS param_q48_multichunk_drop_repro.rc7
+    rc=7 painted=7 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc8
+  PASS param_q48_multichunk_drop_repro.rc8
+    rc=8 painted=8 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc9
+  PASS param_q48_multichunk_drop_repro.rc9
+    rc=9 painted=9 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc17
+  PASS param_q48_multichunk_drop_repro.rc17
+    rc=17 painted=17 transparent=0 (no drop)
+  PASS param_q48_multichunk_distinct_column_drop_repro.summary_no_drops
+TEST param_q4c_multilane_drop_repro.lanes5
+  PASS param_q4c_multilane_drop_repro.lanes5
+    lanes=5 painted=5 transparent=0 (n0 stride=16 (no starve/drift) last_lat=2 txns=6361
+TEST portb_starve_doom.cols80_stride64
+  PASS portb_starve_doom.cols80_stride64
+    cols=80 painted=80 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=6464
+TEST portb_starve_quake.cols80_stride64
+  PASS portb_starve_quake.cols80_stride64
+    cols=80 painted=80 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=6634
+TEST portb_starve_doom.cols96_stride64
+  PASS portb_starve_doom.cols96_stride64
+    cols=96 painted=96 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=6755
+TEST portb_starve_quake.cols96_stride64
+  PASS portb_starve_quake.cols96_stride64
+    cols=96 painted=96 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=6959
+TEST portb_starve_doom.cols80_stride16
+  PASS portb_starve_doom.cols80_stride16
+    cols=80 painted=75 transparent=5 stride=16 (no starve/drift) last_lat=2 txns=7063
+TEST portb_starve_quake.cols80_stride16
+  PASS portb_starve_quake.cols80_stride16
+    cols=80 painted=75 transparent=5 stride=16 (no starve/drift) last_lat=2 txns=7233
+  PASS portb_starve_distinct_cache_line_wall.summary
+TEST param_q29_wrap_and_fb_byte_lanes
+  PASS param_q29_wrap_and_fb_byte_lanes
+TEST param_q29_static_repeat_300
+  PASS param_q29_static_repeat_300
+TEST param_q29_dynamic_scale_projection
+  PASS param_q29_dynamic_scale_projection
+TEST param_q29_dynamic_scale_all_records_touch
+  PASS param_q29_dynamic_scale_all_records_touch
+TEST param_q29_dynamic_scale_z_restore_saturates
+  PASS param_q29_dynamic_scale_z_restore_saturates
+TEST param_q29_dynamic_scale_reserved_bits_noop
+  PASS param_q29_dynamic_scale_reserved_bits_noop
+TEST affine_span_group_quake_alias_carry_math
+  PASS affine_span_group_quake_alias_carry_math
+TEST param_span_list_z_write_zi
+  PASS param_span_list_z_write_zi
+TEST param_span_list_z_test_zi
+  PASS param_span_list_z_test_zi
+TEST param_span_list_z_test_write_skip_zero
+  PASS param_span_list_z_test_write_skip_zero
+TEST param_span_z_raw_inflight_same_line
+  SKIP param_span_z_raw_inflight_same_line (needs +gpu_wr_latency>=8, got -1)
+TEST param_span_z_raw_pair_same_half_fwd
+  PASS param_span_z_raw_pair_same_half_fwd
+TEST param_span_z_raw_pair_same_half_no_fwd_on_reject
+  PASS param_span_z_raw_pair_same_half_no_fwd_on_reject
+TEST param_span_z_raw_pair_word_halves_lo_hi
+  PASS param_span_z_raw_pair_word_halves_lo_hi
+TEST param_span_z_raw_pair_word_halves_hi_lo
+  PASS param_span_z_raw_pair_word_halves_hi_lo
+TEST param_span_z_raw_pair_skip_zero_between
+  PASS param_span_z_raw_pair_skip_zero_between
+TEST batch_equals_individual
+  PASS batch_eq_individual.N1
+  PASS batch_eq_individual.N2
+  PASS batch_eq_individual.N4
+  PASS batch_eq_individual.N8
+  PASS batch_eq_individual.N16
+  PASS batch_eq_individual.N32
+TEST batch_mixed_per_span_colormap
+  PASS batch_mixed_cmap.row0
+  PASS batch_mixed_cmap.row1
+  PASS batch_mixed_cmap.row2
+  PASS batch_mixed_cmap.row3
+TEST span_group_opaque_equals_four_spans
+  PASS span_group_opaque_equals_four_spans.fb
+TEST span_group_texture_height_mask
+  PASS span_group_texture_height_mask.fb
+TEST span_group_aligned_matches_reference
+  PASS span_group_aligned_matches_reference.fb
+TEST span_group_aligned_texture_cache_thrash
+  PASS span_group_aligned_texture_cache_thrash.fb
+  PASS span_group_aligned_texture_cache_thrash.cache_counters_optional
+TEST span_group_masked_equals_four_spans
+  PASS span_group_masked_equals_four_spans.fb
+TEST span_group_explicit_colormap_slot
+  PASS span_group_explicit_colormap_slot.fb
+TEST span_group_per_lane_colormap_slots
+  PASS span_group_per_lane_colormap_slots.fb
+TEST column_list_single_column_matches_affine
+  PASS column_list_single_column_matches_affine
+  PASS column_list_single_column_matches_affine.nonvacuous
+TEST column_list_multi_lane_matches_affine
+  PASS column_list_2lane_matches_affine
+  PASS column_list_2lane_matches_affine.nonvacuous
+  PASS column_list_3lane_matches_affine
+  PASS column_list_3lane_matches_affine.nonvacuous
+  PASS column_list_4lane_matches_affine
+  PASS column_list_4lane_matches_affine.nonvacuous
+TEST column_list_colormap_matches_affine
+  PASS column_list_o drop)
+TEST param_q4c_multilane_drop_repro.lanes6
+  PASS param_q4c_multilane_drop_repro.lanes6
+    lanes=6 painted=6 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes7
+  PASS param_q4c_multilane_drop_repro.lanes7
+    lanes=7 painted=7 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes8
+  PASS param_q4c_multilane_drop_repro.lanes8
+    lanes=8 painted=8 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes9
+  PASS param_q4c_multilane_drop_repro.lanes9
+    lanes=9 painted=9 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes17
+  PASS param_q4c_multilane_drop_repro.lanes17
+    lanes=17 painted=17 transparent=0 (no drop)
+  PASS param_q4c_multilane_distinct_column_drop_repro.summary_no_drops
+TEST portb_starve_doom.cols80_stride16
+  PASS portb_starve_doom.cols80_stride16
+    cols=80 painted=80 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=6975
+TEST portb_starve_quake.cols80_stride16
+  PASS portb_starve_quake.cols80_stride16
+    cols=80 painted=80 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=7145
+TEST portb_starve_doom.cols96_stride16
+  PASS portb_starve_doom.cols96_stride16
+    cols=96 painted=96 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=7266
+TEST portb_starve_quake.cols96_stride16
+  PASS portb_starve_quake.cols96_stride16
+    cols=96 painted=96 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=7470
+TEST portb_starve_doom.cols80_stride64
+  PASS portb_starve_doom.cols80_stride64
+    cols=80 painted=80 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=7573
+TEST portb_starve_quake.cols80_stride64
+  PASS portb_starve_quake.cols80_stride64
+    cols=80 painted=80 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=7743
+TEST portb_starve_doom.cols96_stride64
+  PASS portb_starve_doom.cols96_stride64
+    cols=96 painted=96 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=7864
+TEST portb_starve_quake.cols96_stride64
+  PASS portb_starve_quake.cols96_stride64
+    cols=96 painted=96 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=8068
+TEST portb_starve_doom.cols80_stride16
+  PASS portb_starve_doom.cols80_stride16
+    cols=80 painted=75 transparent=5 stride=16 (no starve/drift) last_lat=2 txns=8172
+TEST portb_starve_quake.cols80_stride16
+  PASS portb_starve_quake.cols80_stride16
+    cols=80 painted=75 transparent=5 stride=16 (no starve/drift) last_lat=2 txns=8342
+  PASS portb_starve_distinct_cache_line_wall.summary
+TEST param_q29_wrap_and_fb_byte_lanes
+  PASS param_q29_wrap_and_fb_byte_lanes
+TEST param_q29_static_repeat_300
+  PASS param_q29_static_repeat_300
+TEST param_q29_dynamic_scale_projection
+  PASS param_q29_dynamic_scale_projection
+TEST param_q29_dynamic_scale_all_records_touch
+  PASS param_q29_dynamic_scale_all_records_touch
+TEST param_q29_dynamic_scale_z_restore_saturates
+  PASS param_q29_dynamic_scale_z_restore_saturates
+TEST param_q29_dynamic_scale_reserved_bits_noop
+  PASS param_q29_dynamic_scale_reserved_bits_noop
+TEST affine_span_group_quake_alias_carry_math
+  PASS affine_span_group_quake_alias_carry_math
+TEST param_span_list_z_write_zi
+  PASS param_span_list_z_write_zi
+TEST param_span_list_z_test_zi
+  PASS param_span_list_z_test_zi
+TEST param_span_list_z_test_write_skip_zero
+  PASS param_span_list_z_test_write_skip_zero
+TEST param_span_z_raw_inflight_same_line
+  SKIP param_span_z_raw_inflight_same_line (needs +gpu_wr_latency>=8, got -1)
+TEST param_span_z_raw_pair_same_half_fwd
+  PASS param_span_z_raw_pair_same_half_fwd
+TEST param_span_z_raw_pair_same_half_no_fwd_on_reject
+  PASS param_span_z_raw_pair_same_half_no_fwd_on_reject
+TEST param_span_z_raw_pair_word_halves_lo_hi
+  PASS param_span_z_raw_pair_word_halves_lo_hi
+TEST param_span_z_raw_pair_word_halves_hi_lo
+  PASS param_span_z_raw_pair_word_halves_hi_lo
+TEST param_span_z_raw_pair_skip_zero_between
+  PASS param_span_z_raw_pair_skip_zero_between
+TEST batch_equals_individual
+  PASS batch_eq_individual.N1
+  PASS batch_eq_individual.N2
+  PASS batch_eq_individual.N4
+  PASS batch_eq_individual.N8
+  PASS batch_eq_individual.N16
+  PASS batch_eqcolormap_matches_affine
+  PASS column_list_colormap_matches_affine.nonvacuous
+TEST column_list_skipzero_and_negstep_matches_affine
+  PASS column_list_skipzero_matches_affine
+  PASS column_list_skipzero_matches_affine.nonvacuous
+  PASS column_list_negstep_matches_affine
+  PASS column_list_negstep_matches_affine.nonvacuous
+TEST column_list_varcount_and_zerolane_matches_affine
+  PASS column_list_varcount_matches_affine
+  PASS column_list_varcount_matches_affine.nonvacuous
+TEST span_group_varcount_opaque_equals_spans
+  PASS span_group_varcount_opaque_equals_spans.fb
+TEST span_group_varcount_masked_equals_spans
+  PASS span_group_varcount_masked_equals_spans.fb
+TEST span_group_varcount_explicit_colormap_slot
+  PASS span_group_varcount_explicit_colormap_slot.fb
+TEST span_group_stream_two_payloads
+  PASS span_group_stream_two_payloads.a
+  PASS span_group_stream_two_payloads.b
+TEST span_group_two_lane_masked
+  PASS span_group_two_lane_masked.fb
+TEST span_group_eight_lane_colormap
+  PASS span_group_eight_lane_colormap.fb
+TEST batch_dma_equals_inline
+  PASS batch_dma_equals_inline.fb
+TEST command_stream_dma_mixed_affine_groups
+  PASS command_stream_dma_mixed_affine_groups.fb
+TEST command_stream_dma_mixed_persp_span_group
+  PASS command_stream_dma_mixed_persp_span_group.fb
+TEST dma_descriptor_queue_two_streams
+  PASS dma_descriptor_queue_two_streams.fb
+TEST framebuffer_writes_burst_full_words
+  PASS framebuffer_writes_burst_full_words.fb
+  PASS framebuffer_writes_burst_full_words.clear_rect_burst
+TEST flip_no_writes_pulses_immediately
+  PASS flip_no_writes_pulses_immediately
+TEST combo_A_setfb_then_colormapped_span
+  PASS combo_A.A_row0
+  PASS combo_A.B_row0
+TEST combo_B_clear_then_span_paints_span
+  PASS combo_B.span_wins_first16
+  PASS combo_B.clear_holds_rest
+TEST combo_C_three_slots_in_one_batch
+  PASS combo_C.row0
+  PASS combo_C.row1
+  PASS combo_C.row2
+TEST combo_D_tex_mutate_with_flush
+  PASS combo_D.first_pass_0x11
+  PASS combo_D.second_pass_0x22
+TEST combo_E_lane_writes_into_one_word
+  PASS combo_E.lanes
+TEST combo_F_dma_then_inline
+  PASS combo_F.row0
+  PASS combo_F.row1
+  PASS combo_F.row2
+  PASS combo_F.row3
+  PASS combo_F.row4
+TEST sdk_count_4096_does_not_leak_into_colormap_id
+  PASS sdk_count_4096_does_not_leak_into_colormap_id.no_leak
+  PASS sdk_count_4096_does_not_leak_into_colormap_id.count_preserved
+TEST lean_compact_0x48_drains (lean=0)
+  PASS lean_compact_0x48_drains.fb
+  PASS lean_compact_0x48_drains.border
+TEST lean_column_list_drains (lean=0)
+  PASS lean_column_list_drains.fb
+  PASS lean_column_list_drains.border
+TEST disabled_vertex_commands_drain
+  PASS disabled_vertex_commands_drain
+TEST lean_wrong_size_0x48_33w (lean=0)
+  PASS lean_wrong_size_0x48_33w.fb
+
+=== Acceptance Results: 276 passed, 0 failed ===
+=== Total sim_time: 41737048 ===
+_individual.N32
+TEST batch_mixed_per_span_colormap
+  PASS batch_mixed_cmap.row0
+  PASS batch_mixed_cmap.row1
+  PASS batch_mixed_cmap.row2
+  PASS batch_mixed_cmap.row3
+TEST span_group_opaque_equals_four_spans
+  PASS span_group_opaque_equals_four_spans.fb
+TEST span_group_texture_height_mask
+  PASS span_group_texture_height_mask.fb
+TEST span_group_aligned_matches_reference
+  PASS span_group_aligned_matches_reference.fb
+TEST span_group_aligned_texture_cache_thrash
+  PASS span_group_aligned_texture_cache_thrash.fb
+  PASS span_group_aligned_texture_cache_thrash.cache_counters_optional
+TEST span_group_masked_equals_four_spans
+  PASS span_group_masked_equals_four_spans.fb
+TEST span_group_explicit_colormap_slot
+  PASS span_group_explicit_colormap_slot.fb
+TEST span_group_per_lane_colormap_slots
+  PASS span_group_per_lane_colormap_slots.fb
+TEST column_list_single_column_matches_affine
+  PASS column_list_single_column_matches_affine
+  PASS column_list_single_column_matches_affine.nonvacuous
+TEST column_list_multi_lane_matches_affine
+  PASS column_list_2lane_matches_affine
+  PASS column_list_2lane_matches_affine.nonvacuous
+  PASS column_list_3lane_matches_affine
+  PASS column_list_3lane_matches_affine.nonvacuous
+  PASS column_list_4lane_matches_affine
+  PASS column_list_4lane_matches_affine.nonvacuous
+TEST column_list_colormap_matches_affine
+  PASS column_list_colormap_matches_affine
+  PASS column_list_colormap_matches_affine.nonvacuous
+TEST column_list_skipzero_and_negstep_matches_affine
+  PASS column_list_skipzero_matches_affine
+  PASS column_list_skipzero_matches_affine.nonvacuous
+  PASS column_list_negstep_matches_affine
+  PASS column_list_negstep_matches_affine.nonvacuous
+TEST column_list_varcount_and_zerolane_matches_affine
+  PASS column_list_varcount_matches_affine
+  PASS column_list_varcount_matches_affine.nonvacuous
+TEST span_group_varcount_opaque_equals_spans
+  PASS span_group_varcount_opaque_equals_spans.fb
+TEST span_group_varcount_masked_equals_spans
+  PASS span_group_varcount_masked_equals_spans.fb
+TEST span_group_varcount_explicit_colormap_slot
+  PASS span_group_varcount_explicit_colormap_slot.fb
+TEST span_group_stream_two_payloads
+  PASS span_group_stream_two_payloads.a
+  PASS span_group_stream_two_payloads.b
+TEST span_group_two_lane_masked
+  PASS span_group_two_lane_masked.fb
+TEST span_group_eight_lane_colormap
+  PASS span_group_eight_lane_colormap.fb
+TEST batch_dma_equals_inline
+  PASS batch_dma_equals_inline.fb
+TEST command_stream_dma_mixed_affine_groups
+  PASS command_stream_dma_mixed_affine_groups.fb
+TEST command_stream_dma_mixed_persp_span_group
+  PASS command_stream_dma_mixed_persp_span_group.fb
+TEST dma_descriptor_queue_two_streams
+  PASS dma_descriptor_queue_two_streams.fb
+TEST framebuffer_writes_burst_full_words
+  PASS framebuffer_writes_burst_full_words.fb
+  PASS framebuffer_writes_burst_full_words.clear_rect_burst
+TEST flip_no_writes_pulses_immediately
+  PASS flip_no_writes_pulses_immediately
+TEST combo_A_setfb_then_colormapped_span
+  PASS combo_A.A_row0
+  PASS combo_A.B_row0
+TEST combo_B_clear_then_span_paints_span
+  PASS combo_B.span_wins_first16
+  PASS combo_B.clear_holds_rest
+TEST combo_C_three_slots_in_one_batch
+  PASS combo_C.row0
+  PASS combo_C.row1
+  PASS combo_C.row2
+TEST combo_D_tex_mutate_with_flush
+  PASS combo_D.first_pass_0x11
+  PASS combo_D.second_pass_0x22
+TEST combo_E_lane_writes_into_one_word
+  PASS combo_E.lanes
+TEST combo_F_dma_then_inline
+  PASS combo_F.row0
+  PASS combo_F.row1
+  PASS combo_F.row2
+  PASS combo_F.row3
+  PASS combo_F.row4
+TEST sdk_count_4096_does_not_leak_into_colormap_id
+  PASS sdk_count_4096_does_not_leak_into_colormap_id.no_leak
+  PASS sdk_count_4096_does_not_leak_into_colormap_id.count_preserved
+TEST lean_compact_0x48_drains (lean=0)
+  PASS lean_compact_0x48_drains.fb
+  PASS lean_compact_0x48_drains.border
+TEST lean_column_list_drains (lean=0)
+  PASS lean_column_list_drains.fb
+  PASS lean_column_list_drains.border
+TEST lean_sticky_state_contract (lean=0)
+  PASS lean_sticky_state_contract.invalidated_noop
+  PASS lean_sticky_state_contract.rearm_draws
+TEST lean_wrong_size_0x48_33w (lean=0)
+  PASS lean_wrong_size_0x48_33w.fb
+
+=== Acceptance Results: 299 passed, 0 failed ===
+=== Total sim_time: 45653764 ===
+make: Leaving directory '/home/alberto/Repos/openfpgaOS/src/fpga/test'

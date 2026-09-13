@@ -23,8 +23,8 @@
 // byte-exact against a CPU reference model.
 //
 // Debug taps (hierarchical, test-only):
-//   * slave drop-arm: a read beat arrives while s_axi_rvalid && !rready and
-//     both skid slots are full -> the beat is LOST (axi_sdram_slave.v:405+).
+//   * slave drop-arm: a read beat arrives while the read FIFO is full and
+//     no beat retires, so the arriving beat would be lost.
 //   * doorbell-DMA starvation override / R-channel ownership overlap events
 //     (DMA in S_R while the blend unit waits for its dest-read beat, or
 //     while a tex fill is in flight) — the suspected ring-desync mechanism.
@@ -39,6 +39,7 @@
 module tb_gpu_transluc #(
     parameter GPU_Z_READ_WINDOW      = 4,
     parameter GPU_EW_PARALLEL_DIVS   = 1,
+    parameter GPU_WRITE_COMBINE_PIPE = 0,
     parameter BANK_ROW_TRACK         = 1,
     // Truecolor CB-blend chain coverage (gpu-cb-chain target): the
     // acceptance suite proves the CB path byte-exact on the 1-cycle stub;
@@ -253,6 +254,7 @@ wire [1:0]  gpu_swap_idx;
 // INCLUDE_* stay at their gpu_core defaults, same as the mister fit.
 // ============================================================
 gpu_core #(
+    .GPU_WRITE_COMBINE_PIPE(GPU_WRITE_COMBINE_PIPE),
     .INCLUDE_PARAM_TRI(1),
     .INCLUDE_VERT_TRI(1),
     .INCLUDE_PARAM_TRI_RECS(1),
@@ -628,14 +630,10 @@ assign dbg_dma_starve   = gpu.dma_starve_count;
 assign dbg_ring_wrptr_b = gpu.ring_wrptr_bytes;
 assign dbg_ring_rdptr_b = gpu.ring_rdptr_bytes;
 
-// Slave R-chain drop-arm: a fresh read beat arrives from io_sdram while the
-// AXI R output is stalled AND both skid slots already hold beats -> the beat
-// has nowhere to go and is silently dropped (axi_sdram_slave.v "all three
-// full" else-branch).  Must NEVER fire while the GPU is the read owner
-// (its rready is hardwired 1 in the arbiter).
-assign evt_drop_arm = ram1_word_q_valid
-                   && arb_s_rvalid && !arb_s_rready
-                   && slave.rskid_valid && slave.rskid2_valid;
+// The slave now buffers a complete read burst. Detect an incoming beat that
+// cannot enter that FIFO, including while another master owns the channel.
+assign evt_drop_arm = slave.read_fifo_push && slave.read_fifo.full
+                   && !slave.read_fifo_pop;
 
 // Doorbell-DMA starvation override: the counter hits the 512-cycle threshold
 // (it resets on any idle/assert cycle, so ==THRESHOLD marks each fire).

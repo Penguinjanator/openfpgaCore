@@ -1,0 +1,468 @@
+--- a/src/doom/Makefile
++++ b/src/doom/Makefile
+@@ -56,6 +56,8 @@
+ CFLAGS  = -Ishim -Icdoom -Icdoom/doom
+ CFLAGS += -DDISABLE_SDL2MIXER -DDISABLE_SDL2NET
+ CFLAGS += -DSMP_MAX_VOICES=20
++# The compact GPU wall loop leaves room for the 1 kHz envelope tick in BRAM.
++CFLAGS += -DSMP_VOICE_FAST_TICK=1
+ CFLAGS += -DOF_DOOM   # selects the Doom-only shim paths (e.g. i_pcmmusic.c)
+ CFLAGS += -Wno-unused-parameter -Wno-unused-function
+ CFLAGS += -Wno-unused-variable -Wno-sign-compare
+--- a/src/doom/cdoom/doom/r_bsp.c
++++ b/src/doom/cdoom/doom/r_bsp.c
+@@ -75,7 +75,7 @@
+ static bbox_angle_cache_t bbox_angle_cache[BBOX_ANGLE_CACHE_SIZE]
+     R_CACHE_ALIGNED;
+ 
+-static int bsp_view_validcount;
++int bsp_view_validcount;
+ static boolean bsp_view_valid;
+ static fixed_t bsp_view_x, bsp_view_y;
+ 
+@@ -93,6 +93,9 @@
+             vertexes[i].viewanglevalidcount = 0;
+             vertexes[i].viewdistvalidcount = 0;
+         }
++        if (rendersegcache != NULL)
++            for (int i = 0; i < numsegs; ++i)
++                rendersegcache[i].view_validcount = 0;
+         bsp_view_validcount = 0;
+     }
+     ++bsp_view_validcount;
+@@ -141,6 +144,7 @@
+ 	dst->angle = seg->angle;
+ 	dst->normalangle = seg->angle + ANG90;
+ 	dst->offset = seg->offset;
++        dst->view_validcount = 0;
+ 	{
+ 	    /* True length for the exact rw_distance/rw_offset divides; halved
+ 	     * so it fits 32 bits at map extremes.  Min 1: degenerate segs
+--- a/src/doom/cdoom/doom/r_bsp.h
++++ b/src/doom/cdoom/doom/r_bsp.h
+@@ -63,10 +63,14 @@
+     short       pegflags;
+     signed char lightbias;
+     byte        pad[1];
++    int         view_validcount;
++    fixed_t     view_distance;
++    fixed_t     view_offset;
+ } rendersegcache_t;
+ 
+ extern rendersegcache_t* rendersegcache;
+ extern rendersegcache_t* cursegcache;
++extern int bsp_view_validcount;
+ 
+ 
+ typedef void (*drawfunc_t) (int start, int stop);
+--- a/src/doom/cdoom/doom/r_segs.c
++++ b/src/doom/cdoom/doom/r_segs.c
+@@ -365,6 +365,22 @@
+     *offset_out = (fixed_t)((uint64_t)offset * 2);
+ }
+ 
++/* Distance and texture offset depend only on the segment geometry and the
++ * interpolated view X/Y, like the vertex angle cache. Keep the exact integer
++ * result across clipped ranges and rotations; movement or rebuilt geometry
++ * invalidates it through the BSP view generation. */
++static void R_CachedDistOffset(rendersegcache_t *cache,
++                               fixed_t *dist_out, fixed_t *offset_out)
++{
++    if (cache->view_validcount != bsp_view_validcount || !bsp_view_validcount)
++    {
++        R_ExactDistOffset(cache, &cache->view_distance, &cache->view_offset);
++        cache->view_validcount = bsp_view_validcount;
++    }
++    *dist_out = cache->view_distance;
++    *offset_out = cache->view_offset;
++}
++
+ // Param-wall path setup: the GPU evaluates the wall's perspective planes,
+ // so each tier column reduces to a {x, ytop, count} record and the
+ // per-column texturecolumn/iscale math is skipped entirely.  Tiers whose
+@@ -551,7 +567,94 @@
+     batch->light[lane] = (uint8_t)lightrow;
+ }
+ 
+-OF_FASTTEXT void R_RenderSegLoop (void)
++/* The parameter-wall path needs clip updates and GPU column records only.
++ * Keep that loop in fast RAM; column-batch fallback remains available below. */
++OF_FASTTEXT static void R_RenderGpuSegLoop(int draw_mid, int draw_top, int draw_bottom)
++{
++    int x = rw_x, stopx = rw_stopx;
++    fixed_t scale = rw_scale, scalestep = rw_scalestep;
++    fixed_t topf = topfrac, bottomf = bottomfrac;
++    fixed_t pixh = pixhigh, pixl = pixlow;
++    fixed_t pixhstep = pixhighstep, pixlstep = pixlowstep;
++    fixed_t top_step = topstep, bottom_step = bottomstep;
++    short *ceiling_clip = ceilingclip, *floor_clip = floorclip;
++    visplane_t *ceiling_plane = ceilingplane, *floor_plane = floorplane;
++    boolean do_markceiling = markceiling, do_markfloor = markfloor;
++
++    for (; x < stopx; x++)
++    {
++        int yl = (topf + HEIGHTUNIT - 1) >> HEIGHTBITS;
++        int yh, top, bottom, mid;
++        if (yl < ceiling_clip[x] + 1) yl = ceiling_clip[x] + 1;
++        if (do_markceiling)
++        {
++            top = ceiling_clip[x] + 1;
++            bottom = yl - 1;
++            if (bottom >= floor_clip[x]) bottom = floor_clip[x] - 1;
++            if (top <= bottom)
++            {
++                ceiling_plane->top[x] = top;
++                ceiling_plane->bottom[x] = bottom;
++            }
++        }
++        yh = bottomf >> HEIGHTBITS;
++        if (yh >= floor_clip[x]) yh = floor_clip[x] - 1;
++        if (do_markfloor)
++        {
++            top = yh + 1;
++            bottom = floor_clip[x] - 1;
++            if (top <= ceiling_clip[x]) top = ceiling_clip[x] + 1;
++            if (top <= bottom)
++            {
++                floor_plane->top[x] = top;
++                floor_plane->bottom[x] = bottom;
++            }
++        }
++        if (draw_mid)
++        {
++            if (yl <= yh) R_GPU_WallTierColumn(0, x, yl, yh, scale);
++            ceiling_clip[x] = viewheight;
++            floor_clip[x] = -1;
++        }
++        else
++        {
++            if (draw_top)
++            {
++                mid = pixh >> HEIGHTBITS;
++                pixh += pixhstep;
++                if (mid >= floor_clip[x]) mid = floor_clip[x] - 1;
++                if (mid >= yl)
++                {
++                    R_GPU_WallTierColumn(0, x, yl, mid, scale);
++                    ceiling_clip[x] = mid;
++                }
++                else ceiling_clip[x] = yl - 1;
++            }
++            else if (do_markceiling) ceiling_clip[x] = yl - 1;
++            if (draw_bottom)
++            {
++                mid = (pixl + HEIGHTUNIT - 1) >> HEIGHTBITS;
++                pixl += pixlstep;
++                if (mid <= ceiling_clip[x]) mid = ceiling_clip[x] + 1;
++                if (mid <= yh)
++                {
++                    R_GPU_WallTierColumn(1, x, mid, yh, scale);
++                    floor_clip[x] = mid;
++                }
++                else floor_clip[x] = yh + 1;
++            }
++            else if (do_markfloor) floor_clip[x] = yh + 1;
++        }
++        scale += scalestep;
++        topf += top_step;
++        bottomf += bottom_step;
++    }
++    rw_x = x; rw_scale = scale;
++    topfrac = topf; bottomfrac = bottomf;
++    pixhigh = pixh; pixlow = pixl;
++}
++
++void R_RenderSegLoop (void)
+ {
+     int			yl;
+     int			yh;
+@@ -598,6 +701,27 @@
+ 
+     perf_start = R_PERF_DETAIL_BEGIN();
+ 
++    /* Ordinary scale-light rows are 0..NUMCOLORMAPS-1. Active parameter
++     * tiers accept every nonempty clipped column from this loop. R_SetupFrame
++     * fills every fixed-light row with the same value, so standard fixed maps
++     * also qualify. Unsupported rows and masked walls keep the general path. */
++    if (!maskedtexture && NUMCOLORMAPS <= 64 &&
++        (!fixedcolormap || walllightrows[0] < 64))
++    {
++        R_GPUWallTiersBegin(rw_x, rw_stopx, rw_scale, rw_scalestep,
++                           &gpu_tier_mid, &gpu_tier_top, &gpu_tier_bottom);
++        if ((gpu_tier_mid || gpu_tier_top || gpu_tier_bottom) &&
++            (midtexture ? gpu_tier_mid :
++             ((!toptexture || gpu_tier_top) && (!bottomtexture || gpu_tier_bottom))))
++        {
++            R_RenderGpuSegLoop(midtexture != 0, toptexture != 0, bottomtexture != 0);
++            R_GPU_WallTiersEnd();
++            R_PERF_DETAIL_END(R_PERF_DETAIL_BSP_SEG_LOOP, perf_start);
++            return;
++        }
++    }
++
++
+     x = rw_x;
+     stopx = rw_stopx;
+     scale = rw_scale;
+@@ -646,8 +770,11 @@
+ 	bottom_widthmask = R_GetTextureWidthMask(bottomtexture);
+     }
+ 
++
++    /* A cold fallback column table can build texture data. Establish tiers
++     * after that preparation, in the same order as the general path. */
+     R_GPUWallTiersBegin(x, stopx, scale, scalestep,
+-			&gpu_tier_mid, &gpu_tier_top, &gpu_tier_bottom);
++                       &gpu_tier_mid, &gpu_tier_top, &gpu_tier_bottom);
+ 
+     for ( ; x < stopx ; x++)
+     {
+@@ -1239,7 +1366,7 @@
+ 
+     if (wallmerge_enabled)
+     {
+-	R_ExactDistOffset (cache, &rw_distance, &rw_exactoffset);
++	R_CachedDistOffset (cache, &rw_distance, &rw_exactoffset);
+     }
+     else
+     {
+--- a/src/doom/cdoom/doom/r_plane.c
++++ b/src/doom/cdoom/doom/r_plane.c
+@@ -370,7 +370,7 @@
+     check->minx = SCREENWIDTH;
+     check->maxx = -1;
+     
+-    memset (check->top,0xff,sizeof(check->top));
++    /* R_CheckPlane initializes columns as they enter [minx,maxx]. */
+     R_LinkVisplane(check);
+ 		
+     result = check;
+@@ -425,6 +425,17 @@
+ 
+     if (R_PlaneRangeIsOpen(pl->top, intrl, intrh))
+     {
++        /* Only [minx,maxx] is readable. Initialize newly exposed columns,
++         * including gaps between disjoint ranges, before expanding it. */
++        if (pl->minx > pl->maxx)
++            memset(pl->top + unionl, 0xff, unionh - unionl + 1);
++        else
++        {
++            if (unionl < pl->minx)
++                memset(pl->top + unionl, 0xff, pl->minx - unionl);
++            if (unionh > pl->maxx)
++                memset(pl->top + pl->maxx + 1, 0xff, unionh - pl->maxx);
++        }
+ 	pl->minx = unionl;
+ 	pl->maxx = unionh;
+ 
+@@ -445,7 +456,7 @@
+     pl->minx = start;
+     pl->maxx = stop;
+ 
+-    memset (pl->top,0xff,sizeof(pl->top));
++    memset(pl->top + start, 0xff, stop - start + 1);
+     R_LinkVisplane(pl);
+ 		
+     R_PERF_DETAIL_END(R_PERF_DETAIL_BSP_CHECK_PLANE, perf_start);
+--- a/src/doom/cdoom/doom/r_gpu.c
++++ b/src/doom/cdoom/doom/r_gpu.c
+@@ -287,6 +287,7 @@
+ #else
+ 
+ #include "of_cache.h"
++#include "of_fastram.h"
+ #include "of_caps.h"
+ #include "of_gpu.h"
+ #include "of_texture.h"
+@@ -3090,7 +3091,7 @@
+     return gpu_wall_tier_begin(tier, tex2d, tex_height, widthmask, texturemid, 128);
+ }
+ 
+-boolean R_GPU_WallTierColumn(int tier, int x, int yl, int yh, fixed_t scale)
++OF_FASTTEXT boolean R_GPU_WallTierColumn(int tier, int x, int yl, int yh, fixed_t scale)
+ {
+     of_gpu_param_span_record_t *r;
+     gpu_wall_tier_t *t = &gpu_wall_tiers[tier];
+--- a/src/sdk/of_smp_voice.c
++++ b/src/sdk/of_smp_voice.c
+@@ -27,6 +27,11 @@
+ 
+ #ifndef SMP_VOICE_ENABLE_TICK_STATS
+ #define SMP_VOICE_ENABLE_TICK_STATS 0
++#endif
++
++/* Opt in only after budgeting the app's shared fast code/data region. */
++#ifndef SMP_VOICE_FAST_TICK
++#define SMP_VOICE_FAST_TICK 0
+ #endif
+ 
+ /* Hung-voice guard.  A voice with no natural end -- a LOOPING sample, or a
+@@ -174,6 +179,24 @@
+ static OF_FASTDATA uint32_t prev_rate[SMP_MAX_VOICES];
+ static OF_FASTDATA uint8_t  prev_vol_l[SMP_MAX_VOICES];
+ static OF_FASTDATA uint8_t  prev_vol_r[SMP_MAX_VOICES];
++
++/* Stored in the voice structure's existing handle-alignment padding on RV32.
++ * Routing is immutable for a note; controller changes invalidate calculations
++ * for the next tick without moving their hardware writes ahead of envelopes. */
++#define VOICE_PITCH_VIB   1u
++#define VOICE_PITCH_MOD   2u
++#define VOICE_PITCH_ENV   4u
++#define VOICE_PITCH_DIRTY 8u
++#define VOICE_VOLUME_DIRTY 16u
++
++static void voice_invalidate_channel(int ch, unsigned flags)
++{
++    for (int i = 0; i < SMP_MAX_VOICES; i++) {
++        smp_voice_t *v = &voices[i];
++        if (v->active && v->midi_ch == ch)
++            v->update_flags |= flags;
++    }
++}
+ 
+ /* Voices pending steal (waiting for hardware fade-out) */
+ #define STEAL_PENDING -2
+@@ -655,12 +678,19 @@
+     }
+ }
+ 
+-static void compute_vol_lr(smp_voice_t *v, int *out_l, int *out_r)
++static inline int voice_env_volume(const smp_voice_t *v)
+ {
+     /* env_vol: Q16.16 -> 0..256 */
+     int32_t env_vol = v->vol_env.level >> 8;
+     if (env_vol > 255) env_vol = 255;
+     if (env_vol < 0)   env_vol = 0;
++    return env_vol;
++}
++
++static void compute_vol_lr(smp_voice_t *v, int *out_l, int *out_r)
++{
++    int32_t env_vol = voice_env_volume(v);
++    v->cached_env_volume = (uint8_t)env_vol;
+ 
+     int ch = v->midi_ch;
+ 
+@@ -824,6 +854,10 @@
+     v->mixer_voice = OF_MIXER_HANDLE_INVALID;
+     v->age = tick_counter;
+     v->sustain_since = tick_counter;
++    v->update_flags = VOICE_PITCH_DIRTY
++        | (zone->vib_lfo_to_pitch ? VOICE_PITCH_VIB : 0)
++        | (zone->mod_lfo_to_pitch ? VOICE_PITCH_MOD : 0)
++        | (zone->mod_env_to_pitch ? VOICE_PITCH_ENV : 0);
+ 
+     /* Pre-bake voice_base_vol = (velocity_gain × initial_attn_scale) >> 8.
+      * One u8 field now replaces the two multiplies the old compute_vol_lr
+@@ -945,6 +979,9 @@
+     }
+ }
+ 
++#if SMP_VOICE_FAST_TICK
++OF_FASTTEXT
++#endif
+ void smp_voice_tick(void)
+ {
+ #if SMP_VOICE_ENABLE_TICK_STATS
+@@ -1019,8 +1056,8 @@
+          * INVARIANT: if an amplitude- or filter-LFO consumer is ever added,
+          * widen this gate to cover its routing field too. */
+         if (z) {
+-            if (z->vib_lfo_to_pitch) lfo_advance(&v->vib_lfo);
+-            if (z->mod_lfo_to_pitch) lfo_advance(&v->mod_lfo);
++            if (v->update_flags & VOICE_PITCH_VIB) lfo_advance(&v->vib_lfo);
++            if (v->update_flags & VOICE_PITCH_MOD) lfo_advance(&v->mod_lfo);
+         }
+ 
+         /* Hung-voice guard (see SMP_VOICE_MAX_SUSTAIN_TICKS).  Measure time
+@@ -1057,9 +1094,15 @@
+             continue;
+         }
+ 
+-        int vl, vr;
+-        compute_vol_lr(v, &vl, &vr);
+-        uint32_t rate = compute_pitch(v);
++        int vl = prev_vol_l[i], vr = prev_vol_r[i];
++        if (voice_env_volume(v) != v->cached_env_volume ||
++            (v->update_flags & VOICE_VOLUME_DIRTY))
++            compute_vol_lr(v, &vl, &vr);
++        uint32_t rate = prev_rate[i];
++        if ((v->update_flags & (VOICE_PITCH_DIRTY | VOICE_PITCH_VIB | VOICE_PITCH_ENV)) ||
++            ((v->update_flags & VOICE_PITCH_MOD) && ch_mod_depth[v->midi_ch]))
++            rate = compute_pitch(v);
++        v->update_flags &= ~(VOICE_PITCH_DIRTY | VOICE_VOLUME_DIRTY);
+         int rate_changed = (rate != prev_rate[i]);
+         int vol_changed  = (vl != prev_vol_l[i] || vr != prev_vol_r[i]);
+         if (rate_changed || vol_changed) {
+@@ -1109,9 +1152,12 @@
+     if (midi_ch < 0 || midi_ch > 15) return;
+     volume = clamp_midi7(volume);
+     expression = clamp_midi7(expression);
++    int previous = ch_vol_combined[midi_ch];
+     ch_volume[midi_ch]     = volume;
+     ch_expression[midi_ch] = expression;
+     channel_recompute_cached(midi_ch);
++    if (ch_vol_combined[midi_ch] != previous)
++        voice_invalidate_channel(midi_ch, VOICE_VOLUME_DIRTY);
+ }
+ 
+ void smp_voice_update_pan(int midi_ch, int pan)
+@@ -1124,8 +1170,10 @@
+      * live voice on this channel so the hot path stays divide-free. */
+     for (int i = 0; i < SMP_MAX_VOICES; i++) {
+         smp_voice_t *v = &voices[i];
+-        if (v->active && v->active != STEAL_PENDING && v->midi_ch == midi_ch)
++        if (v->active && v->active != STEAL_PENDING && v->midi_ch == midi_ch) {
+             voice_recompute_pan(v);
++            v->update_flags |= VOICE_VOLUME_DIRTY;
++        }
+     }
+ }
+ 
+@@ -1134,15 +1182,21 @@
+     if (midi_ch < 0 || midi_ch > 15) return;
+     if (bend < -8192) bend = -8192;
+     if (bend > 8191) bend = 8191;
++    int previous = ch_bend_cents[midi_ch];
+     ch_bend[midi_ch] = bend;
+     ch_bend_cents[midi_ch] = ((int32_t)bend * BEND_RANGE_CENTS) / 8192;
++    if (ch_bend_cents[midi_ch] != previous)
++        voice_invalidate_channel(midi_ch, VOICE_PITCH_DIRTY);
+ }
+ 
+ void smp_voice_update_mod(int midi_ch, int mod_depth)
+ {
+     if (midi_ch < 0 || midi_ch > 15) return;
+     mod_depth = clamp_midi7(mod_depth);
+-    ch_mod_depth[midi_ch] = mod_depth;
++    if (ch_mod_depth[midi_ch] != mod_depth) {
++        ch_mod_depth[midi_ch] = mod_depth;
++        voice_invalidate_channel(midi_ch, VOICE_PITCH_DIRTY);
++    }
+ }
+ 
+ void smp_voice_update_sustain(int midi_ch, int sustain_on)
+@@ -1257,7 +1311,11 @@
+ {
+     if (vol < 0)   vol = 0;
+     if (vol > 255) vol = 255;
+-    master_vol = vol;
++    if (master_vol != vol) {
++        master_vol = vol;
++        for (int i = 0; i < SMP_MAX_VOICES; i++)
++            voices[i].update_flags |= VOICE_VOLUME_DIRTY;
++    }
+ }
+ 
+ #else /* OF_PC — desktop has no HW mixer voice path; silent stubs */
+--- a/src/sdk/include/of_smp_voice.h
++++ b/src/sdk/include/of_smp_voice.h
+@@ -60,6 +60,8 @@
+     uint8_t hw_index;     /* HW mixer voice index (0..31), cached at note-on.
+                              Lets orphan reaping match by index when the mixer
+                              handle's generation goes stale.  0xFF = unknown. */
++    uint8_t cached_env_volume; /* Clamped envelope input used for L/R volume. */
++    uint8_t update_flags;      /* Pitch routing and pending controller changes. */
+     uint64_t mixer_voice; /* stable hardware mixer handle */
+     env_state_t vol_env;
+     env_state_t mod_env;

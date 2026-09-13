@@ -1,0 +1,3 @@
+108412 GPU columns, 34475 fallback columns
+108412 GPU columns, 34475 fallback columns
+PASS: 12,000 wall loop cases; 39,228,820 identical bytes of GPU/fallback records, clips, planes and stepping state

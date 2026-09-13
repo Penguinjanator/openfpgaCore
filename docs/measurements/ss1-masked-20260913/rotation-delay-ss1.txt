@@ -1,0 +1,13 @@
+OpenfpgaOSOpenfpgaOStotal 4608
+-rwxr-xr-x 1 root root 61530 Sep 13 18:36 20260913_183619-profile.png
+-rwxr-xr-x 1 root root 61802 Sep 13 18:36 20260913_183612-profile.png
+-rwxr-xr-x 1 root root 81269 Sep 13 18:35 20260913_183559-profile.png
+-rwxr-xr-x 1 root root 82190 Sep 13 18:35 20260913_183555-profile.png
+PID   USER     COMMAND
+    1 root     init
+    2 root     [kthreadd]
+    3 root     [rcu_gp]
+    4 root     [rcu_par_gp]
+    8 root     [mm_percpu_wq]
+    9 root     [rcu_tasks_rude_]
+   10 root     [ksoftirqd/0]

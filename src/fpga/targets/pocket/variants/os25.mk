@@ -30,4 +30,9 @@
 
 DEFS := INCLUDE_ANALOGIZER INCLUDE_HW_MIXER INCLUDE_TRANSLUC \
         INCLUDE_PALETTE INCLUDE_COLUMN_LIST INCLUDE_COMPACT_SPAN \
-        INCLUDE_PARAM_SPAN_Q29 INCLUDE_4PLAYER
+        INCLUDE_PARAM_SPAN_Q29 INCLUDE_4PLAYER INCLUDE_BANK_ROW_TRACK
+
+# CPU, textures, mixer samples and scanout can occupy different SDRAM banks.
+# Preserve each bank's open row across master switches to avoid unnecessary
+# PRECHARGE/ACTIVATE commands. See docs/POCKET_PERFORMANCE.md for measurements
+# and the separate 90/100 MHz timing results.

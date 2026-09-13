@@ -1,0 +1,27 @@
+{
+  "profile-v2.elf": {
+    "bytes": 1293396,
+    "sha256": "5feea4144be9e02bc4915f24738fe728605a6be4ccb8c120cd1313538bafc94f",
+    "local_path": "/home/alberto/Repos/openfpgaOS/build/ss1-profile-20260913/profile-v2.elf"
+  },
+  "profile-v3.elf": {
+    "bytes": 1293536,
+    "sha256": "4f59efb7b4894c2b6eaf6e140105dca17602dee605af35162cb0531e25e29bf4",
+    "local_path": "/home/alberto/Repos/openfpgaOS/build/ss1-profile-20260913/profile-v3.elf"
+  },
+  "latest.rbf": {
+    "bytes": 4115208,
+    "sha256": "b066853ef62bf227c60c6d1fba3333eb1e1fb397b4d1907955991b77ca4e063f",
+    "local_path": "/home/alberto/Repos/openfpgaOS/build/ss1-profile-20260913/latest/latest.rbf"
+  },
+  "counter.rbf": {
+    "bytes": 4106000,
+    "sha256": "26a8ea6a40a43fe8e9647072dfcc6caf87ea70a5d6255645d81ee3d444fe33a2",
+    "local_path": "/home/alberto/Repos/openfpgaOS/build/ss1-profile-20260913/counter.rbf"
+  },
+  "published.rbf": {
+    "bytes": 4042936,
+    "sha256": "2d63283a2d97f84a25d5cf9f6105c0b0c4308c01825ad23afbc1fee826ba5261",
+    "local_path": "/home/alberto/Repos/openfpgaOS/build/ss1-profile-20260913/baseline/published.rbf"
+  }
+}

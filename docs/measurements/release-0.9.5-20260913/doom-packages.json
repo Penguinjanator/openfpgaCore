@@ -1,0 +1,12 @@
+{
+  "mister": {
+    "path": "/home/alberto/Repos/Doom/releases/mister/doom-v1.2.0.zip",
+    "bytes": 3453829,
+    "sha256": "deddb69179b77617535666b3760bacb558c952e42503e510d740adc2d62e5382"
+  },
+  "pocket": {
+    "path": "/home/alberto/Repos/Doom/releases/pocket/doom-v1.2.0.zip",
+    "bytes": 4269326,
+    "sha256": "c27f5e89f35477d94c09eccecf96ee322b35457284b7a3796696d402e1b74622"
+  }
+}

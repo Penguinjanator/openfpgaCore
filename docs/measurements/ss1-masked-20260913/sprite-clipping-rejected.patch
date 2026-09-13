@@ -1,0 +1,177 @@
+--- a/src/doom/cdoom/doom/r_things.c
++++ b/src/doom/cdoom/doom/r_things.c
+@@ -1041,12 +1041,40 @@
+ //
+ // R_DrawSprite
+ //
++static void R_ApplySpriteClip(short *clip, const short *source,
++                              uint32_t *pending, int first, int last)
++{
++    int firstword = first >> 5;
++    int lastword = last >> 5;
++    for (int word = firstword; word <= lastword; word++)
++    {
++        uint32_t mask = pending[word];
++        if (word == firstword)
++            mask &= UINT32_MAX << (first & 31);
++        if (word == lastword)
++            mask &= UINT32_MAX >> (31 - (last & 31));
++        while (mask)
++        {
++            unsigned int bit = __builtin_ctz(mask);
++            int x = (word << 5) + bit;
++            clip[x] = source[x];
++            /* Retain the scalar sentinel semantics even for an unresolved
++             * source entry. Each resolved column is visited only once. */
++            if (clip[x] != -2)
++                pending[word] &= ~(UINT32_C(1) << bit);
++            mask &= mask - 1;
++        }
++    }
++}
++
+ void R_DrawSprite (vissprite_t* spr)
+ {
+     drawseg_t*		ds;
+     drawsegrange_t*	dsr;
+     short		clipbot[SCREENWIDTH];
+     short		cliptop[SCREENWIDTH];
++    uint32_t pendingbot[(SCREENWIDTH + 31) / 32];
++    uint32_t pendingtop[(SCREENWIDTH + 31) / 32];
+     int			x;
+     int			r1;
+     int			r2;
+@@ -1056,6 +1084,8 @@
+ 
+     for (x = spr->x1 ; x<=spr->x2 ; x++)
+ 	clipbot[x] = cliptop[x] = -2;
++    for (x = 0; x < (SCREENWIDTH + 31) / 32; x++)
++	pendingbot[x] = pendingtop[x] = UINT32_MAX;
+ 
+     // Scan the cached drawseg ranges for obscuring segs.
+     // The first drawseg that has a greater scale
+@@ -1105,31 +1135,10 @@
+ 	if (spr->gzt <= ds->tsilheight)
+ 	    silhouette &= ~SIL_TOP;
+ 			
+-	if (silhouette == 1)
+-	{
+-	    // bottom sil
+-	    for (x=r1 ; x<=r2 ; x++)
+-		if (clipbot[x] == -2)
+-		    clipbot[x] = ds->sprbottomclip[x];
+-	}
+-	else if (silhouette == 2)
+-	{
+-	    // top sil
+-	    for (x=r1 ; x<=r2 ; x++)
+-		if (cliptop[x] == -2)
+-		    cliptop[x] = ds->sprtopclip[x];
+-	}
+-	else if (silhouette == 3)
+-	{
+-	    // both
+-	    for (x=r1 ; x<=r2 ; x++)
+-	    {
+-		if (clipbot[x] == -2)
+-		    clipbot[x] = ds->sprbottomclip[x];
+-		if (cliptop[x] == -2)
+-		    cliptop[x] = ds->sprtopclip[x];
+-	    }
+-	}
++	if (silhouette & SIL_BOTTOM)
++	    R_ApplySpriteClip(clipbot, ds->sprbottomclip, pendingbot, r1, r2);
++	if (silhouette & SIL_TOP)
++	    R_ApplySpriteClip(cliptop, ds->sprtopclip, pendingtop, r1, r2);
+ 		
+     }
+     
+--- /dev/null
++++ b/tools/check_sprite_clipping.py
+@@ -0,0 +1,27 @@
++#!/usr/bin/env python3
++"""Compare the production sprite clip walk and masked-wall draw ordering."""
++import argparse, hashlib, os, subprocess
++from pathlib import Path
++from gpu_test_sources import function
++ROOT=Path(__file__).resolve().parents[1]
++def main():
++    p=argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--reference',type=Path,required=True)
++    p.add_argument('--output',type=Path,required=True)
++    a=p.parse_args(); hashes=[]
++    for name,source in [('before',a.reference),('after',ROOT/'src/doom/cdoom/doom/r_things.c')]:
++        out=a.output.resolve()/name;out.mkdir(parents=True,exist_ok=True)
++        s=source.read_text();names=['R_DrawSprite']
++        if 'static void R_ApplySpriteClip(' in s:names.insert(0,'R_ApplySpriteClip')
++        (out/'clip_functions.h').write_text('\n'.join(function(s,n) for n in names))
++        cmd=['cc','-DOF_PC','-DOF_DOOM','-O2','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-no-pie','-I'+str(out)]
++        cmd+=['-I'+str(ROOT/d) for d in ['src/sdk/include','src/doom/shim','src/doom/cdoom','src/doom/cdoom/doom']]
++        cmd+=[str(ROOT/'tools/tests/test_sprite_clipping.c'),'-o',str(out/'test')]
++        with (out/'build.log').open('w') as f:subprocess.run(cmd,stdout=f,stderr=subprocess.STDOUT,check=True)
++        with (out/'records.bin').open('wb') as f,(out/'run.log').open('w') as log:
++            subprocess.run([str(out/'test')],stdout=f,stderr=log,check=True,env=dict(os.environ,UBSAN_OPTIONS='halt_on_error=1'))
++        hashes.append(hashlib.sha256((out/'records.bin').read_bytes()).hexdigest())
++        print(name,(out/'run.log').read_text().strip(),flush=True)
++    assert hashes[0]==hashes[1],'Sprite clipping or draw order changed'
++    print('PASS identical sprite clipping and masked range order',hashes[0])
++if __name__=='__main__':main()
+--- /dev/null
++++ b/tools/tests/test_sprite_clipping.c
+@@ -0,0 +1,56 @@
++#include <assert.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include "r_local.h"
++typedef struct { short x1,x2;drawseg_t *ds; } drawsegrange_t;
++static drawsegrange_t drawsegranges[96];
++static int numdrawsegranges;
++static drawseg_t segments[96];
++static seg_t clip_lines[96];
++static short tops[96][320],bots[96][320],masked[320];
++short *mfloorclip,*mceilingclip;
++int viewheight=168;
++static unsigned seed=0x719afad3, masked_calls, side_calls;
++static unsigned rnd(void){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;}
++static void emit(const void *p,size_t n){assert(fwrite(p,1,n,stdout)==n);}
++void R_RenderMaskedSegRange(drawseg_t *ds,int first,int last){
++    int32_t row[]={ds-segments,first,last};emit(row,sizeof(row));masked_calls++;
++}
++int R_PointOnSegSide(fixed_t x,fixed_t y,seg_t *line){
++    side_calls++;return ((uint32_t)x^(uint32_t)y^(unsigned)(line-clip_lines))&1;
++}
++void R_DrawVisSprite(vissprite_t *spr,int first,int last){
++    int32_t row[]={-1,first,last,spr->scale};emit(row,sizeof(row));
++    emit(mfloorclip+first,(last-first+1)*sizeof(short));
++    emit(mceilingclip+first,(last-first+1)*sizeof(short));
++}
++#include "clip_functions.h"
++int main(void){
++    for(int trial=0;trial<24000;trial++){
++        vissprite_t spr={0};
++        viewheight=trial%3?168:96;
++        spr.x1=trial%5?rnd()%320:0;
++        spr.x2=trial%7?spr.x1+rnd()%(320-spr.x1):319;
++        spr.scale=rnd()%0x80000000u;spr.gz=(int32_t)rnd();spr.gzt=(int32_t)rnd();
++        spr.gx=(int32_t)rnd();spr.gy=(int32_t)rnd();
++        numdrawsegranges=rnd()%97;
++        for(int n=0;n<numdrawsegranges;n++){
++            drawseg_t *ds=&segments[n];
++            int x1=trial%5?rnd()%320:0;
++            int x2=trial%5?x1+rnd()%(320-x1):319;
++            drawsegranges[n]=(drawsegrange_t){x1,x2,ds};
++            ds->scale1=rnd()%0x80000000u;ds->scale2=rnd()%0x80000000u;
++            ds->silhouette=rnd()%4;ds->bsilheight=(int32_t)rnd();ds->tsilheight=(int32_t)rnd();
++            ds->curline=&clip_lines[n];ds->maskedtexturecol=rnd()%3?NULL:masked;
++            ds->sprbottomclip=bots[n];ds->sprtopclip=tops[n];
++            for(int x=0;x<320;x++){
++                bots[n][x]=(int)(rnd()%(viewheight+3))-2;
++                tops[n][x]=(int)(rnd()%(viewheight+3))-2;
++            }
++        }
++        R_DrawSprite(&spr);
++    }
++    assert(masked_calls>10000&&side_calls>10000);
++    fprintf(stderr,"PASS 24000 sprite walks; %u masked range draws; %u side tests\n",masked_calls,side_calls);
++}

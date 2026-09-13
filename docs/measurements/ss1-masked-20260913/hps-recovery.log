@@ -1,0 +1,5 @@
+Restarted MiSTer: 14449
+Core: OpenfpgaOS
+Traceback (most recent call last):
+  File "<string>", line 17, in <module>
+AssertionError

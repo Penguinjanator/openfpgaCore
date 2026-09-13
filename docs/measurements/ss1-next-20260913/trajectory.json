@@ -1,0 +1,20 @@
+{
+  "sigil1": {
+    "matching_tics": 869,
+    "first_common_tic": 176,
+    "last_common_tic": 1225,
+    "mismatches": 0
+  },
+  "sigil2": {
+    "matching_tics": 751,
+    "first_common_tic": 176,
+    "last_common_tic": 1225,
+    "mismatches": 0
+  },
+  "coarse-sigil2": {
+    "matching_tics": 708,
+    "first_common_tic": 184,
+    "last_common_tic": 1221,
+    "mismatches": 0
+  }
+}

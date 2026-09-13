@@ -1,0 +1,12 @@
+{
+  "start": 1789342539.9387376,
+  "save_slot": 0,
+  "description": "E1M1: HANGAR",
+  "core": "release 0.9.5 at 90 MHz",
+  "diagnostic_sha256": "bee6bc35d6757d8cfd63e3b5294fa4285b203cf315abf5e856fa3d84993d4d79",
+  "rotation": "stationary during warmup; rotate only once capture starts",
+  "remote_hashes": "bee6bc35d6757d8cfd63e3b5294fa4285b203cf315abf5e856fa3d84993d4d79  /media/fat/.openfpgaOS-release-20260913/profile.elf\ne427b1097ad79af3612b88e7a61a566685abdabf335dace2222510387ffd01c9  /media/fat/.openfpgaOS-release-20260913/release.rbf\n",
+  "frames": 1802,
+  "format_version": 4,
+  "end": 1789342627.4395463
+}

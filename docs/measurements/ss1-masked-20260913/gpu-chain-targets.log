@@ -1,0 +1,874 @@
+make: Entering directory '/home/alberto/Repos/openfpgaOS/src/fpga/test'
+sed \
+  -e 's/inout   wire    \[15:0\]  phy_dq,/input   wire    [15:0]  phy_dq_in,\noutput  wire    [15:0]  phy_dq_out_port,\noutput  wire            phy_dq_oe_port,/' \
+  -e "s/assign          phy_dq = phy_dq_oe ? phy_dq_out : 16'bZZZZZZZZZZZZZZZZ;/assign phy_dq_out_port = phy_dq_out;\nassign phy_dq_oe_port = phy_dq_oe;/" \
+  -e 's/phy_dq_latched <= phy_dq;/phy_dq_latched <= phy_dq_in;/' \
+  -e 's/phy_dq_neg <= phy_dq;/phy_dq_neg <= phy_dq_in;/' \
+  -e '/input   wire            refresh_i504,/d' \
+  -e "s/refresh_i504 ?/1'b0 ?/g" \
+  ../targets/mister/io_sdram.v > io_sdram_mister_test.v
+verilator --cc --exe --build -Wall -Wno-fatal -Wno-BADVLTPRAGMA -CFLAGS "-std=c++17 -O2" -I../targets/pocket/third_party/analogizer -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-CASEINCOMPLETE -Wno-SYNCASYNCNET -Wno-UNUSEDSIGNAL -Wno-PINMISSING -Wno-UNOPTFLAT -Wno-UNDRIVEN -Wno-UNUSEDPARAM -Wno-MULTIDRIVEN -Wno-LATCH -Wno-CASEOVERLAP \
+	--top-module tb_gpu_transluc --Mdir obj_dir_gpu_transluc \
+	+define+INCLUDE_TRANSLUC \
+	-I../common \
+	tb_gpu_transluc.v sdram_model_full.v altsyncram_stub.v ../common/gpu_core.v ../common/gpu_edge_walker.v ../common/gpu_tex_cache.v ../common/axi_sdram_arbiter.v ../common/sync_fifo.v ../common/axi_sdram_slave.v ../targets/mister/synch_3.v io_sdram_mister_test.v tb_gpu_transluc_main.cpp
+verilator --cc --exe --build -Wall -Wno-fatal -Wno-BADVLTPRAGMA -CFLAGS "-std=c++17 -O2" -I../targets/pocket/third_party/analogizer -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-CASEINCOMPLETE -Wno-SYNCASYNCNET -Wno-UNUSEDSIGNAL -Wno-PINMISSING -Wno-UNOPTFLAT -Wno-UNDRIVEN -Wno-UNUSEDPARAM -Wno-MULTIDRIVEN -Wno-LATCH -Wno-CASEOVERLAP \
+	--top-module tb_gpu_transluc --Mdir obj_dir_gpu_cb_chain \
+	+define+INCLUDE_TRANSLUC \
+	-CFLAGS "-std=c++17 -O2 -DGPU_TEST_CB_CHAIN" \
+	-GINCLUDE_DIRECT_COLOR=1 -GGPU_CB_READ_WINDOW=2 \
+	-I../common \
+	tb_gpu_transluc.v sdram_model_full.v altsyncram_stub.v ../common/gpu_core.v ../common/gpu_edge_walker.v ../common/gpu_tex_cache.v ../common/axi_sdram_arbiter.v ../common/sync_fifo.v ../common/axi_sdram_slave.v ../targets/mister/synch_3.v io_sdram_mister_test.v tb_gpu_transluc_main.cpp
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:292:29: Instance pin connected by name with empty reference: 'dbg_setup_step'
+  292 |     .dbg_state(dbg_state), .dbg_setup_step(), .dbg_aux(), .dbg_frag()
+      |                             ^~~~~~~~~~~~~~
+                          ... For warning description see https://verilator.org/warn/PINCONNECTEMPTY?v=5.052
+                          ... Use "/* verilator lint_off PINCONNECTEMPTY */" and lint_on around source to disable this message.
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:292:48: Instance pin connected by name with empty reference: 'dbg_aux'
+  292 |     .dbg_state(dbg_state), .dbg_setup_step(), .dbg_aux(), .dbg_frag()
+      |                                                ^~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:292:60: Instance pin connected by name with empty reference: 'dbg_frag'
+  292 |     .dbg_state(dbg_state), .dbg_setup_step(), .dbg_aux(), .dbg_frag()
+      |                                                            ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:483:6: Instance pin connected by name with empty reference: 'm0_rresp'
+  483 |     .m0_rresp(),                 .m0_rlast(gpu_rd_rlast),
+      |      ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:489:35: Instance pin connected by name with empty reference: 'm0_bresp'
+  489 |     .m0_bvalid(gpu_wr_bvalid),   .m0_bresp(),
+      |                                   ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:494:6: Instance pin connected by name with empty reference: 'm1_rresp'
+  494 |     .m1_rresp(),             .m1_rlast(m1_rlast),
+      |      ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:501:31: Instance pin connected by name with empty reference: 'm1_bresp'
+  501 |     .m1_bvalid(m1_bvalid),   .m1_bresp(),
+      |                               ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:506:6: Instance pin connected by name with empty reference: 'm2_rresp'
+  506 |     .m2_rresp(),             .m2_rlast(m2_rlast),
+      |      ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:513:31: Instance pin connected by name with empty reference: 'm2_bresp'
+  513 |     .m2_bvalid(m2_bvalid),   .m2_bresp(),
+      |                               ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:518:6: Instance pin connected by name with empty reference: 'm3_rresp'
+  518 |     .m3_rresp(),             .m3_rlast(m3_rlast),
+      |      ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:535:6: Instance pin connected by name with empty reference: 'dbg_cpu_pending'
+  535 |     .dbg_cpu_pending(),
+      |      ^~~~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:587:6: Instance pin connected by name with empty reference: 'burst_data'
+  587 |     .burst_data(), .burst_data_valid(), .burst_data_done(inj_burst_data_done),
+      |      ^~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:587:21: Instance pin connected by name with empty reference: 'burst_data_valid'
+  587 |     .burst_data(), .burst_data_valid(), .burst_data_done(inj_burst_data_done),
+      |                     ^~~~~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:588:44: Instance pin connected by name with empty reference: 'burstwr_ready'
+  588 |     .burstwr(1'b0), .burstwr_addr(25'b0), .burstwr_ready(),
+      |                                            ^~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:599:6: Instance pin connected by name with empty reference: 'dbg_io'
+  599 |     .dbg_io()
+      |      ^~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:615:6: Instance pin connected by name with empty reference: 'wr_evt'
+  615 |     .wr_evt(), .wr_evt_hw_addr(), .wr_evt_dqm(), .wr_evt_data()
+      |      ^~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:615:17: Instance pin connected by name with empty reference: 'wr_evt_hw_addr'
+  615 |     .wr_evt(), .wr_evt_hw_addr(), .wr_evt_dqm(), .wr_evt_data()
+      |                 ^~~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:615:36: Instance pin connected by name with empty reference: 'wr_evt_dqm'
+  615 |     .wr_evt(), .wr_evt_hw_addr(), .wr_evt_dqm(), .wr_evt_data()
+      |                                    ^~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:615:51: Instance pin connected by name with empty reference: 'wr_evt_data'
+  615 |     .wr_evt(), .wr_evt_hw_addr(), .wr_evt_dqm(), .wr_evt_data()
+      |                                                   ^~~~~~~~~~~
+%Warning-DECLFILENAME: altsyncram_stub.v:26:8: Filename 'altsyncram_stub' does not match MODULE name: 'altsyncram'
+   26 | module altsyncram #(
+      |        ^~~~~~~~~~
+                       ... For warning description see https://verilator.org/warn/DECLFILENAME?v=5.052
+                       ... Use "/* verilator lint_off DECLFILENAME */" and lint_on around source to disable this message.
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:292:29: Instance pin connected by name with empty reference: 'dbg_setup_step'
+  292 |     .dbg_state(dbg_state), .dbg_setup_step(), .dbg_aux(), .dbg_frag()
+      |                             ^~~~~~~~~~~~~~
+                          ... For warning description see https://verilator.org/warn/PINCONNECTEMPTY?v=5.052
+                          ... Use "/* verilator lint_off PINCONNECTEMPTY */" and lint_on around source to disable this message.
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:292:48: Instance pin connected by name with empty reference: 'dbg_aux'
+  292 |     .dbg_state(dbg_state), .dbg_setup_step(), .dbg_aux(), .dbg_frag()
+      |                                                ^~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:292:60: Instance pin connected by name with empty reference: 'dbg_frag'
+  292 |     .dbg_state(dbg_state), .dbg_setup_step(), .dbg_aux(), .dbg_frag()
+      |                                                            ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:483:6: Instance pin connected by name with empty reference: 'm0_rresp'
+  483 |     .m0_rresp(),                 .m0_rlast(gpu_rd_rlast),
+      |      ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:489:35: Instance pin connected by name with empty reference: 'm0_bresp'
+  489 |     .m0_bvalid(gpu_wr_bvalid),   .m0_bresp(),
+      |                                   ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:494:6: Instance pin connected by name with empty reference: 'm1_rresp'
+  494 |     .m1_rresp(),             .m1_rlast(m1_rlast),
+      |      ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:501:31: Instance pin connected by name with empty reference: 'm1_bresp'
+  501 |     .m1_bvalid(m1_bvalid),   .m1_bresp(),
+      |                               ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:506:6: Instance pin connected by name with empty reference: 'm2_rresp'
+  506 |     .m2_rresp(),             .m2_rlast(m2_rlast),
+      |      ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:513:31: Instance pin connected by name with empty reference: 'm2_bresp'
+  513 |     .m2_bvalid(m2_bvalid),   .m2_bresp(),
+      |                               ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:518:6: Instance pin connected by name with empty reference: 'm3_rresp'
+  518 |     .m3_rresp(),             .m3_rlast(m3_rlast),
+      |      ^~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:535:6: Instance pin connected by name with empty reference: 'dbg_cpu_pending'
+  535 |     .dbg_cpu_pending(),
+      |      ^~~~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:587:6: Instance pin connected by name with empty reference: 'burst_data'
+  587 |     .burst_data(), .burst_data_valid(), .burst_data_done(inj_burst_data_done),
+      |      ^~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:587:21: Instance pin connected by name with empty reference: 'burst_data_valid'
+  587 |     .burst_data(), .burst_data_valid(), .burst_data_done(inj_burst_data_done),
+      |                     ^~~~~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:588:44: Instance pin connected by name with empty reference: 'burstwr_ready'
+  588 |     .burstwr(1'b0), .burstwr_addr(25'b0), .burstwr_ready(),
+      |                                            ^~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:599:6: Instance pin connected by name with empty reference: 'dbg_io'
+  599 |     .dbg_io()
+      |      ^~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:615:6: Instance pin connected by name with empty reference: 'wr_evt'
+  615 |     .wr_evt(), .wr_evt_hw_addr(), .wr_evt_dqm(), .wr_evt_data()
+      |      ^~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:615:17: Instance pin connected by name with empty reference: 'wr_evt_hw_addr'
+  615 |     .wr_evt(), .wr_evt_hw_addr(), .wr_evt_dqm(), .wr_evt_data()
+      |                 ^~~~~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:615:36: Instance pin connected by name with empty reference: 'wr_evt_dqm'
+  615 |     .wr_evt(), .wr_evt_hw_addr(), .wr_evt_dqm(), .wr_evt_data()
+      |                                    ^~~~~~~~~~
+%Warning-PINCONNECTEMPTY: tb_gpu_transluc.v:615:51: Instance pin connected by name with empty reference: 'wr_evt_data'
+  615 |     .wr_evt(), .wr_evt_hw_addr(), .wr_evt_dqm(), .wr_evt_data()
+      |                                                   ^~~~~~~~~~~
+%Warning-PINCONNECTEMPTY: ../common/../common/axi_sdram_slave.v:191:31: Instance pin connected by name with empty reference: 'full'
+  191 |     .empty(read_fifo_empty), .full(), .count()
+      |                               ^~~~
+%Warning-PINCONNECTEMPTY: ../common/../common/axi_sdram_slave.v:191:40: Instance pin connected by name with empty reference: 'count'
+  191 |     .empty(read_fifo_empty), .full(), .count()
+      |                                        ^~~~~
+%Warning-DECLFILENAME: io_sdram_mister_test.v:7:8: Filename 'io_sdram_mister_test' does not match MODULE name: 'io_sdram'
+    7 | module io_sdram #(
+      |        ^~~~~~~~
+%Warning-DECLFILENAME: altsyncram_stub.v:26:8: Filename 'altsyncram_stub' does not match MODULE name: 'altsyncram'
+   26 | module altsyncram #(
+      |        ^~~~~~~~~~
+                       ... For warning description see https://verilator.org/warn/DECLFILENAME?v=5.052
+                       ... Use "/* verilator lint_off DECLFILENAME */" and lint_on around source to disable this message.
+%Warning-TIMESCALEMOD: tb_gpu_transluc.v:39:8: Timescale missing on this module as other modules have it (IEEE 1800-2023 3.14.2.3)
+   39 | module tb_gpu_transluc #(
+      |        ^~~~~~~~~~~~~~~
+                       sdram_model_full.v:33:8: ... Location of module with timescale
+   33 | module sdram_model_full (
+      |        ^~~~~~~~~~~~~~~~
+                       ... For warning description see https://verilator.org/warn/TIMESCALEMOD?v=5.052
+                       ... Use "/* verilator lint_off TIMESCALEMOD */" and lint_on around source to disable this message.
+%Warning-PINCONNECTEMPTY: ../common/../common/axi_sdram_slave.v:191:31: Instance pin connected by name with empty reference: 'full'
+  191 |     .empty(read_fifo_empty), .full(), .count()
+      |                               ^~~~
+%Warning-PINCONNECTEMPTY: ../common/../common/axi_sdram_slave.v:191:40: Instance pin connected by name with empty reference: 'count'
+  191 |     .empty(read_fifo_empty), .full(), .count()
+      |                                        ^~~~~
+%Warning-DECLFILENAME: io_sdram_mister_test.v:7:8: Filename 'io_sdram_mister_test' does not match MODULE name: 'io_sdram'
+    7 | module io_sdram #(
+      |        ^~~~~~~~
+%Warning-TIMESCALEMOD: tb_gpu_transluc.v:39:8: Timescale missing on this module as other modules have it (IEEE 1800-2023 3.14.2.3)
+   39 | module tb_gpu_transluc #(
+      |        ^~~~~~~~~~~~~~~
+                       sdram_model_full.v:33:8: ... Location of module with timescale
+   33 | module sdram_model_full (
+      |        ^~~~~~~~~~~~~~~~
+                       ... For warning description see https://verilator.org/warn/TIMESCALEMOD?v=5.052
+                       ... Use "/* verilator lint_off TIMESCALEMOD */" and lint_on around source to disable this message.
+%Warning-BLKSEQ: sdram_model_full.v:267:16: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  267 |         errors = errors + 1;
+      |                ^
+                 ... For warning description see https://verilator.org/warn/BLKSEQ?v=5.052
+                 ... Use "/* verilator lint_off BLKSEQ */" and lint_on around source to disable this message.
+%Warning-BLKSEQ: sdram_model_full.v:307:16: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  307 |         errors = errors + 1;
+      |                ^
+%Warning-BLKSEQ: sdram_model_full.v:336:16: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  336 |         errors = errors + 1;
+      |                ^
+%Warning-BLKSEQ: sdram_model_full.v:347:16: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  347 |         errors = errors + 1;
+      |                ^
+%Warning-BLKSEQ: sdram_model_full.v:373:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  373 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:378:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  378 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:388:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  388 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:393:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  393 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:408:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  408 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:413:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  413 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5337:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5337 |     spanprod_pl_origin_we = 1'b0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5338:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5338 |     spanprod_pl_origin_wa = 4'd0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5339:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5339 |     spanprod_pl_origin_wd = 0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5340:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5340 |     spanprod_pl_du_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5341:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5341 |     spanprod_pl_du_wa = 4'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5342:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5342 |     spanprod_pl_du_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5343:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5343 |     spanprod_pl_dv_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5344:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5344 |     spanprod_pl_dv_wa = 4'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5345:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5345 |     spanprod_pl_dv_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5346:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5346 |     spanprod_u_we = 1'b0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5347:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5347 |     spanprod_u_wa = 2'd0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5348:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5348 |     spanprod_u_wd = 0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5349:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5349 |     spanprod_v_we = 1'b0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5350:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5350 |     spanprod_v_wa = 2'd0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5351:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5351 |     spanprod_v_wd = 0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5352:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5352 |     spanprod_count_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5353:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5353 |     spanprod_count_wa = 2'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5354:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5354 |     spanprod_count_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5355:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5355 |     spanprod_direct_fb_addr_we = 1'b0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5356:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5356 |     spanprod_direct_fb_addr_wa = 2'd0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5357:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5357 |     spanprod_direct_fb_addr_wd = 0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5358:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5358 |     spanprod_direct_tex_addr_we = 1'b0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5359:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5359 |     spanprod_direct_tex_addr_wa = 2'd0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5360:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5360 |     spanprod_direct_tex_addr_wd = 0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5361:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5361 |     spanprod_direct_s_we = 1'b0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5362:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5362 |     spanprod_direct_s_wa = 2'd0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5363:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5363 |     spanprod_direct_s_wd = 0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5364:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5364 |     spanprod_direct_t_we = 1'b0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5365:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5365 |     spanprod_direct_t_wa = 2'd0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5366:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5366 |     spanprod_direct_t_wd = 0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5367:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5367 |     spanprod_direct_sstep_we = 1'b0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5368:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5368 |     spanprod_direct_sstep_wa = 2'd0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5369:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5369 |     spanprod_direct_sstep_wd = 0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5370:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5370 |     spanprod_direct_tstep_we = 1'b0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5371:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5371 |     spanprod_direct_tstep_wa = 2'd0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5372:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5372 |     spanprod_direct_tstep_wd = 0;
+      |                              ^
+%Warning-BLKSEQ: sdram_model_full.v:267:16: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  267 |         errors = errors + 1;
+      |                ^
+                 ... For warning description see https://verilator.org/warn/BLKSEQ?v=5.052
+                 ... Use "/* verilator lint_off BLKSEQ */" and lint_on around source to disable this message.
+%Warning-BLKSEQ: sdram_model_full.v:307:16: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  307 |         errors = errors + 1;
+      |                ^
+%Warning-BLKSEQ: sdram_model_full.v:336:16: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  336 |         errors = errors + 1;
+      |                ^
+%Warning-BLKSEQ: sdram_model_full.v:347:16: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  347 |         errors = errors + 1;
+      |                ^
+%Warning-BLKSEQ: sdram_model_full.v:373:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  373 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:378:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  378 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:388:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  388 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:393:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  393 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:408:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  408 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: sdram_model_full.v:413:24: Blocking assignment '=' in sequential logic process
+                                          : ... note: In instance 'tb_gpu_transluc.sdram_chip'
+                                          : ... Suggest using delayed assignment '<='
+  413 |                 errors = errors + 1;
+      |                        ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5337:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5337 |     spanprod_pl_origin_we = 1'b0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5338:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5338 |     spanprod_pl_origin_wa = 4'd0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5339:27: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5339 |     spanprod_pl_origin_wd = 0;
+      |                           ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5340:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5340 |     spanprod_pl_du_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5341:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5341 |     spanprod_pl_du_wa = 4'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5342:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5342 |     spanprod_pl_du_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5343:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5343 |     spanprod_pl_dv_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5344:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5344 |     spanprod_pl_dv_wa = 4'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5345:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5345 |     spanprod_pl_dv_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5346:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5346 |     spanprod_u_we = 1'b0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5347:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5347 |     spanprod_u_wa = 2'd0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5348:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5348 |     spanprod_u_wd = 0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5349:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5349 |     spanprod_v_we = 1'b0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5350:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5350 |     spanprod_v_wa = 2'd0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5351:19: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5351 |     spanprod_v_wd = 0;
+      |                   ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5352:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5352 |     spanprod_count_we = 1'b0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5353:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5353 |     spanprod_count_wa = 2'd0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5354:23: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5354 |     spanprod_count_wd = 0;
+      |                       ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5355:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5355 |     spanprod_direct_fb_addr_we = 1'b0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5356:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5356 |     spanprod_direct_fb_addr_wa = 2'd0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5357:32: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5357 |     spanprod_direct_fb_addr_wd = 0;
+      |                                ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5358:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5358 |     spanprod_direct_tex_addr_we = 1'b0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5359:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5359 |     spanprod_direct_tex_addr_wa = 2'd0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5360:33: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5360 |     spanprod_direct_tex_addr_wd = 0;
+      |                                 ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5361:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5361 |     spanprod_direct_s_we = 1'b0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5362:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5362 |     spanprod_direct_s_wa = 2'd0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5363:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5363 |     spanprod_direct_s_wd = 0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5364:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5364 |     spanprod_direct_t_we = 1'b0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5365:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5365 |     spanprod_direct_t_wa = 2'd0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5366:26: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5366 |     spanprod_direct_t_wd = 0;
+      |                          ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5367:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5367 |     spanprod_direct_sstep_we = 1'b0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5368:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5368 |     spanprod_direct_sstep_wa = 2'd0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5369:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5369 |     spanprod_direct_sstep_wd = 0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5370:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5370 |     spanprod_direct_tstep_we = 1'b0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5371:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5371 |     spanprod_direct_tstep_wa = 2'd0;
+      |                              ^
+%Warning-BLKSEQ: ../common/../common/gpu_core.v:5372:30: Blocking assignment '=' in sequential logic process
+                                                       : ... note: In instance 'tb_gpu_transluc.gpu'
+                                                       : ... Suggest using delayed assignment '<='
+ 5372 |     spanprod_direct_tstep_wd = 0;
+      |                              ^
+%Warning-COMBDLY: io_sdram_mister_test.v:406:21: Non-blocking assignment '<=' in combinational logic process
+                                               : ... This will be executed as a blocking assignment '='!
+  406 |     burst_data_done <= enable_data_done_4;
+      |                     ^~
+                  ... For warning description see https://verilator.org/warn/COMBDLY?v=5.052
+                  ... Use "/* verilator lint_off COMBDLY */" and lint_on around source to disable this message.
+                  *** See https://verilator.org/warn/COMBDLY?v=5.052 before disabling this,
+                  else you may end up with different sim results.
+%Warning-COMBDLY: io_sdram_mister_test.v:406:21: Non-blocking assignment '<=' in combinational logic process
+                                               : ... This will be executed as a blocking assignment '='!
+  406 |     burst_data_done <= enable_data_done_4;
+      |                     ^~
+                  ... For warning description see https://verilator.org/warn/COMBDLY?v=5.052
+                  ... Use "/* verilator lint_off COMBDLY */" and lint_on around source to disable this message.
+                  *** See https://verilator.org/warn/COMBDLY?v=5.052 before disabling this,
+                  else you may end up with different sim results.
+make[1]: Entering directory '/home/alberto/Repos/openfpgaOS/src/fpga/test/obj_dir_gpu_transluc'
+g++  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -Os  -c -o tb_gpu_transluc_main.o ../tb_gpu_transluc_main.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -o verilated.o /usr/share/verilator/include/verilated.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -o verilated_dpi.o /usr/share/verilator/include/verilated_dpi.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -o verilated_threads.o /usr/share/verilator/include/verilated_threads.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -x c++-header Vtb_gpu_transluc__pch.h -o Vtb_gpu_transluc__pch.h.fast.gch
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -c -x c++-header Vtb_gpu_transluc__pch.h -o Vtb_gpu_transluc__pch.h.slow.gch
+make[1]: Entering directory '/home/alberto/Repos/openfpgaOS/src/fpga/test/obj_dir_gpu_cb_chain'
+g++  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -Os  -c -o tb_gpu_transluc_main.o ../tb_gpu_transluc_main.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -c -o verilated.o /usr/share/verilator/include/verilated.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -c -o verilated_dpi.o /usr/share/verilator/include/verilated_dpi.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -c -o verilated_threads.o /usr/share/verilator/include/verilated_threads.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -c -x c++-header Vtb_gpu_transluc__pch.h -o Vtb_gpu_transluc__pch.h.fast.gch
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -c -x c++-header Vtb_gpu_transluc__pch.h -o Vtb_gpu_transluc__pch.h.slow.gch
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu_transluc__pch.h.slow -c Vtb_gpu_transluc__ConstPool__0__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu_transluc__pch.h.slow -c Vtb_gpu_transluc___024root__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu_transluc__pch.h.slow -c Vtb_gpu_transluc___024root__0__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu_transluc__pch.h.slow -c Vtb_gpu_transluc__Syms__Slow.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu_transluc__pch.h.fast -c Vtb_gpu_transluc.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu_transluc__pch.h.fast -c Vtb_gpu_transluc___024root__0.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu_transluc__pch.h.fast -c Vtb_gpu_transluc___024root__1.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2   -include Vtb_gpu_transluc__pch.h.fast -c Vtb_gpu_transluc__Dpi.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -include Vtb_gpu_transluc__pch.h.fast -c Vtb_gpu_transluc.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -include Vtb_gpu_transluc__pch.h.fast -c Vtb_gpu_transluc___024root__0.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -include Vtb_gpu_transluc__pch.h.fast -c Vtb_gpu_transluc___024root__1.cpp
+g++ -Os  -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -include Vtb_gpu_transluc__pch.h.fast -c Vtb_gpu_transluc__Dpi.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -include Vtb_gpu_transluc__pch.h.slow -c Vtb_gpu_transluc__ConstPool__0__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -include Vtb_gpu_transluc__pch.h.slow -c Vtb_gpu_transluc___024root__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -include Vtb_gpu_transluc__pch.h.slow -c Vtb_gpu_transluc___024root__0__Slow.cpp
+g++   -I.  -MMD -I/usr/share/verilator/include -I/usr/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -std=c++17 -O2 -std=c++17 -O2 -DGPU_TEST_CB_CHAIN   -include Vtb_gpu_transluc__pch.h.slow -c Vtb_gpu_transluc__Syms__Slow.cpp
+g++    tb_gpu_transluc_main.o verilated.o verilated_dpi.o verilated_threads.o Vtb_gpu_transluc__ALL.a    -pthread -lpthread -latomic   -o Vtb_gpu_transluc
+rm Vtb_gpu_transluc__ALL.verilator_deplist.tmp
+make[1]: Leaving directory '/home/alberto/Repos/openfpgaOS/src/fpga/test/obj_dir_gpu_transluc'
+- V e r i l a t i o n   R e p o r t: Verilator 5.052 2026-09-05 rev v5.052
+- Verilator: Built from 3.540 MB sources in 12 modules, into 5.451 MB in 8 C++ files needing 0.006 MB
+- Verilator: Walltime 7.873 s (elab=0.121, cvt=2.381, bld=5.267); cpu 2.599 s on 1 threads; allocated 114.215 MB
+
+=== MiSTer translucent-column span-dropout repro (full SDRAM stack) ===
+./obj_dir_gpu_transluc/Vtb_gpu_transluc
+================================================================
+ MiSTer translucent-column span-dropout repro rig
+ gpu_core(+INCLUDE_TRANSLUC, emu.sv params) -> arbiter -> slave
+ -> io_sdram(mister) -> sdram_model_full ; 0x4C columns, byte-exact
+ mode=all  dqm=dedicated pins  read-dqm=off
+================================================================
+[init] uploading transluc LUT (32KB via MMIO), palookups, texture...
+[init] done at cyc=81973
+  [ANOMALY DMA-OWNS-R-WHILE-TEX-INFLIGHT] cyc=98830 fbss=0 dma_state=2 starve=0 ring wr=0x0320 rd=0x0064 gpu_state=6 cmd=0x4c/24 grant=0
+  [ADJ] ORPHAN BEAT at cyc=99392 (rlast=0 dma_r=0 blend=0 tex_if=1 slave_st=2 arb=1 grant=0)
+        AR hist: cyc=99105 owner=DMA arlen=15
+        AR hist: cyc=99151 owner=DMA arlen=15
+        AR hist: cyc=99197 owner=DMA arlen=15
+        AR hist: cyc=99254 owner=DMA arlen=15
+        AR hist: cyc=99300 owner=DMA arlen=15
+        AR hist: cyc=99346 owner=DMA arlen=7
+  [ADJ] ORPHAN BEAT at cyc=99394 (rlast=0 dma_r=0 blend=0 tex_if=1 slave_st=2 arb=1 grant=0)
+        AR hist: cyc=99105 owner=DMA arlen=15
+        AR hist: cyc=99151 owner=DMA arlen=15
+        AR hist: cyc=99197 owner=DMA arlen=15
+        AR hist: cyc=99254 owner=DMA arlen=15
+        AR hist: cyc=99300 owner=DMA arlen=15
+        AR hist: cyc=99346 owner=DMA arlen=7
+  [ADJ] ORPHAN BEAT at cyc=99396 (rlast=0 dma_r=0 blend=0 tex_if=1 slave_st=2 arb=1 grant=0)
+        AR hist: cyc=99105 owner=DMA arlen=15
+        AR hist: cyc=99151 owner=DMA arlen=15
+        AR hist: cyc=99197 owner=DMA arlen=15
+        AR hist: cyc=99254 owner=DMA arlen=15
+        AR hist: cyc=99300 owner=DMA arlen=15
+        AR hist: cyc=99346 owner=DMA arlen=7
+  [ADJ] ORPHAN BEAT at cyc=99398 (rlast=1 dma_r=0 blend=0 tex_if=1 slave_st=0 arb=1 grant=0)
+        AR hist: cyc=99105 owner=DMA arlen=15
+        AR hist: cyc=99151 owner=DMA arlen=15
+        AR hist: cyc=99197 owner=DMA arlen=15
+        AR hist: cyc=99254 owner=DMA arlen=15
+        AR hist: cyc=99300 owner=DMA arlen=15
+        AR hist: cyc=99346 owner=DMA arlen=7
+  [ADJ] ORPHAN BEAT at cyc=100015 (rlast=0 dma_r=0 blend=0 tex_if=1 slave_st=2 arb=1 grant=0)
+        AR hist: cyc=99728 owner=DMA arlen=15
+        AR hist: cyc=99774 owner=DMA arlen=15
+        AR hist: cyc=99831 owner=DMA arlen=15
+        AR hist: cyc=99877 owner=DMA arlen=15
+        AR hist: cyc=99923 owner=DMA arlen=15
+        AR hist: cyc=99969 owner=DMA arlen=7
+  [ADJ] ORPHAN BEAT at cyc=100017 (rlast=0 dma_r=0 blend=0 tex_if=1 slave_st=2 arb=1 grant=0)
+        AR hist: cyc=99728 owner=DMA arlen=15
+        AR hist: cyc=99774 owner=DMA arlen=15
+        AR hist: cyc=99831 owner=DMA arlen=15
+        AR hist: cyc=99877 owner=DMA arlen=15
+        AR hist: cyc=99923 owner=DMA arlen=15
+        AR hist: cyc=99969 owner=DMA arlen=7
+  [ADJ] ORPHAN BEAT at cyc=100019 (rlast=0 dma_r=0 blend=0 tex_if=1 slave_st=2 arb=1 grant=0)
+        AR hist: cyc=99728 owner=DMA arlen=15
+        AR hist: cyc=99774 owner=DMA arlen=15
+        AR hist: cyc=99831 owner=DMA arlen=15
+        AR hist: cyc=99877 owner=DMA arlen=15
+        AR hist: cyc=99923 owner=DMA arlen=15
+        AR hist: cyc=99969 owner=DMA arlen=7
+  [ADJ] ORPHAN BEAT at cyc=100021 (rlast=1 dma_r=0 blend=0 tex_if=1 slave_st=0 arb=1 grant=0)
+        AR hist: cyc=99728 owner=DMA arlen=15
+        AR hist: cyc=99774 owner=DMA arlen=15
+        AR hist: cyc=99831 owner=DMA arlen=15
+        AR hist: cyc=99877 owner=DMA arlen=15
+        AR hist: cyc=99923 owner=DMA arlen=15
+        AR hist: cyc=99969 owner=DMA arlen=7
+  [ANOMALY DMA-OWNS-R-WHILE-BLEND-WAITS] cyc=517768 fbss=8 dma_state=2 starve=0 ring wr=0x0c88 rd=0x09cc gpu_state=6 cmd=0x4c/24 grant=0
+g++    tb_gpu_transluc_main.o verilated.o verilated_dpi.o verilated_threads.o Vtb_gpu_transluc__ALL.a    -pthread -lpthread -latomic   -o Vtb_gpu_transluc
+rm Vtb_gpu_transluc__ALL.verilator_deplist.tmp
+make[1]: Leaving directory '/home/alberto/Repos/openfpgaOS/src/fpga/test/obj_dir_gpu_cb_chain'
+- V e r i l a t i o n   R e p o r t: Verilator 5.052 2026-09-05 rev v5.052
+- Verilator: Built from 3.540 MB sources in 12 modules, into 5.527 MB in 8 C++ files needing 0.006 MB
+- Verilator: Walltime 8.842 s (elab=0.130, cvt=2.412, bld=6.197); cpu 2.634 s on 1 threads; allocated 114.555 MB
+
+=== Truecolor CB blend, full SDRAM chain (cloud differential) ===
+./obj_dir_gpu_cb_chain/Vtb_gpu_transluc cb
+================================================================
+ MiSTer translucent-column span-dropout repro rig
+ gpu_core(+INCLUDE_TRANSLUC, emu.sv params) -> arbiter -> slave
+ -> io_sdram(mister) -> sdram_model_full ; 0x4C columns, byte-exact
+ mode=cb  dqm=dedicated pins  read-dqm=off
+================================================================
+[init] uploading transluc LUT (32KB via MMIO), palookups, texture...
+[init] done at cyc=81973
+TEST cb_chain_cloud_differential
+  [ANOMALY UNKNOWN-OPCODE] cyc=105049 fbss=0 dma_state=0 starve=0 ring wr=0x0320 rd=0x0004 gpu_state=2 cmd=0x4a/17 grant=0
+[P0-sanity] 3 frames: 0 fail, 0 invalid  (1267478 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+48 hijackB=+52 hijackT=+26 ring=+1806/sub=+1806 hdr: 4C=+72 fence=+3 unk=+0 badsz=+0
+[P1-opaque-stress] 4 frames: 0 fail, 0 invalid  (1254232 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+0 hijackB=+0 hijackT=+104 ring=+2408/sub=+2408 hdr: 4C=+96 fence=+4 unk=+0 badsz=+0
+  quiet pass blended 9942 px
+  PASS cb_chain_cloud_differential (chain exonerated under aggressors)
+[P2 iv=40 scan=rand H=50] 2 frames: 0 fail, 0 invalid  (1020513 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=40 scan=rand H=100] 2 frames: 0 fail, 0 invalid  (1967057 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+26 hijackB=+27 hijackT=+27 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=40 scan=rand H=168] 2 frames: 0 fail, 0 invalid  (3285303 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+51 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=40 scan=line-p0 H=50] 2 frames: 0 fail, 0 invalid  (935201 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+25 hijackB=+27 hijackT=+26 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=40 scan=line-p0 H=100] 2 frames: 0 fail, 0 invalid  (1830770 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+51 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=40 scan=line-p0 H=168] 2 frames: 0 fail, 0 invalid  (3026860 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+49 hijackB=+53 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=40 scan=line-p1586 H=50] 2 frames: 0 fail, 0 invalid  (936472 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+26 hijackB=+27 hijackT=+26 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=40 scan=line-p1586 H=100] 2 frames: 0 fail, 0 invalid  (1811370 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+0 hijackB=+0 hijackT=+53 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=40 scan=line-p1586 H=168] 2 frames: 0 fail, 0 invalid  (3035690 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+50 hijackB=+53 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=16 scan=rand H=50] 2 frames: 0 fail, 0 invalid  (1245993 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+0 hijackB=+0 hijackT=+52 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=16 scan=rand H=100] 2 frames: 0 fail, 0 invalid  (2498439 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=16 scan=rand H=168] 2 frames: 0 fail, 0 invalid  (4126077 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+26 hijackB=+27 hijackT=+26 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=16 scan=line-p0 H=50] 2 frames: 0 fail, 0 invalid  (1044674 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+51 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=16 scan=line-p0 H=100] 2 frames: 0 fail, 0 invalid  (2019277 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+51 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=16 scan=line-p0 H=168] 2 frames: 0 fail, 0 invalid  (3344886 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=16 scan=line-p1586 H=50] 2 frames: 0 fail, 0 invalid  (1037756 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+51 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=16 scan=line-p1586 H=100] 2 frames: 0 fail, 0 invalid  (2012540 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+51 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=16 scan=line-p1586 H=168] 2 frames: 0 fail, 0 invalid  (3342904 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=8 scan=rand H=50] 2 frames: 0 fail, 0 invalid  (1476195 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+26 hijackB=+27 hijackT=+26 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=8 scan=rand H=100] 2 frames: 0 fail, 0 invalid  (2888652 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+0 hijackB=+0 hijackT=+52 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=8 scan=rand H=168] 2 frames: 0 fail, 0 invalid  (4866152 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=8 scan=line-p0 H=50] 2 frames: 0 fail, 0 invalid  (1056052 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+26 hijackB=+27 hijackT=+27 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=8 scan=line-p0 H=100] 2 frames: 0 fail, 0 invalid  (2041857 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+26 hijackB=+27 hijackT=+26 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=8 scan=line-p0 H=168] 2 frames: 0 fail, 0 invalid  (3408247 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=8 scan=line-p1586 H=50] 2 frames: 0 fail, 0 invalid  (1061951 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=8 scan=line-p1586 H=100] 2 frames: 0 fail, 0 invalid  (2052400 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2 iv=8 scan=line-p1586 H=168] 2 frames: 0 fail, 0 invalid  (3412924 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+0 ring=+1204/sub=+1204 hdr: 4C=+48 fence=+2 unk=+0 badsz=+0
+[P2b-scatter iv=8] 4 frames: 0 fail, 0 invalid  (7474303 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+77 hijackB=+81 hijackT=+26 ring=+2408/sub=+2408 hdr: 4C=+96 fence=+4 unk=+0 badsz=+0
+[P3-starve] 10 frames: 0 fail, 0 invalid  (30701614 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+55 hijackB=+57 hijackT=+511 ring=+10020/sub=+10020 hdr: 4C=+400 fence=+10 unk=+0 badsz=+0
+[P4-skipzero] 5 frames: 0 fail, 0 invalid  (2768808 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+104 hijackB=+108 hijackT=+27 ring=+3010/sub=+3010 hdr: 4C=+120 fence=+5 unk=+0 badsz=+0
+[P4b-stallgrind] 0-10 cycle rready stalls (EXPECTED to wedge; documents the drop-arm invariant)
+[P4b-stallgrind] 3 frames: 0 fail, 0 invalid  (5488822 cycles)
+  counters: drops=+0 (gpu=+0) dma_forced=+52 hijackB=+54 hijackT=+26 ring=+1806/sub=+1806 hdr: 4C=+72 fence=+3 unk=+0 badsz=+0
+[P4b-stallgrind] drops armed: +0; wedged frames: 0 (excluded from verdict; drop_arm_gpu still global)
+[0] SDRAM ERROR: refresh interval exceeded (1701 cycles since last refresh, max 1700)
+[P5-soak] 100 frames...
+  [P5-soak] 25/100 frames, cyc=186526263, fails=0
+  [P5-soak] 50/100 frames, cyc=263220389, fails=0
+  [P5-soak] 75/100 frames, cyc=339891788, fails=0
+  [P5-soak] 100/100 frames, cyc=416600400, fails=0
+[P5-soak] 100 frames: 0 fail, 0 invalid
+
+================================================================
+TOTALS: 183 frames — 0 FAILED, 0 INVALID
+  [final] drops=0 (gpu=0) dma_forced=1390 hijackB=1457 hijackT=6722 ring_words=154166/154166 hdr=6335 (4C=6152 fence=183 unk=0 badsz=0)
+  [final] ss1-read: expose_d1=0 expose_d2=0 masked=0 (scanout=0)
+  [final] beat-ownership: tex=2705416 blend=2753976 dma=154166 | swallowed_tex=0 masked_blend=0 misrouted_dma=0 orphan=54 len_mismatch=0
+total cycles: 416600400
+================================================================
+RESULT: PASS — translucent columns byte-exact under all swept contention
+make: Leaving directory '/home/alberto/Repos/openfpgaOS/src/fpga/test'

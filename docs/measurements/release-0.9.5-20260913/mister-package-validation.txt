@@ -1,0 +1,1 @@
+PASS: ZIP CRC, safe SD-root paths, version 1.2.0, exact optimized ELF, no loose WADs, unique flat assets, release-pinned Downloader URLs and local file hashes/sizes.

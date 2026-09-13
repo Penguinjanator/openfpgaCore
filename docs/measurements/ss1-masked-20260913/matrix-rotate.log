@@ -1,0 +1,26 @@
+rotate-before-sigil1 1628 frames; mean frame 18.437 ms; BSP 0.000 ms; planes 0.000 ms; masked 0.000 ms; GPU wait 0.000 ms; DMA waits 0.000 ms
+rotate-before-sigil2 1199 frames; mean frame 25.040 ms; BSP 0.000 ms; planes 0.000 ms; masked 0.000 ms; GPU wait 0.000 ms; DMA waits 0.000 ms
+rotate-software-sigil1 1618 frames; mean frame 18.550 ms; BSP 0.000 ms; planes 0.000 ms; masked 0.000 ms; GPU wait 0.000 ms; DMA waits 0.000 ms
+/home/alberto/Repos/Doom/build/ss1-masked-20260913/masked-skip-demo/.obj/doom/app.elf: No such file or directory
+Traceback (most recent call last):
+  File "/home/alberto/Repos/openfpgaOS/build/ss1-masked-20260913/matrix.py", line 25, in <module>
+    subprocess.run(['scp','-O','-q',str(doom/build/'.obj/doom/app.elf'),'root@192.168.1.245:/media/fat/.openfpgaOS-profile-20260913/profile.elf'],env=env,check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['scp', '-O', '-q', '/home/alberto/Repos/Doom/build/ss1-masked-20260913/masked-skip-demo/.obj/doom/app.elf', 'root@192.168.1.245:/media/fat/.openfpgaOS-profile-20260913/profile.elf']' returned non-zero exit status 1.
+Traceback (most recent call last):
+  File "/home/alberto/Repos/openfpgaOS/build/ss1-masked-20260913/run_rotate.py", line 9, in <module>
+    subprocess.run([sys.executable,str(here/'matrix.py'),
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        'before-demo:counter:rotate-before:rotate',
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        'masked-skip-demo:counter:rotate-software:rotate',
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        'masked-skip-demo:wc-counter:rotate-combined:rotate'],check=True)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/usr/bin/python3', '/home/alberto/Repos/openfpgaOS/build/ss1-masked-20260913/matrix.py', 'before-demo:counter:rotate-before:rotate', 'masked-skip-demo:counter:rotate-software:rotate', 'masked-skip-demo:wc-counter:rotate-combined:rotate']' returned non-zero exit status 1.

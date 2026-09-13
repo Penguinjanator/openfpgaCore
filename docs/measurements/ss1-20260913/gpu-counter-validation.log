@@ -1,0 +1,495 @@
+  PASS profile_draw
+=== GPU Acceptance Suite ===
+
+GPU initialized after hard reset (6661 cycles)
+
+TEST fence_no_writes
+  PASS fence_no_writes.fb_unchanged
+TEST multi_fence_in_order
+  PASS multi_fence_in_order
+TEST fence_after_clear_drains
+  PASS fence_after_clear_drains.fb
+TEST fence_token_high_bits
+  PASS fence_token_high_bits
+TEST set_fb_two_bases
+  PASS set_fb_two_bases.A
+  PASS set_fb_two_bases.B
+TEST set_fb_unusual_stride
+  PASS set_fb_unusual_stride.rect
+  PASS set_fb_unusual_stride.border
+TEST set_texture_does_not_affect_direct_span
+  PASS set_texture_negative.A
+  PASS set_texture_negative.B
+  PASS set_texture_negative.border
+TEST single_lane_span_explicit_colormap_slots
+  PASS single_lane_span_explicit_colormap_slots.s0
+  PASS single_lane_span_explicit_colormap_slots.s1
+  PASS single_lane_span_explicit_colormap_slots.s2
+  PASS single_lane_span_explicit_colormap_slots.border
+TEST per_span_colormap_explicit_slots
+  PASS per_span_colormap_explicit_slots.inv
+  PASS per_span_colormap_explicit_slots.id_explicit0
+  PASS per_span_colormap_explicit_slots.ex_inv
+TEST clear_color_replication
+  PASS clear_color_replication.0x00
+  PASS clear_color_replication.0x7f
+  PASS clear_color_replication.0xff
+TEST clear_drains_framebuffer_writes
+  PASS clear_drains_framebuffer_writes.fb
+  PASS clear_drains_framebuffer_writes.aw_count_reduced
+TEST clear_no_op_when_flag_clear
+  PASS clear_no_op_when_flag_clear
+TEST clear_does_not_touch_rows_200_to_239
+  PASS clear_does_not_touch_rows_200_to_239.cleared
+  PASS clear_does_not_touch_rows_200_to_239.preserved
+TEST clear_rect_edge_lanes
+  PASS clear_rect_edge.lane0_w1
+  PASS clear_rect_edge.lane0_w2
+  PASS clear_rect_edge.lane0_w3
+  PASS clear_rect_edge.lane0_w4
+  PASS clear_rect_edge.lane0_w5
+  PASS clear_rect_edge.lane0_w6
+  PASS clear_rect_edge.lane0_w7
+  PASS clear_rect_edge.lane1_w1
+  PASS clear_rect_edge.lane1_w2
+  PASS clear_rect_edge.lane1_w3
+  PASS clear_rect_edge.lane1_w4
+  PASS clear_rect_edge.lane1_w5
+  PASS clear_rect_edge.lane1_w6
+  PASS clear_rect_edge.lane1_w7
+  PASS clear_rect_edge.lane2_w1
+  PASS clear_rect_edge.lane2_w2
+  PASS clear_rect_edge.lane2_w3
+  PASS clear_rect_edge.lane2_w4
+  PASS clear_rect_edge.lane2_w5
+  PASS clear_rect_edge.lane2_w6
+  PASS clear_rect_edge.lane2_w7
+  PASS clear_rect_edge.lane3_w1
+  PASS clear_rect_edge.lane3_w2
+  PASS clear_rect_edge.lane3_w3
+  PASS clear_rect_edge.lane3_w4
+  PASS clear_rect_edge.lane3_w5
+  PASS clear_rect_edge.lane3_w6
+  PASS clear_rect_edge.lane3_w7
+  PASS clear_rect_edge_lanes.all_rows_match
+TEST clear_rect_zero_dimensions
+  PASS clear_rect_zero_dimensions
+TEST span_raw_count_boundary
+  PASS span_raw_count.0.border
+  PASS span_raw_count.1
+  PASS span_raw_count.1.border
+  PASS span_raw_count.2
+  PASS span_raw_count.2.border
+  PASS span_raw_count.3
+  PASS span_raw_count.3.border
+  PASS span_raw_count.4
+  PASS span_raw_count.4.border
+  PASS span_raw_count.5
+  PASS span_raw_count.5.border
+  PASS span_raw_count.16
+  PASS span_raw_count.16.border
+  PASS span_raw_count.127
+  PASS span_raw_count.127.border
+  PASS span_raw_count.128
+  PASS span_raw_count.128.border
+  PASS span_raw_count.320
+  PASS span_raw_count.320.border
+TEST span_raw_count_4096_preserved
+  PASS span_raw_count_4096_preserved.fb
+TEST span_raw_negative_stride
+  PASS span_raw_negative_stride.fb
+  PASS span_raw_negative_stride.border
+TEST span_raw_mask_zero_means_identity
+  PASS span_raw_mask_zero_means_identity.fb
+  PASS span_raw_mask_zero_means_identity.border
+TEST span_affine_group_repeatable
+  PASS span_affine_group_repeatable.fb
+  PASS span_affine_group_repeatable.rows_equal
+TEST span_colormap_explicit_per_span_id
+  PASS span_colormap.slot5_inv
+  PASS span_colormap.slot15_const
+TEST palookup_base_register
+  PASS palookup_base_register
+TEST span_colormap_light_wraps_mod_64
+  PASS light_wraps.row64_to_0
+  PASS light_wraps.row65_to_1
+TEST skip_zero_only_discards_0xff
+  PASS skip_zero_only_discards_0xff
+TEST skip_zero_with_colormap
+  PASS skip_zero_with_colormap
+TEST transluc_basic_blend
+  PASS transluc_basic_blend.fb
+TEST transluc_overdraw_same_word
+  PASS transluc_overdraw_same_word.fb
+TEST transluc_duplicate_lane_order
+  PASS transluc_duplicate_lane_order.fb
+TEST persp_constant_z_matches_affine
+  PASS persp_constant_z_matches_affine (diffs=0, tolerance=2)
+TEST persp_span_group_varcount_const_z_equals_single_lane_spans
+  PASS persp_span_group_varcount_const_z_equals_single_lane_spans
+TEST persp_span_group_doom_wall_layout_matches_reference
+  PASS persp_span_group_doom_wall_layout_matches_reference.fb
+TEST persp_span_group_doom_wall_layout_8lane_chunk_positions
+  PASS persp_span_group_doom_wall_layout_8lane_chunk_positions.fb
+TEST persp_span_group_doom_wall_negative_t_wrap
+  PASS persp_span_group_doom_wall_negative_t_wrap.fb
+TEST persp_span_group_doom_wall_7lane_partial_chunk
+  PASS persp_span_group_doom_wall_7lane_partial_chunk.fb
+TEST persp_span_group_doom_wall_nonunit_z_equals_single_lane_spans
+  PASS persp_span_group_doom_wall_nonunit_z_equals_single_lane_spans
+TEST persp_span_group_doom_wall_cpu_fixeddiv_reference
+  PASS persp_span_group_doom_wall_cpu_fixeddiv_reference
+TEST persp_span_group_quake_rows_match_single_lane_spans
+  PASS persp_span_group_quake_rows_match_single_lane_spans
+TEST persp_span_group_quake_payload_cpu_oracle
+  persp_quake_payload_exact_oracle diffs: exact=1 segment16=0 split_gpu=0
+  PASS persp_quake_payload_exact_oracle
+TEST persp_span_group_quake_payload_edge_cases
+  persp_quake_payload_negative_minor diffs: exact=7 segment16=0 split_gpu=0
+  PASS persp_quake_payload_negative_minor
+  persp_quake_payload_tiny_positive_zi diffs: exact=7 segment16=0 split_gpu=0
+  PASS persp_quake_payload_tiny_positive_zi
+  persp_quake_payload_baked_sadjust diffs: exact=10 segment16=0 split_gpu=0
+  PASS persp_quake_payload_baked_sadjust
+TEST param_span_list_affine_rows
+  PASS param_span_list_affine_rows.fb
+TEST param_span_list_affine_columns
+  PASS param_span_list_affine_columns.fb
+TEST param_span_list_affine_clamp
+  PASS param_span_list_affine_clamp
+TEST param_span_list_zero_counts_skip
+  PASS param_span_list_zero_counts_skip.fb
+TEST param_span_list_streams_many_records
+  PASS param_span_list_streams_many_records.fb
+TEST param_span_list_unsupported_noop
+  PASS param_span_list_unsupported_noop.fb
+TEST param_span_list_colormap_skip_zero
+  PASS param_span_list_colormap_skip_zero.fb
+TEST param_tri_wrong_size_noop_drains
+  PASS param_tri_wrong_size_noop_drains.fb
+TEST param_tri_degenerate_noop
+  PASS param_tri_degenerate_noop.fb
+TEST param_tri_unsupported_header_noop
+  PASS param_tri_unsupported_header_noop.fb
+TEST param_tri_affine_basic
+  PASS param_tri_affine_basic.fb
+TEST param_tri_clip_all_sides
+  PASS param_tri_clip_all_sides.fb
+TEST param_tri_shared_edge_adjacency
+  PASS param_tri_shared_edge_adjacency.fb
+TEST param_tri_fuzz_affine
+  PASS param_tri_fuzz_affine.fb
+TEST vert_tri_equivalence_vs_param
+  PASS vert_tri_equivalence_vs_param.large
+  PASS vert_tri_equivalence_vs_param.thin_sliver
+  PASS vert_tri_equivalence_vs_param.steep_gradient
+  PASS vert_tri_equivalence_vs_param.partial_clip
+  PASS vert_tri_equivalence_vs_param.degenerate_collinear
+TEST texture_mirror_s
+  PASS texture_mirror_s
+TEST texture_mirror_t
+  PASS texture_mirror_t
+TEST vert_tri_sliver_renders_in_range
+  PASS vert_tri_sliver_renders_in_range.equiv
+  PASS vert_tri_sliver_renders_in_range.painted
+TEST vert_tri_shared_edge_adjacency
+  PASS vert_tri_shared_edge_adjacency
+TEST vert_tri_sticky_semantics
+  PASS vert_tri_sticky_semantics.one_a_three_b
+  PASS vert_tri_sticky_semantics.noop_without_a
+  PASS vert_tri_sticky_semantics.soft_reset_clears
+TEST vert_tri_wrong_size_noop
+  PASS vert_tri_wrong_size_noop.fb
+TEST param_tri_recs_equivalence_vs_param
+  PASS param_tri_recs_equivalence_vs_param.fb
+  PASS param_tri_recs_equivalence_vs_param.vs_0x49
+TEST param_tri_recs_sticky_semantics
+  PASS param_tri_recs_sticky_semantics.fb
+  PASS param_tri_recs_sticky_semantics.soft_reset
+TEST param_tri_recs_wrong_size_noop
+  PASS param_tri_recs_wrong_size_noop.fb
+TEST param_span_list_persp_matches_helper
+  PASS param_span_list_persp_matches_helper
+TEST param_span_quake_projection_math_no_z
+  PASS param_span_quake_projection_math_no_z_abs_fb
+  PASS param_span_quake_projection_math_no_z_rebased_fb
+TEST param_span_quake_projection_math_z_write
+  PASS param_span_quake_projection_math_z_write_abs_fb
+  PASS param_span_quake_projection_math_z_write_rebased_fb
+  PASS param_span_quake_projection_math_z_write_abs_z
+  PASS param_span_quake_projection_math_z_write_rebased_z
+TEST param_span_q29_high_angle_floor_no_flatten
+  PASS param_span_q29_high_angle_floor_no_flatten
+TEST param_q29_tail_counts_and_boundaries
+  PASS param_q29_tail_counts_and_boundaries
+TEST param_q29_record_counts_and_odd_pairs
+  PASS param_q29_record_counts_and_odd_pairs.1
+  PASS param_q29_record_counts_and_odd_pairs.2
+  PASS param_q29_record_counts_and_odd_pairs.3
+  PASS param_q29_record_counts_and_odd_pairs.4
+  PASS param_q29_record_counts_and_odd_pairs.5
+  PASS param_q29_record_counts_and_odd_pairs.7
+  PASS param_q29_record_counts_and_odd_pairs.8
+  PASS param_q29_record_counts_and_odd_pairs.9
+  PASS param_q29_record_counts_and_odd_pairs.16
+  PASS param_q29_record_counts_and_odd_pairs.63
+  PASS param_q29_record_counts_and_odd_pairs.64
+  PASS param_q29_record_counts_and_odd_pairs.65
+  PASS param_q29_record_counts_and_odd_pairs.511
+  PASS param_q29_record_counts_and_odd_pairs.512
+TEST param_q29_axis_y_multichunk_wall_repro
+  PASS param_q29_axis_y_multichunk_wall_repro.1
+  PASS param_q29_axis_y_multichunk_wall_repro.2
+  PASS param_q29_axis_y_multichunk_wall_repro.3
+  PASS param_q29_axis_y_multichunk_wall_repro.4
+  PASS param_q29_axis_y_multichunk_wall_repro.5
+  PASS param_q29_axis_y_multichunk_wall_repro.6
+  PASS param_q29_axis_y_multichunk_wall_repro.7
+  PASS param_q29_axis_y_multichunk_wall_repro.8
+  PASS param_q29_axis_y_multichunk_wall_repro.9
+  PASS param_q29_axis_y_multichunk_wall_repro.16
+  PASS param_q29_axis_y_multichunk_wall_repro.17
+  PASS param_q29_axis_y_multichunk_wall_repro.33
+  PASS param_q29_axis_y_multichunk_wall_repro.64
+  PASS param_q29_axis_y_multichunk_wall_repro.65
+  PASS param_q29_axis_y_multichunk_wall_repro.127
+  PASS param_q29_axis_y_multichunk_wall_repro.128
+TEST doom_real_capture_replay_no_black_columns
+  PASS doom_real_capture_replay_no_black_columns
+TEST doom_real_capture_frame_no_black_columns
+  PASS doom_real_capture_frame_no_black_columns
+TEST param_q29_zero_counts_mixed_no_drop
+  PASS param_q29_zero_counts_mixed_no_drop.fb
+  PASS param_q29_zero_counts_mixed_no_drop.zero_guards
+TEST param_q48_multichunk_drop_repro.rc5
+  PASS param_q48_multichunk_drop_repro.rc5
+    rc=5 painted=4 transparent=1 (no drop)
+TEST param_q48_multichunk_drop_repro.rc6
+  PASS param_q48_multichunk_drop_repro.rc6
+    rc=6 painted=4 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc7
+  PASS param_q48_multichunk_drop_repro.rc7
+    rc=7 painted=5 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc8
+  PASS param_q48_multichunk_drop_repro.rc8
+    rc=8 painted=6 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc9
+  PASS param_q48_multichunk_drop_repro.rc9
+    rc=9 painted=7 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc17
+  PASS param_q48_multichunk_drop_repro.rc17
+    rc=17 painted=15 transparent=2 (no drop)
+TEST param_q48_multichunk_drop_repro.rc5
+  PASS param_q48_multichunk_drop_repro.rc5
+    rc=5 painted=5 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc6
+  PASS param_q48_multichunk_drop_repro.rc6
+    rc=6 painted=6 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc7
+  PASS param_q48_multichunk_drop_repro.rc7
+    rc=7 painted=7 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc8
+  PASS param_q48_multichunk_drop_repro.rc8
+    rc=8 painted=8 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc9
+  PASS param_q48_multichunk_drop_repro.rc9
+    rc=9 painted=9 transparent=0 (no drop)
+TEST param_q48_multichunk_drop_repro.rc17
+  PASS param_q48_multichunk_drop_repro.rc17
+    rc=17 painted=17 transparent=0 (no drop)
+  PASS param_q48_multichunk_distinct_column_drop_repro.summary_no_drops
+TEST param_q4c_multilane_drop_repro.lanes5
+  PASS param_q4c_multilane_drop_repro.lanes5
+    lanes=5 painted=5 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes6
+  PASS param_q4c_multilane_drop_repro.lanes6
+    lanes=6 painted=6 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes7
+  PASS param_q4c_multilane_drop_repro.lanes7
+    lanes=7 painted=7 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes8
+  PASS param_q4c_multilane_drop_repro.lanes8
+    lanes=8 painted=8 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes9
+  PASS param_q4c_multilane_drop_repro.lanes9
+    lanes=9 painted=9 transparent=0 (no drop)
+TEST param_q4c_multilane_drop_repro.lanes17
+  PASS param_q4c_multilane_drop_repro.lanes17
+    lanes=17 painted=17 transparent=0 (no drop)
+  PASS param_q4c_multilane_distinct_column_drop_repro.summary_no_drops
+TEST portb_starve_doom.cols80_stride16
+  PASS portb_starve_doom.cols80_stride16
+    cols=80 painted=80 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=6974
+TEST portb_starve_quake.cols80_stride16
+  PASS portb_starve_quake.cols80_stride16
+    cols=80 painted=80 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=7144
+TEST portb_starve_doom.cols96_stride16
+  PASS portb_starve_doom.cols96_stride16
+    cols=96 painted=96 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=7265
+TEST portb_starve_quake.cols96_stride16
+  PASS portb_starve_quake.cols96_stride16
+    cols=96 painted=96 transparent=0 stride=16 (no starve/drift) last_lat=2 txns=7469
+TEST portb_starve_doom.cols80_stride64
+  PASS portb_starve_doom.cols80_stride64
+    cols=80 painted=80 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=7572
+TEST portb_starve_quake.cols80_stride64
+  PASS portb_starve_quake.cols80_stride64
+    cols=80 painted=80 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=7742
+TEST portb_starve_doom.cols96_stride64
+  PASS portb_starve_doom.cols96_stride64
+    cols=96 painted=96 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=7863
+TEST portb_starve_quake.cols96_stride64
+  PASS portb_starve_quake.cols96_stride64
+    cols=96 painted=96 transparent=0 stride=64 (no starve/drift) last_lat=2 txns=8067
+TEST portb_starve_doom.cols80_stride16
+  PASS portb_starve_doom.cols80_stride16
+    cols=80 painted=75 transparent=5 stride=16 (no starve/drift) last_lat=2 txns=8171
+TEST portb_starve_quake.cols80_stride16
+  PASS portb_starve_quake.cols80_stride16
+    cols=80 painted=75 transparent=5 stride=16 (no starve/drift) last_lat=2 txns=8341
+  PASS portb_starve_distinct_cache_line_wall.summary
+TEST param_q29_wrap_and_fb_byte_lanes
+  PASS param_q29_wrap_and_fb_byte_lanes
+TEST param_q29_static_repeat_300
+  PASS param_q29_static_repeat_300
+TEST param_q29_dynamic_scale_projection
+  PASS param_q29_dynamic_scale_projection
+TEST param_q29_dynamic_scale_all_records_touch
+  PASS param_q29_dynamic_scale_all_records_touch
+TEST param_q29_dynamic_scale_z_restore_saturates
+  PASS param_q29_dynamic_scale_z_restore_saturates
+TEST param_q29_dynamic_scale_reserved_bits_noop
+  PASS param_q29_dynamic_scale_reserved_bits_noop
+TEST affine_span_group_quake_alias_carry_math
+  PASS affine_span_group_quake_alias_carry_math
+TEST param_span_list_z_write_zi
+  PASS param_span_list_z_write_zi
+TEST param_span_list_z_test_zi
+  PASS param_span_list_z_test_zi
+TEST param_span_list_z_test_write_skip_zero
+  PASS param_span_list_z_test_write_skip_zero
+TEST param_span_z_raw_inflight_same_line
+  SKIP param_span_z_raw_inflight_same_line (needs +gpu_wr_latency>=8, got -1)
+TEST param_span_z_raw_pair_same_half_fwd
+  PASS param_span_z_raw_pair_same_half_fwd
+TEST param_span_z_raw_pair_same_half_no_fwd_on_reject
+  PASS param_span_z_raw_pair_same_half_no_fwd_on_reject
+TEST param_span_z_raw_pair_word_halves_lo_hi
+  PASS param_span_z_raw_pair_word_halves_lo_hi
+TEST param_span_z_raw_pair_word_halves_hi_lo
+  PASS param_span_z_raw_pair_word_halves_hi_lo
+TEST param_span_z_raw_pair_skip_zero_between
+  PASS param_span_z_raw_pair_skip_zero_between
+TEST batch_equals_individual
+  PASS batch_eq_individual.N1
+  PASS batch_eq_individual.N2
+  PASS batch_eq_individual.N4
+  PASS batch_eq_individual.N8
+  PASS batch_eq_individual.N16
+  PASS batch_eq_individual.N32
+TEST batch_mixed_per_span_colormap
+  PASS batch_mixed_cmap.row0
+  PASS batch_mixed_cmap.row1
+  PASS batch_mixed_cmap.row2
+  PASS batch_mixed_cmap.row3
+TEST span_group_opaque_equals_four_spans
+  PASS span_group_opaque_equals_four_spans.fb
+TEST span_group_texture_height_mask
+  PASS span_group_texture_height_mask.fb
+TEST span_group_aligned_matches_reference
+  PASS span_group_aligned_matches_reference.fb
+TEST span_group_aligned_texture_cache_thrash
+  PASS span_group_aligned_texture_cache_thrash.fb
+  PASS span_group_aligned_texture_cache_thrash.cache_counters_optional
+TEST span_group_masked_equals_four_spans
+  PASS span_group_masked_equals_four_spans.fb
+TEST span_group_explicit_colormap_slot
+  PASS span_group_explicit_colormap_slot.fb
+TEST span_group_per_lane_colormap_slots
+  PASS span_group_per_lane_colormap_slots.fb
+TEST column_list_single_column_matches_affine
+  PASS column_list_single_column_matches_affine
+  PASS column_list_single_column_matches_affine.nonvacuous
+TEST column_list_multi_lane_matches_affine
+  PASS column_list_2lane_matches_affine
+  PASS column_list_2lane_matches_affine.nonvacuous
+  PASS column_list_3lane_matches_affine
+  PASS column_list_3lane_matches_affine.nonvacuous
+  PASS column_list_4lane_matches_affine
+  PASS column_list_4lane_matches_affine.nonvacuous
+TEST column_list_colormap_matches_affine
+  PASS column_list_colormap_matches_affine
+  PASS column_list_colormap_matches_affine.nonvacuous
+TEST column_list_skipzero_and_negstep_matches_affine
+  PASS column_list_skipzero_matches_affine
+  PASS column_list_skipzero_matches_affine.nonvacuous
+  PASS column_list_negstep_matches_affine
+  PASS column_list_negstep_matches_affine.nonvacuous
+TEST column_list_varcount_and_zerolane_matches_affine
+  PASS column_list_varcount_matches_affine
+  PASS column_list_varcount_matches_affine.nonvacuous
+TEST span_group_varcount_opaque_equals_spans
+  PASS span_group_varcount_opaque_equals_spans.fb
+TEST span_group_varcount_masked_equals_spans
+  PASS span_group_varcount_masked_equals_spans.fb
+TEST span_group_varcount_explicit_colormap_slot
+  PASS span_group_varcount_explicit_colormap_slot.fb
+TEST span_group_stream_two_payloads
+  PASS span_group_stream_two_payloads.a
+  PASS span_group_stream_two_payloads.b
+TEST span_group_two_lane_masked
+  PASS span_group_two_lane_masked.fb
+TEST span_group_eight_lane_colormap
+  PASS span_group_eight_lane_colormap.fb
+TEST batch_dma_equals_inline
+  PASS batch_dma_equals_inline.fb
+TEST command_stream_dma_mixed_affine_groups
+  PASS command_stream_dma_mixed_affine_groups.fb
+TEST command_stream_dma_mixed_persp_span_group
+  PASS command_stream_dma_mixed_persp_span_group.fb
+TEST dma_descriptor_queue_two_streams
+  PASS dma_descriptor_queue_two_streams.fb
+TEST framebuffer_writes_burst_full_words
+  PASS framebuffer_writes_burst_full_words.fb
+  PASS framebuffer_writes_burst_full_words.clear_rect_burst
+TEST flip_no_writes_pulses_immediately
+  PASS flip_no_writes_pulses_immediately
+TEST combo_A_setfb_then_colormapped_span
+  PASS combo_A.A_row0
+  PASS combo_A.B_row0
+TEST combo_B_clear_then_span_paints_span
+  PASS combo_B.span_wins_first16
+  PASS combo_B.clear_holds_rest
+TEST combo_C_three_slots_in_one_batch
+  PASS combo_C.row0
+  PASS combo_C.row1
+  PASS combo_C.row2
+TEST combo_D_tex_mutate_with_flush
+  PASS combo_D.first_pass_0x11
+  PASS combo_D.second_pass_0x22
+TEST combo_E_lane_writes_into_one_word
+  PASS combo_E.lanes
+TEST combo_F_dma_then_inline
+  PASS combo_F.row0
+  PASS combo_F.row1
+  PASS combo_F.row2
+  PASS combo_F.row3
+  PASS combo_F.row4
+TEST sdk_count_4096_does_not_leak_into_colormap_id
+  PASS sdk_count_4096_does_not_leak_into_colormap_id.no_leak
+  PASS sdk_count_4096_does_not_leak_into_colormap_id.count_preserved
+TEST lean_compact_0x48_drains (lean=0)
+  PASS lean_compact_0x48_drains.fb
+  PASS lean_compact_0x48_drains.border
+TEST lean_column_list_drains (lean=0)
+  PASS lean_column_list_drains.fb
+  PASS lean_column_list_drains.border
+TEST lean_sticky_state_contract (lean=0)
+  PASS lean_sticky_state_contract.invalidated_noop
+  PASS lean_sticky_state_contract.rearm_draws
+TEST lean_wrong_size_0x48_33w (lean=0)
+  PASS lean_wrong_size_0x48_33w.fb
+
+=== Acceptance Results: 300 passed, 0 failed ===
+=== Total sim_time: 45806678 ===
+profile counters clock/reset/readback PASS

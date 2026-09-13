@@ -97,6 +97,23 @@ module gpu_core #(
     // byte-identical at every size — only the read amortisation changes.
     parameter GPU_CB_READ_WINDOW = 4,
 
+    // Exact Q29 reciprocal reuse across spans. Two M10Ks hold 128 full
+    // denominator/result pairs; reset invalidates them with a RAM walk. No command
+    // format or arithmetic changes. Set to 0 for a cycle/area comparison.
+    // Pruned entirely when the Q29 command path is absent.
+    parameter GPU_PSS_RECIP_CACHE = 1,
+
+    // Elastic texture issue/response queues. Credits reserve storage before
+    // the DSP launch, keeping cache ready out of the source/multiply enable.
+    parameter GPU_STREAM_PIPE = 1,
+
+    // Retain masked opaque writes across words/columns. Read-modify-write
+    // traffic bypasses after draining; full tags preserve arbitrary aliases.
+    parameter GPU_WRITE_COMBINE = 1,
+    // Experimental lookup/merge overlap. Normal targets keep it disabled;
+    // see docs/SS1_DOOM_MASKED_20260913.md for timing and hardware results.
+    parameter GPU_WRITE_COMBINE_PIPE = 0,
+
     // ----------------------------------------------------------------
     // Edge-walker slope-divide layout, forwarded verbatim to
     // gpu_edge_walker's EW_PARALLEL_DIVS (see the header comment there).
@@ -446,7 +463,8 @@ wire [15:0] ring_wrptr_bytes = {2'b0, ring_wrptr, 2'b0};
 wire [15:0] ring_rdptr_bytes = {2'b0, ring_rdptr, 2'b0};
 wire transluc_upload_busy;
 
-assign busy = dma_busy || transluc_upload_busy || !ring_empty || (state != S_IDLE);
+assign busy = dma_busy || transluc_upload_busy || !ring_empty || (state != S_IDLE)
+            || (GPU_WRITE_COMBINE && !fb_write_drain_complete);
 
 // Port B: GPU read (synchronous, 1-cycle latency)
 always @(posedge clk)
@@ -570,8 +588,45 @@ always @(posedge clk) begin
 end
 
 // MMIO read mux
+`ifdef GPU_PROFILE
+// Diagnostic-only passive counters. Select at 0x34, read at 0x08.
+// Production builds omit the entire counter and readback logic.
+reg [3:0] profile_select;
+reg [31:0] profile_cycles [0:14];
+wire [14:0] profile_events = {
+    (m_wr_inflight != 0), dma_busy, (state == S_FRAG_PIPE),
+    fp_pipe_shift_blocked,
+    (GPU_WRITE_COMBINE && fbwq_req_valid && !wc_input_ready),
+    (tex_req_valid && !tex_req_ready),
+    (tex_axi_arvalid && tex_axi_arready),
+    (tex_req_valid && tex_req_ready),
+    (m_wr_wvalid && !m_wr_wready),
+    (m_wr_awvalid && !m_wr_awready),
+    (m_rd_arvalid && !m_rd_arready),
+    (m_wr_wvalid && m_wr_wready), m_rd_rvalid, busy, 1'b1
+};
+integer profile_i;
+always @(posedge clk) begin
+    if (!active) begin
+        profile_select <= 0;
+        for (profile_i = 0; profile_i < 15; profile_i = profile_i + 1)
+            profile_cycles[profile_i] <= 0;
+    end else begin
+        if (reg_wr && reg_addr == 4'd13)
+            profile_select <= reg_wdata[3:0];
+        for (profile_i = 0; profile_i < 15; profile_i = profile_i + 1)
+            profile_cycles[profile_i] <= profile_cycles[profile_i]
+                                       + profile_events[profile_i];
+    end
+end
+`endif
+
 always @(*) begin
     case (reg_addr)
+`ifdef GPU_PROFILE
+        4'd2:    reg_rdata = (profile_select == 4'd15) ? 32'h53535031
+                           : profile_cycles[profile_select];
+`endif
         4'd1:    reg_rdata = {16'b0, ring_wrptr_bytes};
         4'd4:    reg_rdata = {16'b0, ring_rdptr_bytes};
         // Compact production status:
@@ -3702,28 +3757,17 @@ endtask
 // ================================================================
 // Single fragment processor for direct and generated spans.
 //
-// 5 logical stages, with combinational tex_req drive (1-cycle cache latency):
-//   S0a (Source snap):   capture current sp_* into a small pre-issue register
-//                        and advance the source state. This isolates the
-//                        source muxes from the texture-row DSP.
-//   S0b (Issue, comb):   drive tex_req_valid/addr from p0 + tx_mul_q. The
-//                        cache sees the request the same cycle and accepts
-//                        if req_ready=1 (combinational). On commitment
-//                        (`tex_req_valid && tex_req_ready` in same cycle),
-//                        latch p1 with p0's metadata.
-//   S1 (TexResp, p1):    1 cycle later, cache returns tex_resp_data
-//                        (combinational hit response). Capture into p2 and
-//                        issue cmap_rd_addr.
-//   S2 (CmapResp, p2):   1 cycle later, cmap_rd_data is valid. Pipeline
-//                        shift folds cmap result into p3.
-//   S3 (FBwrite, p3):    Sub-FSM (fbss) consumes p3; multi-cycle pause on
-//                        word-boundary flush.
+// Source snapshot -> registered texture-row DSP -> texture request queue ->
+// cache -> response queue -> p1 -> p2/p2b color stages -> p3 framebuffer stage.
+// Four-entry queues allow consecutive cache hits while preserving the source
+// and DSP register boundaries. Credit reservations include the in-flight DSP
+// result and cache lookup, so backend stalls cannot overflow either queue.
+// GPU_STREAM_PIPE=0 keeps the serial p0/cache/p1 handoff for comparison.
 //
-// Stalls:
-//   * (p1_valid && !tex_resp_valid) — cache miss in flight, hold p1
-//   * (fbss != FBSS_IDLE)           — fb sub-FSM busy with a flush
-//   * fb_write_buffer_stall          — p3 crossed words while the FB write
-//                                      queue has no free entry
+// The color/backend stages stall for unresolved cache or colormap responses,
+// depth/blend work, and framebuffer write backpressure. Texture work can run
+// ahead within its reserved queue capacity. Span retirement and compact record
+// handoff wait for the queued texture work before changing shared span state.
 //
 // p0a: source snapshot / DSP-input stage.  This stage is intentionally small
 // and local: it breaks the timing path from the wide sp_* source muxes into
@@ -3745,10 +3789,9 @@ reg        p0a_z_write;
 reg [GPU_ADDR_W-1:0] p0a_z_addr;
 reg [15:0] p0a_z_value;
 
-// p0: cache-issue stage. Holds the pixel whose texture-row multiply output is
-// already available in tx_mul_q. p0 -> p1 transition is the "issue commit"
-// event, gated on the cache asserting req_ready in the same cycle p0 drives
-// req_valid.
+// p0: registered texture-row DSP result and matching pixel metadata. The
+// streaming path has already reserved its destination queue slot; the serial
+// comparison path holds this stage until the cache accepts its request.
 reg        p0_valid;
 reg [5:0]  p0_light;
 reg [4:0]  p0_R, p0_B;
@@ -4050,15 +4093,9 @@ reg src_done;            // source has issued its last pixel; pipeline draining
 // ----------------------------------------------------------------
 // Combinational tex_req drive
 // ----------------------------------------------------------------
-// Drives tex_req from p0 (registered issue metadata) and tx_mul_q
-// (registered DSP multiply output for that p0). p0 is loaded from p0a one
-// cycle after p0a snapshots the source pixel.  That extra boundary lets the
-// fitter place the source muxes and the texture-row DSP independently.
-//
-// Critical-path benefit: the long combinational `sp_t * sp_tex_width` path
-// is broken at the DSP output register, so the fitter can pack it into a
-// DSP slice and the path from `tx_mul_q` register through the post-multiply
-// adds to the cache RAM port is short.
+// The registered DSP output and p0 metadata form a complete texture address.
+// The streaming path queues it before cache issue; the serial comparison path
+// drives it directly. Neither path connects cache ready to the DSP enable.
 
 // cmap_pipe_wait is declared with the cmap port-B request wires above because
 // it also gates new cmap accepts while p2b is waiting for an older response.
@@ -4114,6 +4151,7 @@ reg        fbwq_req_valid;
 reg [GPU_ADDR_W-1:0] fbwq_req_addr;
 reg [31:0] fbwq_req_data;
 reg [3:0]  fbwq_req_strb;
+reg        fbwq_req_combine;
 reg        fbwq_stage_valid;
 reg [GPU_ADDR_W-1:0] fbwq_stage_addr;
 reg [31:0] fbwq_stage_data;
@@ -4121,6 +4159,186 @@ reg [3:0]  fbwq_stage_strb;
 reg        fbwq_stage_link_tail;
 wire       fbwq_empty = (fbwq_count == 5'd0);
 wire       fbwq_full  = (fbwq_count == 5'd16);
+
+// The combiner sits between the two existing registered write skid slots.
+// Its output still traverses the AXI queue: fences wait for real B responses.
+wire wc_busy;
+wire wc_input_ready;
+wire wc_output_valid;
+wire [GPU_ADDR_W-1:0] wc_output_addr;
+wire [31:0] wc_output_data;
+wire [3:0] wc_output_strb;
+wire wc_flush = ((state == S_EXECUTE) && (cmd_is_fence || cmd_is_flip))
+             || ((state == S_IDLE) && ring_empty && !dma_pull_busy)
+             || ((state == S_FRAG_PIPE)
+                 && ((fbss == FBSS_CB_REQ) || (fbss == FBSS_BLEND_REQ)
+                     || ((fbss == FBSS_IDLE) && p3_valid
+                         && !p3_discard && p3_z_test)));
+wire [GPU_ADDR_W-1:0] fbwq_in_addr = GPU_WRITE_COMBINE ? wc_output_addr : fbwq_req_addr;
+wire [31:0] fbwq_in_data = GPU_WRITE_COMBINE ? wc_output_data : fbwq_req_data;
+wire [3:0] fbwq_in_strb = GPU_WRITE_COMBINE ? wc_output_strb : fbwq_req_strb;
+wire fbwq_in_valid = GPU_WRITE_COMBINE ? wc_output_valid : fbwq_req_valid;
+
+generate if (GPU_WRITE_COMBINE) begin : write_combine
+    localparam TAG_W = GPU_ADDR_W-2;
+    localparam WORD_W = TAG_W+36;
+    localparam WC_IDLE=3'd0, WC_APPLY=3'd1, WC_SCAN_READ=3'd2, WC_SCAN_APPLY=3'd3;
+    // One synchronous read and one write port, two M10Ks at 256 entries.
+    (* ramstyle = "M10K, no_rw_check" *) reg [WORD_W-1:0] words [0:255];
+    reg [WORD_W-1:0] word_r;
+    // A new lookup can overlap the previous merge. Forward the written word
+    // on same-entry read/write collisions; M10K mixed-port data is undefined.
+    reg forward_valid;
+    reg [WORD_W-1:0] forward_word;
+    reg [2:0] phase;
+    reg initializing;
+    reg [7:0] walk;
+    reg [8:0] dirty_count;
+    reg flush_pending;
+    reg [7:0] input_index;
+    reg [TAG_W-1:0] input_tag;
+    reg [31:0] input_data;
+    reg [3:0] input_strb;
+    reg output_valid;
+    reg [GPU_ADDR_W-1:0] output_addr;
+    reg [31:0] output_data;
+    reg [3:0] output_strb;
+    wire [WORD_W-1:0] lookup_word = (GPU_WRITE_COMBINE_PIPE && forward_valid)
+                                ? forward_word : word_r;
+    wire [TAG_W-1:0] old_tag = lookup_word[WORD_W-1:36];
+    wire [31:0] old_data = lookup_word[35:4];
+    wire [3:0] old_strb = lookup_word[3:0];
+    wire hit = (old_tag == input_tag);
+    wire output_free = !output_valid || fbwq_stage_can_load;
+    wire bypass = !fbwq_req_combine || ((fbwq_req_strb == 4'hf) && (dirty_count == 0));
+    wire accept = fbwq_req_valid && wc_input_ready;
+    wire apply = (phase == WC_APPLY) && (hit || (old_strb == 0) || output_free);
+    wire scan_emit = (phase == WC_SCAN_APPLY) && (old_strb != 0) && output_free;
+    wire [TAG_W-1:0] address_word = fbwq_req_addr[GPU_ADDR_W-1:2];
+    // Folding at bit 10 distributes 320/640-byte row strides over the RAM;
+    // the full word address is still compared, so collisions only evict.
+    wire [TAG_W-1:0] folded = address_word ^ (address_word >> 10) ^ (address_word >> 18);
+    wire [7:0] address_index = folded[7:0];
+    wire [31:0] byte_mask = {{8{input_strb[3]}}, {8{input_strb[2]}},
+                             {8{input_strb[1]}}, {8{input_strb[0]}}};
+    wire [31:0] merged_data = (input_data & byte_mask)
+                           | (old_data & ~byte_mask & {32{hit}});
+    wire [3:0] merged_strb = input_strb | (old_strb & {4{hit}});
+    assign wc_input_ready = !initializing
+                         && (((phase == WC_IDLE)
+                              && ((fbwq_req_strb == 0) || !bypass
+                                  || ((dirty_count == 0) && output_free)))
+                             || (GPU_WRITE_COMBINE_PIPE && apply && !bypass
+                                 && (fbwq_req_strb != 0)));
+    // Initialization blocks incoming writes but contains no older work to
+    // drain. An empty fence/flip can retire while the RAM walk finishes.
+    assign wc_busy = (phase != WC_IDLE) || (dirty_count != 0) || output_valid;
+    assign wc_output_valid = output_valid;
+    assign wc_output_addr = output_addr;
+    assign wc_output_data = output_data;
+    assign wc_output_strb = output_strb;
+
+    // Keep the address selection ahead of a single RAM read expression;
+    // selecting between two RAM reads prevents synchronous block inference.
+    wire read_input = accept && !bypass && (fbwq_req_strb != 0);
+    wire ram_read = read_input || (phase == WC_SCAN_READ);
+    wire [7:0] ram_read_addr = read_input ? address_index : walk;
+    wire ram_write = reset_n && !soft_reset && (initializing || apply || scan_emit);
+    wire [7:0] ram_write_addr = (!initializing && apply) ? input_index : walk;
+    wire [WORD_W-1:0] ram_write_data = (!initializing && apply)
+                                   ? {input_tag, merged_data, merged_strb} : {WORD_W{1'b0}};
+    // RAM contents are invalidated by a bounded walk, not a reset mux.
+    always @(posedge clk) begin
+        if (ram_read) word_r <= words[ram_read_addr];
+        if (ram_write) words[ram_write_addr] <= ram_write_data;
+    end
+    always @(posedge clk) begin
+        if (!reset_n || soft_reset) begin
+            initializing <= 1'b1;
+            phase <= WC_IDLE;
+            walk <= 0;
+            dirty_count <= 0;
+            flush_pending <= 0;
+            output_valid <= 0;
+            forward_valid <= 0;
+        end else begin
+            if (ram_read) begin
+                forward_valid <= apply && (ram_write_addr == ram_read_addr);
+                forward_word <= ram_write_data;
+            end
+            if (GPU_WRITE_COMBINE_PIPE && read_input) begin
+                input_index <= address_index;
+                input_tag <= address_word;
+                input_data <= fbwq_req_data;
+                input_strb <= fbwq_req_strb;
+            end
+            if (tex_flush_req) flush_pending <= 1;
+            else if ((dirty_count == 0) && (phase == WC_IDLE)) flush_pending <= 0;
+            if (output_valid && fbwq_stage_can_load) output_valid <= 0;
+            if (initializing) begin
+                walk <= walk + 1'b1;
+                if (walk == 8'hff) initializing <= 0;
+            end else case (phase)
+                WC_IDLE: begin
+                    if (accept) begin
+                        if (fbwq_req_strb == 0) begin
+                            // Empty masks have no memory or dirty-count effect.
+                        end else if (bypass) begin
+                            output_valid <= 1;
+                            output_addr <= fbwq_req_addr;
+                            output_data <= fbwq_req_data;
+                            output_strb <= fbwq_req_strb;
+                        end else begin
+                            if (!GPU_WRITE_COMBINE_PIPE) begin
+                                input_index <= address_index;
+                                input_tag <= address_word;
+                                input_data <= fbwq_req_data;
+                                input_strb <= fbwq_req_strb;
+                            end
+                            phase <= WC_APPLY;
+                        end
+                    end else if ((dirty_count != 0)
+                        && (wc_flush || flush_pending || (fbwq_req_valid && bypass))) begin
+                        walk <= 0;
+                        phase <= WC_SCAN_READ;
+                    end
+                end
+                WC_APPLY: if (apply) begin
+                    if (!hit && (old_strb != 0)) begin
+                        output_valid <= 1;
+                        output_addr <= {old_tag, 2'b00};
+                        output_data <= old_data;
+                        output_strb <= old_strb;
+                    end
+                    if (old_strb == 0) dirty_count <= dirty_count + 1'b1;
+                    phase <= (GPU_WRITE_COMBINE_PIPE && read_input) ? WC_APPLY : WC_IDLE;
+                end
+                WC_SCAN_READ: phase <= WC_SCAN_APPLY;
+                WC_SCAN_APPLY: if ((old_strb == 0) || output_free) begin
+                    if (old_strb != 0) begin
+                        output_valid <= 1;
+                        output_addr <= {old_tag, 2'b00};
+                        output_data <= old_data;
+                        output_strb <= old_strb;
+                        dirty_count <= dirty_count - 1'b1;
+                    end
+                    walk <= walk + 1'b1;
+                    if ((walk == 8'hff) || (dirty_count == 0)
+                        || ((dirty_count == 1) && (old_strb != 0))) phase <= WC_IDLE;
+                    else phase <= WC_SCAN_READ;
+                end
+                default: phase <= WC_IDLE;
+            endcase
+        end
+    end
+end else begin : write_passthrough
+    assign wc_busy = 0;
+    assign wc_input_ready = 0;
+    assign wc_output_valid = 0;
+    assign wc_output_addr = 0;
+    assign wc_output_data = 0;
+    assign wc_output_strb = 0;
+end endgenerate
 
 // Stage 2b: framebuffer/clear writes enqueue into a compact FIFO and the
 // AXI write port drains it independently.  This lets the fragment pipe keep
@@ -4132,7 +4350,7 @@ wire m_wr_inflight_near_full = (m_wr_inflight >= 4'd14);
 wire m_wr_chan_busy = m_wr_awvalid || m_wr_wvalid;
 wire fb_write_drain_complete = !z_flush_valid
                              && !z_src_pending_valid
-                             && !fbwq_req_valid && !fbwq_stage_valid && fbwq_empty
+                             && !wc_busy && !fbwq_req_valid && !fbwq_stage_valid && fbwq_empty
                              && (m_wr_inflight == 4'b0) && !m_wr_chan_busy;
 wire fbwq_output_idle = !m_wr_awvalid && !m_wr_wvalid;
 wire fbwq_drain_can_load = !m_wr_inflight_near_full && fbwq_output_idle;
@@ -4237,16 +4455,16 @@ wire fbwq_can_enqueue = !fbwq_full;
 // them (equality under mod-2^GPU_ADDR_W addition is bijective, so
 // (a == b + 4) <=> (a - 4 == b) — bit-identical) so the three predicates
 // share two adders instead of embedding one each.
-wire [GPU_ADDR_W-1:0] fbwq_req_m4 = fbwq_req_addr - {{(GPU_ADDR_W-3){1'b0}}, 3'd4};
+wire [GPU_ADDR_W-1:0] fbwq_req_m4 = fbwq_in_addr - {{(GPU_ADDR_W-3){1'b0}}, 3'd4};
 wire [GPU_ADDR_W-1:0] fbwq_req_p4 = fbwq_req_addr + {{(GPU_ADDR_W-3){1'b0}}, 3'd4};
 wire fbwq_req_links_fifo_tail_w =
        (fbwq_tail_strb == 4'hF)
-    && (fbwq_req_strb == 4'hF)
+    && (fbwq_in_strb == 4'hF)
     && (fbwq_tail_addr[11:0] <= 12'hFF8)
     && (fbwq_req_m4 == fbwq_tail_addr);
 wire fbwq_req_links_stage_tail_w =
        (fbwq_stage_strb == 4'hF)
-    && (fbwq_req_strb == 4'hF)
+    && (fbwq_in_strb == 4'hF)
     && (fbwq_stage_addr[11:0] <= 12'hFF8)
     && (fbwq_req_m4 == fbwq_stage_addr);
 wire fbwq_stage_links_req_w =
@@ -4264,7 +4482,7 @@ wire fbwq_stage_links_req_w =
 // inequality term (every RMW reader — z-test, blend — gates on
 // fb_write_drain_complete, so in-queue order is invisible to reads).
 // The swap repairs the chain: ...FB1, FB2, Z1...
-wire fbwq_swap_now = fbwq_stage_valid && fbwq_req_valid && fbwq_can_enqueue
+wire fbwq_swap_now = !GPU_WRITE_COMBINE && fbwq_stage_valid && fbwq_req_valid && fbwq_can_enqueue
                   && !fbwq_empty
                   && fbwq_req_links_fifo_tail_w
                   && !fbwq_stage_link_tail
@@ -4273,7 +4491,9 @@ wire fbwq_swap_now = fbwq_stage_valid && fbwq_req_valid && fbwq_can_enqueue
 wire fbwq_stage_drain_now = fbwq_stage_valid && fbwq_can_enqueue
                          && !fbwq_swap_now;
 wire fbwq_stage_can_load = !fbwq_stage_valid || fbwq_stage_drain_now;
-wire fbwq_req_to_stage_now = fbwq_req_valid && fbwq_stage_can_load;
+wire fbwq_req_to_stage_now = fbwq_req_valid
+                          && (GPU_WRITE_COMBINE ? wc_input_ready : fbwq_stage_can_load);
+wire fbwq_in_to_stage_now = fbwq_in_valid && fbwq_stage_can_load;
 wire fbwq_can_push = !fbwq_req_valid || fbwq_req_to_stage_now || fbwq_swap_now;
 wire fb_write_can_issue = fbwq_can_push;
 wire [3:0] fbwq_prev_wr_ptr = fbwq_wr_ptr - 4'd1;
@@ -4354,6 +4574,21 @@ wire [31:0] cbw_p2_acc_w   = cbw_p2_acc_same_w
                            : cbw_p2_word_w;
 wire [15:0] cbw_p2_dst_w   = p2_fb_addr[1] ? cbw_p2_acc_w[31:16]
                                            : cbw_p2_acc_w[15:0];
+// A buffered successor can probe before its predecessor fills the window.
+// Recheck at the slow-path entry before flushing or issuing another read.
+// The accumulator overlays every committed byte newer than that window.
+wire cbw_p3_hit_w = (CBW_WORDS > 1) && cbw_valid[cbw_p3_idx]
+                 && (cbw_base == p3_fb_addr[GPU_ADDR_W-1:CBW_LOW])
+                 && !cbw_snoop_pending;
+wire cbw_p3_acc_same_w = fb_acc_valid && (fb_acc_addr == p3_fb_word_addr_w);
+wire cbw_p3_acc_owned_w = (CBW_WORDS > 1) && cbw_p3_acc_same_w
+                      && (p3_fb_addr[1] ? (&fb_acc_mask[3:2]) : (&fb_acc_mask[1:0]));
+wire [31:0] cbw_p3_word_w = cbw_word[cbw_p3_idx];
+wire [31:0] cbw_p3_latest_w = cbw_p3_acc_same_w
+                          ? ((cbw_p3_word_w & ~cbw_acc_mask_w)
+                             | (fb_acc_data & cbw_acc_mask_w)) : cbw_p3_word_w;
+wire [15:0] cbw_p3_latest_half_w = p3_fb_addr[1] ? cbw_p3_latest_w[31:16]
+                                                              : cbw_p3_latest_w[15:0];
 // A commit "lands" this cycle for staleness purposes whenever the IDLE arm
 // can merge/load p3's lanes.  Queue-gated cross-word commits that PARK
 // instead never coincide with a shift edge (fb_write_buffer_stall blocks
@@ -4453,10 +4688,79 @@ wire [GPU_ADDR_W-1:0] fp_tex_offset = tx_mul_q[GPU_ADDR_W-1:0]
 wire [GPU_ADDR_W-1:0] fp_tex_addr_full = p0_tex_base
                              + (sp_truecolor ? (fp_tex_offset << 1) : fp_tex_offset);
 
-assign tex_req_valid = (state == S_FRAG_PIPE) && p0_valid
-                    && !p1_valid;
-assign tex_req_addr  = fp_tex_addr_full;
-assign tex_req_wide  = sp_truecolor;   // 16-bit texel fetch for direct-color surfaces
+// Queue complete fragment metadata with each address and response. Span globals
+// remain stable until these queues drain, including the compact record handoff.
+localparam TEX_META_W = 2*GPU_ADDR_W + 58;
+wire [TEX_META_W-1:0] p0_tex_meta = {p0_light, p0_R, p0_B,
+    p0_Dr, p0_Dg, p0_Db, p0_colormap_id, p0_flags, p0_fb_addr,
+    p0_z_test, p0_z_write, p0_z_addr, p0_z_value};
+wire stream_launch;
+wire stream_pending;
+wire stream_result_valid;
+wire [TEX_META_W+15:0] stream_result;
+wire stream_result_pop = GPU_STREAM_PIPE && (state == S_FRAG_PIPE)
+                      && stream_result_valid && (!p1_valid || !fp_pipe_stall);
+generate if (GPU_STREAM_PIPE) begin : tex_stream
+    localparam REQ_W = TEX_META_W + GPU_ADDR_W + 1;
+    // Four entries absorb backend pauses without a combinational fallthrough.
+    (* ramstyle = "MLAB, no_rw_check" *) reg [REQ_W-1:0] requests [0:3];
+    (* ramstyle = "MLAB, no_rw_check" *) reg [TEX_META_W+15:0] results [0:3];
+    reg [1:0] req_rd, req_wr, res_rd, res_wr;
+    reg [2:0] req_count, req_reserved, res_count, res_reserved;
+    reg lookup_pending;
+    reg [TEX_META_W-1:0] lookup_meta;
+    reg lookup_wide;
+    wire req_push = (state == S_FRAG_PIPE) && p0_valid;
+    wire req_pop = tex_req_valid && tex_req_ready;
+    wire res_push = lookup_pending && tex_resp_valid;
+    wire [REQ_W-1:0] req_head = requests[req_rd];
+
+    assign stream_launch = (state == S_FRAG_PIPE) && p0a_valid
+                        && (req_reserved < 3'd4);
+    assign stream_pending = (req_reserved != 0) || (res_reserved != 0);
+    assign stream_result_valid = (res_count != 0);
+    assign stream_result = results[res_rd];
+    assign tex_req_valid = (state == S_FRAG_PIPE) && (req_count != 0)
+                        && (res_reserved < 3'd4)
+                        && (!lookup_pending || tex_resp_valid);
+    assign {tex_req_addr, tex_req_wide} = req_head[REQ_W-1:TEX_META_W];
+
+    always @(posedge clk) begin
+        if (req_push)
+            requests[req_wr] <= {fp_tex_addr_full, sp_truecolor, p0_tex_meta};
+        if (res_push)
+            results[res_wr] <= {lookup_meta, lookup_wide ? tex_resp_data
+                                                        : {8'd0, tex_resp_data[7:0]}};
+        if (!reset_n || soft_reset) begin
+            req_rd <= 0; req_wr <= 0; res_rd <= 0; res_wr <= 0;
+            req_count <= 0; req_reserved <= 0;
+            res_count <= 0; res_reserved <= 0;
+            lookup_pending <= 0;
+        end else begin
+            req_count <= req_count + {2'd0, req_push} - {2'd0, req_pop};
+            req_reserved <= req_reserved + {2'd0, stream_launch} - {2'd0, req_pop};
+            res_count <= res_count + {2'd0, res_push} - {2'd0, stream_result_pop};
+            res_reserved <= res_reserved + {2'd0, req_pop} - {2'd0, stream_result_pop};
+            if (req_push) req_wr <= req_wr + 1'b1;
+            if (req_pop) begin
+                req_rd <= req_rd + 1'b1;
+                lookup_meta <= req_head[TEX_META_W-1:0];
+                lookup_wide <= tex_req_wide;
+                lookup_pending <= 1;
+            end else if (res_push) lookup_pending <= 0;
+            if (res_push) res_wr <= res_wr + 1'b1;
+            if (stream_result_pop) res_rd <= res_rd + 1'b1;
+        end
+    end
+end else begin : tex_single
+    assign stream_launch = 1'b0;
+    assign stream_pending = 1'b0;
+    assign stream_result_valid = 1'b0;
+    assign stream_result = 0;
+    assign tex_req_valid = (state == S_FRAG_PIPE) && p0_valid && !p1_valid;
+    assign tex_req_addr = fp_tex_addr_full;
+    assign tex_req_wide = sp_truecolor;
+end endgenerate
 
 // ----------------------------------------------------------------
 // Perspective span — projection-space state + segment setup
@@ -4641,6 +4945,62 @@ reg [4:0]  persp_clz;          // CLZ of persp_zinv_abs_r, latched after PSS_CLZ
 wire [5:0] pss_q29_recip_shift = {1'b0, persp_clz} + PSS_Q29_RECIP_EXTRA;
 reg [31:0] recip_norm_abs_r;    // Shared reciprocal-normalizer input for PSS
 reg [4:0]  recip_norm_clz_r;    // Registered CLZ used by the shared normalizer shifter
+wire pss_recip_cache_hit;
+wire [31:0] pss_recip_cache_value;
+generate if (GPU_PSS_RECIP_CACHE && INCLUDE_PARAM_SPAN_Q29) begin : pss_recip_cache
+    // Fold all denominator bits: Q29 planes often have zero low bits.
+    wire [6:0] index = persp_zinv_abs_r[6:0] ^ persp_zinv_abs_r[13:7]
+                     ^ persp_zinv_abs_r[20:14] ^ persp_zinv_abs_r[27:21]
+                     ^ {3'd0, persp_zinv_abs_r[31:28]};
+    (* ramstyle = "M10K, no_rw_check" *) reg [64:0] entries [0:127];
+    reg [6:0] init_index;
+    reg initializing;
+    reg [64:0] entry_r;
+    reg valid_r;
+    wire lookup = state == S_FRAG_PIPE && persp_active
+               && persp_pss == PSS_CLZ && sp_persp_q29_mode;
+    wire fill = state == S_FRAG_PIPE && persp_active
+             && persp_pss == PSS_NR_CAPTURE && sp_persp_q29_mode;
+
+    // Lookup overlaps the existing CLZ stage. A miss follows the original
+    // schedule; a hit skips LUT scaling and Newton-Raphson. Full tags make
+    // hash collisions harmless. Q29 has no legacy constant-Z bias, so the
+    // absolute denominator alone determines the exact result, including
+    // zero and the signed minimum. Attribute shift, texture, light and
+    // singularity clamping do not participate in reciprocal arithmetic.
+    // Keeping valid beside the tag avoids a 128-bit resettable register
+    // bank and its indexed write/read muxes. During the 128-cycle reset
+    // walk, lookups simply miss and fills are suppressed. This does not
+    // delay the GPU or require texture-cache initialization to finish.
+    always @(posedge clk) begin
+        if (lookup) begin
+            entry_r <= entries[index];
+            valid_r <= !initializing;
+        end
+        // Exactly one write port; read-during-write is never consumed:
+        // initialization lookups miss and normal lookup/fill states differ.
+        if (reset_n && !soft_reset) begin
+            if (initializing)
+                entries[init_index] <= 65'd0;
+            else if (fill)
+                entries[index] <= {1'b1, persp_zinv_abs_r, dsp_p[47:16]};
+        end
+        if (!reset_n || soft_reset) begin
+            initializing <= 1'b1;
+            init_index <= 7'd0;
+        end else if (initializing) begin
+            init_index <= init_index + 7'd1;
+            if (&init_index)
+                initializing <= 1'b0;
+        end
+    end
+    assign pss_recip_cache_hit = valid_r && entry_r[64]
+                             && entry_r[63:32] == persp_zinv_abs_r;
+    assign pss_recip_cache_value = entry_r[31:0];
+end else begin : pss_recip_uncached
+    assign pss_recip_cache_hit = 1'b0;
+    assign pss_recip_cache_value = 32'd0;
+end endgenerate
 reg signed [31:0] pss_s_end_r;
 reg signed [31:0] pss_t_end_r;
 
@@ -7650,20 +8010,16 @@ always @(posedge clk) begin : main_fsm
             pss_commit_scc = 32'sd0;
             pss_commit_tcc = 32'sd0;
 
-            // Load/refresh p0a only if the one-entry source snapshot will be
-            // free after this cycle.  p0 itself remains the cache-issue stage;
-            // if it is busy, p0a can still prefetch one source pixel.
-            //
-            // Promote p0a only when p0 is already empty.  Refilling p0 in the
-            // same cycle that tex_req is accepted ties tex_cache hit/ready
-            // feedback directly to the texture-row DSP enable.  Taking the
-            // one-cycle handoff bubble keeps that ready path out of the DSP.
+            // The streaming path reserves a request slot before DSP launch.
+            // Its registered credit count, independent of cache ready, allows
+            // consecutive launches. The serial comparison path waits for p0
+            // to empty, retaining its original timing boundary and bubble.
             // Persp gating:
             //   * !persp_issue_stall: slot A must be loaded (pass 2 done).
             //   * If sp_seg_left == 0 (last px of segment), slot B must be
             //     ready so the swap can fire in the same cycle, unless this
             //     pixel is also the last pixel of the whole span.
-            p0a_to_p0 = p0a_valid && !p0_valid;
+            p0a_to_p0 = GPU_STREAM_PIPE ? stream_launch : (p0a_valid && !p0_valid);
             p0a_free_after = !p0a_valid || p0a_to_p0;
             scalar_source_pixel_available = 1'b0;
             source_pixel_available = 1'b0;
@@ -7762,7 +8118,7 @@ always @(posedge clk) begin : main_fsm
             // ----------------------------------------------------------
             // Pipeline shift — only when not stalled
             // ----------------------------------------------------------
-            if (p1_valid && !p1_tex_ready && tex_resp_valid) begin
+            if (!GPU_STREAM_PIPE && p1_valid && !p1_tex_ready && tex_resp_valid) begin
                 p1_tex_ready <= 1'b1;
                 // Capture the RAW texel (RGB565 for truecolor, CI8 byte
                 // otherwise).  The truecolor brightness modulate is applied at
@@ -7932,7 +8288,7 @@ always @(posedge clk) begin : main_fsm
             // p1 <- p0 (issue commit).  Cache accepted our request this
             // cycle.  The OLD p0 metadata becomes p1 even if p2/p3 are stalled;
             // p1 holds the texture response until the tail pipe can shift.
-            if (issue_committed) begin
+            if (!GPU_STREAM_PIPE && issue_committed) begin
                 p1_valid   <= 1'b1;
                 p1_light   <= p0_light;
                 p1_R       <= p0_R;
@@ -7952,10 +8308,21 @@ always @(posedge clk) begin : main_fsm
                 p0_valid <= 1'b0;
             end
 
-            // p0 <- p0a.  This promotion is independent of the tail-pipe
-            // shift, so an empty p0 can be preloaded even while p1/p2/p3 are
-            // stalled.  tex_req_valid remains blocked by p1_valid, so the
-            // cache still sees one in-order request at a time.
+            if (GPU_STREAM_PIPE) begin
+                // The reserved request slot always accepts the old DSP output.
+                p0_valid <= p0a_to_p0;
+                if (stream_result_pop) begin
+                    p1_valid <= 1'b1;
+                    p1_tex_ready <= 1'b1;
+                    {p1_light, p1_R, p1_B, p1_Dr, p1_Dg, p1_Db,
+                     p1_colormap_id, p1_flags, p1_fb_addr, p1_z_test,
+                     p1_z_write, p1_z_addr, p1_z_value, p1_tex_color} <= stream_result;
+                end
+            end
+
+            // p0 <- p0a: launch the registered multiply with its metadata.
+            // Promotion is independent of the backend shift; the streaming
+            // reservation guarantees space for the next cycle's DSP result.
             if (p0a_to_p0) begin
                 p0_valid     <= 1;
                 p0_light     <= p0a_light;
@@ -8376,7 +8743,10 @@ always @(posedge clk) begin : main_fsm
                 // (pruned) when sp_blend is const 0 (INCLUDE_DIRECT_COLOR off).
                 // --------------------------------------------------------
                 FBSS_CB_REQ: begin
-                    if (fb_acc_valid) begin
+                    if (cbw_p3_hit_w || cbw_p3_acc_owned_w) begin
+                        cb_dst_r <= cbw_p3_latest_half_w;
+                        fbss <= FBSS_CB_RESOLVE;
+                    end else if (fb_acc_valid) begin
                         // Flush any pending accumulator first so the blend read
                         // sees committed pixels (it may target the same word).
                         // Clear the MASK with the valid: the unified IDLE
@@ -8794,7 +9164,12 @@ always @(posedge clk) begin : main_fsm
                     // recip_rd_addr. Variable barrel shift is the only
                     // combinational chain in this stage.
                     recip_rd_addr <= recip_top10_pipe;
-                    persp_pss     <= PSS_RECIP_W;
+                    if (sp_persp_q29_mode && pss_recip_cache_hit) begin
+                        recip_q16_r <= $signed(pss_recip_cache_value);
+                        persp_pss <= PSS_MUL;
+                    end else begin
+                        persp_pss <= PSS_RECIP_W;
+                    end
                 end
 
                 PSS_RECIP_W: begin
@@ -9268,7 +9643,7 @@ always @(posedge clk) begin : main_fsm
             // Drain detection — when source done and pipe empty, flush the
             // framebuffer accumulators before accepting the next command.
             // ----------------------------------------------------------
-		            if (src_done && !p0a_valid && !p0_valid && !p1_valid && !p2_valid && !p2b_valid
+		            if (src_done && !stream_pending && !p0a_valid && !p0_valid && !p1_valid && !p2_valid && !p2b_valid
 		                         && !p3_valid && fbss == FBSS_IDLE
 		                         && !blend_group_active
 		                         && !persp_active) begin
@@ -9322,7 +9697,7 @@ always @(posedge clk) begin : main_fsm
             // ----------------------------------------------------------
             else if (sp_fastpath && spanprod_active
                   && (spanprod_idx != spanprod_last_idx)
-                  && src_done && !p0a_valid && !p0_valid
+                  && src_done && !stream_pending && !p0a_valid && !p0_valid
                   && !blend_group_active && !persp_active) begin
                 src_done <= 0;
                 spanprod_idx <= spanprod_idx + 2'd1;
@@ -9561,11 +9936,11 @@ always @(posedge clk) begin : main_fsm
                 fbwq_wr_ptr            <= fbwq_wr_ptr + 1'b1;
             end
 
-            if (fbwq_req_to_stage_now) begin
+            if (fbwq_in_to_stage_now) begin
                 fbwq_stage_valid <= 1'b1;
-                fbwq_stage_addr  <= fbwq_req_addr;
-                fbwq_stage_data  <= fbwq_req_data;
-                fbwq_stage_strb  <= fbwq_req_strb;
+                fbwq_stage_addr  <= fbwq_in_addr;
+                fbwq_stage_data  <= fbwq_in_data;
+                fbwq_stage_strb  <= fbwq_in_strb;
                 fbwq_stage_link_tail <= fbwq_req_link_tail;
             end else if (fbwq_stage_drain_now) begin
                 fbwq_stage_valid <= 1'b0;
@@ -9577,6 +9952,12 @@ always @(posedge clk) begin : main_fsm
                 fbwq_req_addr  <= fbwq_push_addr;
                 fbwq_req_data  <= fbwq_push_data;
                 fbwq_req_strb  <= fbwq_push_strb;
+                // Opaque raster writes benefit from reuse across columns.
+                // Clears and read-modify-write traffic drain then bypass.
+                fbwq_req_combine <= ((state == S_FRAG_PIPE) || (state == S_FB_FLUSH)
+                                     || (state == S_SPANPROD_SETUP))
+                                 && !sp_z_test_enable && !sp_blend
+                                 && !sp_flags[SPAN_TRANSLUC];
             end else if (fbwq_req_to_stage_now || fbwq_swap_now) begin
                 fbwq_req_valid <= 1'b0;
             end

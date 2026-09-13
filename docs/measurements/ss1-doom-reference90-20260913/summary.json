@@ -1,0 +1,35 @@
+{
+  "frames": 1802,
+  "presentations": 1802,
+  "duration_s": 30.009338,
+  "average_fps": 60.014652772413704,
+  "minimum_one_second_fps": {
+    "start_us": 6681959,
+    "fps": 59,
+    "start_row": 402,
+    "heading": 212.400484085083
+  },
+  "worst_frame": {
+    "ms": 17.164,
+    "fps": 58.26147751106968,
+    "end_row": 461,
+    "heading": 94.13285493850708
+  },
+  "viewport": [
+    320,
+    168
+  ],
+  "episode_map": [
+    1,
+    1
+  ],
+  "cpu_hz": 90000000,
+  "min_health": 100,
+  "position_fixed": [
+    4275044683,
+    4081139592
+  ],
+  "angle_bins": 32,
+  "frame_intervals_over_25ms": 0,
+  "midi_envelope_overruns": 0
+}

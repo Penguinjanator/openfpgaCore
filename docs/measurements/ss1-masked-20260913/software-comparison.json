@@ -1,0 +1,16 @@
+{
+  "sigil1": {
+    "before_fps": 39.74438630677049,
+    "software_fps": 39.82651413129862,
+    "gain_percent": 0.20664006205612928,
+    "before_prepare_ms": 21.551059480076734,
+    "software_prepare_ms": 21.461772194304856
+  },
+  "sigil2": {
+    "before_fps": 33.37643961802213,
+    "software_fps": 33.552181294404605,
+    "gain_percent": 0.5265441083403655,
+    "before_prepare_ms": 23.42493027888446,
+    "software_prepare_ms": 23.278975718533204
+  }
+}

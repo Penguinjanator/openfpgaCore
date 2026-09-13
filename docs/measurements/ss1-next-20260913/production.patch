@@ -1,0 +1,244 @@
+--- a/src/doom/cdoom/doom/r_segs.c
++++ b/src/doom/cdoom/doom/r_segs.c
+@@ -569,9 +569,12 @@
+ 
+ /* The parameter-wall path needs clip updates and GPU column records only.
+  * Keep that loop in fast RAM; column-batch fallback remains available below. */
++static r_gpu_wall_column_t gpu_wall_columns[SCREENWIDTH];
++
+ OF_FASTTEXT static void R_RenderGpuSegLoop(int draw_mid, int draw_top, int draw_bottom)
+ {
+     int x = rw_x, stopx = rw_stopx;
++    r_gpu_wall_column_t *column = gpu_wall_columns;
+     fixed_t scale = rw_scale, scalestep = rw_scalestep;
+     fixed_t topf = topfrac, bottomf = bottomfrac;
+     fixed_t pixh = pixhigh, pixl = pixlow;
+@@ -585,6 +588,7 @@
+     {
+         int yl = (topf + HEIGHTUNIT - 1) >> HEIGHTBITS;
+         int yh, top, bottom, mid;
++        uint32_t upper = 0, lower = 0;
+         if (yl < ceiling_clip[x] + 1) yl = ceiling_clip[x] + 1;
+         if (do_markceiling)
+         {
+@@ -612,7 +616,7 @@
+         }
+         if (draw_mid)
+         {
+-            if (yl <= yh) R_GPU_WallTierColumn(0, x, yl, yh, scale);
++            if (yl <= yh) upper = ((uint32_t)(yh - yl + 1) << 16) | (uint32_t)yl;
+             ceiling_clip[x] = viewheight;
+             floor_clip[x] = -1;
+         }
+@@ -625,7 +629,7 @@
+                 if (mid >= floor_clip[x]) mid = floor_clip[x] - 1;
+                 if (mid >= yl)
+                 {
+-                    R_GPU_WallTierColumn(0, x, yl, mid, scale);
++                    upper = ((uint32_t)(mid - yl + 1) << 16) | (uint32_t)yl;
+                     ceiling_clip[x] = mid;
+                 }
+                 else ceiling_clip[x] = yl - 1;
+@@ -638,18 +642,22 @@
+                 if (mid <= ceiling_clip[x]) mid = ceiling_clip[x] + 1;
+                 if (mid <= yh)
+                 {
+-                    R_GPU_WallTierColumn(1, x, mid, yh, scale);
++                    lower = ((uint32_t)(yh - mid + 1) << 16) | (uint32_t)mid;
+                     floor_clip[x] = mid;
+                 }
+                 else floor_clip[x] = yh + 1;
+             }
+             else if (do_markfloor) floor_clip[x] = yh + 1;
+         }
+-        scale += scalestep;
++        column->upper = upper;
++        column->lower = lower;
++        ++column;
+         topf += top_step;
+         bottomf += bottom_step;
+     }
+-    rw_x = x; rw_scale = scale;
++    R_GPU_WallColumns(rw_x, x - rw_x, gpu_wall_columns, scale, scalestep);
++    rw_scale = (fixed_t)((uint32_t)scale + (uint32_t)scalestep * (unsigned)(x - rw_x));
++    rw_x = x;
+     topfrac = topf; bottomfrac = bottomf;
+     pixhigh = pixh; pixlow = pixl;
+ }
+--- a/src/doom/cdoom/doom/r_plane.c
++++ b/src/doom/cdoom/doom/r_plane.c
+@@ -93,6 +93,7 @@
+ 
+ fixed_t			cachedheight[SCREENHEIGHT] R_CACHE_ALIGNED;
+ fixed_t			cacheddistance[SCREENHEIGHT] R_CACHE_ALIGNED;
++static byte cachedstepsvalid[SCREENHEIGHT];
+ fixed_t			cachedxstep[SCREENHEIGHT] R_CACHE_ALIGNED;
+ fixed_t			cachedystep[SCREENHEIGHT] R_CACHE_ALIGNED;
+ unsigned		cachedlightindex[SCREENHEIGHT] R_CACHE_ALIGNED;
+@@ -206,8 +207,7 @@
+     {
+ 	cachedheight[y] = planeheight;
+ 	distance = cacheddistance[y] = FixedMul (planeheight, yslope[y]);
+-	xstep = cachedxstep[y] = FixedMul (distance,basexscale);
+-	ystep = cachedystep[y] = FixedMul (distance,baseyscale);
++	cachedstepsvalid[y] = 0;
+ 	index = distance >> LIGHTZSHIFT;
+ 	if (index >= MAXLIGHTZ )
+ 	    index = MAXLIGHTZ-1;
+@@ -216,8 +216,6 @@
+     else
+     {
+ 	distance = cacheddistance[y];
+-	xstep = cachedxstep[y];
+-	ystep = cachedystep[y];
+ 	index = cachedlightindex[y];
+     }
+ 
+@@ -239,6 +237,17 @@
+     {
+ 	goto done;
+     }
++
++    /* The parameter GPU path consumes distance/light only. Preserve cached
++     * steps for fallback spans without computing them for GPU-only rows. */
++    if (!cachedstepsvalid[y])
++    {
++        cachedxstep[y] = FixedMul(distance, basexscale);
++        cachedystep[y] = FixedMul(distance, baseyscale);
++        cachedstepsvalid[y] = 1;
++    }
++    xstep = cachedxstep[y];
++    ystep = cachedystep[y];
+ 
+     length = FixedMul (distance,distscale[x1]);
+     angle = (viewangle + xtoviewangle[x1])>>ANGLETOFINESHIFT;
+--- a/src/doom/cdoom/doom/r_gpu.c
++++ b/src/doom/cdoom/doom/r_gpu.c
+@@ -232,6 +232,15 @@
+     (void)yh;
+     (void)scale;
+     return false;
++}
++void R_GPU_WallColumns(int x, int count, const r_gpu_wall_column_t *columns,
++                       fixed_t scale, fixed_t scalestep)
++{
++    (void)x;
++    (void)count;
++    (void)columns;
++    (void)scale;
++    (void)scalestep;
+ }
+ void R_GPU_WallTiersEnd(void) { }
+ boolean R_GPU_SpriteBegin(const byte *tex2d, int tex_height, int tex_width,
+@@ -3091,32 +3100,11 @@
+     return gpu_wall_tier_begin(tier, tex2d, tex_height, widthmask, texturemid, 128);
+ }
+ 
+-OF_FASTTEXT boolean R_GPU_WallTierColumn(int tier, int x, int yl, int yh, fixed_t scale)
+-{
++static inline __attribute__((always_inline)) void gpu_append_wall_column(
++    gpu_wall_tier_t *t, int x, int yl, int count, int light)
++{
++    gpu_wall_band_t *band;
+     of_gpu_param_span_record_t *r;
+-    gpu_wall_tier_t *t = &gpu_wall_tiers[tier];
+-    gpu_wall_band_t *band;
+-    unsigned int lindex;
+-    int light;
+-    int count;
+-
+-    if (!t->active)
+-        return false;
+-    if ((unsigned int)x >= (unsigned int)viewwidth ||
+-        yl < 0 || yh >= viewheight)
+-        return false;
+-
+-    lindex = (unsigned int)scale >> LIGHTSCALESHIFT;
+-    if (lindex >= MAXLIGHTSCALE)
+-        lindex = MAXLIGHTSCALE - 1;
+-    light = walllightrows[lindex];
+-    if (light < 0 || light > 63)
+-        return false;
+-
+-    count = yh - yl + 1;
+-    if (count <= 0)
+-        return true;
+-
+     band = &t->bands[0];
+     if (band->light != light)
+     {
+@@ -3141,7 +3129,57 @@
+     r->count = (uint16_t)count;
+ 
+     R_Perf_CountGpuColumn((unsigned int)count);
++}
++
++boolean R_GPU_WallTierColumn(int tier, int x, int yl, int yh, fixed_t scale)
++{
++    gpu_wall_tier_t *t = &gpu_wall_tiers[tier];
++    unsigned int lindex;
++    int light;
++    int count;
++
++    if (!t->active)
++        return false;
++    if ((unsigned int)x >= (unsigned int)viewwidth ||
++        yl < 0 || yh >= viewheight)
++        return false;
++
++    lindex = (unsigned int)scale >> LIGHTSCALESHIFT;
++    if (lindex >= MAXLIGHTSCALE)
++        lindex = MAXLIGHTSCALE - 1;
++    light = walllightrows[lindex];
++    if (light < 0 || light > 63)
++        return false;
++
++    count = yh - yl + 1;
++    if (count <= 0)
++        return true;
++
++    gpu_append_wall_column(t, x, yl, count, light);
+     return true;
++}
++
++/* Clipping and tier eligibility were established before this batch. Keep
++ * the x/tier order and band eviction identical to WallTierColumn. */
++OF_FASTTEXT
++void R_GPU_WallColumns(int x, int count, const r_gpu_wall_column_t *columns,
++                       fixed_t scale, fixed_t scalestep)
++{
++    for (int i = 0; i < count; ++i, ++x)
++    {
++        unsigned int lindex = (unsigned int)scale >> LIGHTSCALESHIFT;
++        if (lindex >= MAXLIGHTSCALE) lindex = MAXLIGHTSCALE - 1;
++        int light = walllightrows[lindex];
++        for (int tier = 0; tier < GPU_WALL_TIERS; ++tier)
++        {
++            uint32_t packed = tier == 0 ? columns[i].upper : columns[i].lower;
++            int pixels = packed >> 16;
++            if (pixels)
++                gpu_append_wall_column(&gpu_wall_tiers[tier], x,
++                                       packed & 0xffffu, pixels, light);
++        }
++        scale = (fixed_t)((uint32_t)scale + (uint32_t)scalestep);
++    }
+ }
+ 
+ void R_GPU_WallTiersEnd(void)
+--- a/src/doom/cdoom/doom/r_gpu.h
++++ b/src/doom/cdoom/doom/r_gpu.h
+@@ -104,6 +104,14 @@
+ /* scale = rw_scale at this column; the light row (walllightrows) lookup
+  * happens inside so the OF_FASTTEXT seg loop stays small. */
+ boolean R_GPU_WallTierColumn(int tier, int x, int yl, int yh, fixed_t scale);
++/* Opaque columns already clipped to the viewport by R_RenderGpuSegLoop.
++ * Each packed tier is {count:16, top:16}; zero count means no draw. Every
++ * nonempty tier must have been accepted by WallTierBegin before submission. */
++typedef struct {
++    uint32_t upper, lower;
++} r_gpu_wall_column_t;
++void R_GPU_WallColumns(int x, int count, const r_gpu_wall_column_t *columns,
++                       fixed_t scale, fixed_t scalestep);
+ void R_GPU_WallTiersEnd(void);
+ 
+ /* Affine sprite path (ATTR_AFFINE, AXIS_Y records): a vissprite is a

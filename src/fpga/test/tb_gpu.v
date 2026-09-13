@@ -28,6 +28,10 @@ module tb_gpu #(
     parameter INCLUDE_PARAM_TRI_RECS = 1,
     parameter GPU_Z_READ_WINDOW      = 4,
     parameter GPU_CB_READ_WINDOW     = 4,
+    parameter GPU_PSS_RECIP_CACHE    = 1,
+    parameter GPU_STREAM_PIPE        = 1,
+    parameter GPU_WRITE_COMBINE      = 1,
+    parameter GPU_WRITE_COMBINE_PIPE = 0,
     parameter GPU_EW_PARALLEL_DIVS   = 1,
     parameter GPU_TEX_CACHE_SET_BITS = 10,
     parameter INCLUDE_COMPACT_SPAN   = 1,
@@ -67,6 +71,11 @@ module tb_gpu #(
     output reg  [31:0] dbg_aw_count,
     output reg  [31:0] dbg_aw_burst_count,
     output reg  [7:0]  dbg_aw_max_len,
+
+    // Reciprocal reuse diagnostics; testbench only, no hardware ports.
+    output reg [31:0] dbg_pss_requests,
+    output reg [31:0] dbg_pss_cache_hits,
+    output reg [63:0] dbg_pss_digest,
 
     // Write-channel occupancy counters (test-only, ADDITIVE). Let the C++
     // harness separate write-channel-busy cycles from write-channel-idle
@@ -168,12 +177,93 @@ wire        gpu_sram_rdata_valid;
 // ============================================================
 // GPU Core
 // ============================================================
+// Independent integer model of the original LUT + Newton-Raphson arithmetic.
+// Check every consumed reciprocal, including speculative endpoints that a
+// shorter schedule may finish before span retirement cancels them.
+function [31:0] reference_recip;
+    input [31:0] denominator;
+    input q29;
+    input bias;
+    reg [31:0] normalized;
+    reg [15:0] lut;
+    reg signed [31:0] initial_value, correction;
+    reg signed [63:0] product;
+    reg [63:0] scaled;
+    integer leading;
+    begin
+        leading = 0;
+        normalized = denominator;
+        while (!normalized[31] && leading < 31) begin
+            normalized = normalized << 1;
+            leading = leading + 1;
+        end
+        lut = 16777216 / (1024 + {22'd0, normalized[30:21]});
+        scaled = {48'd0, lut} << (leading + (q29 ? 4 : 0));
+        initial_value = 32'(scaled >> 13);
+        product = $signed(denominator) * initial_value;
+        correction = 32'h20000 - 32'(product >>> (q29 ? 20 : 16));
+        product = initial_value * correction;
+        reference_recip = product[47:16] + ((!q29 && bias) ? 32'd1 : 32'd0);
+    end
+endfunction
+always @(posedge clk) begin
+    if (!reset_n) begin
+        dbg_pss_requests <= 0;
+        dbg_pss_cache_hits <= 0;
+        dbg_pss_digest <= 64'hcbf29ce484222325;
+    end else if (!gpu.soft_reset && gpu.state == gpu.S_FRAG_PIPE
+              && gpu.persp_active) begin
+        if (gpu.persp_pss == gpu.PSS_TOP8) begin
+            dbg_pss_requests <= dbg_pss_requests + 1;
+            if (gpu.sp_persp_q29_mode && gpu.pss_recip_cache_hit)
+                dbg_pss_cache_hits <= dbg_pss_cache_hits + 1;
+        end
+        if (gpu.persp_pss == gpu.PSS_MUL) begin
+            if (gpu.recip_q16_r !== reference_recip(gpu.persp_zinv_abs_r,
+                      gpu.sp_persp_q29_mode,
+                      gpu.sp_zinv_step_zero && gpu.sp_zinv != 32'h10000))
+                $fatal(1, "Reciprocal arithmetic mismatch");
+            if (gpu.persp_pass == gpu.PSS_PASS_ANCHOR)
+                dbg_pss_digest <= (dbg_pss_digest
+                                ^ {gpu.persp_zinv_abs_r, gpu.recip_q16_r})
+                                * 64'h100000001b3;
+            if ($test$plusargs("gpu_pss_trace"))
+                $display("RECIP %d %08x %08x %d %d %d", dbg_pss_requests,
+                         gpu.persp_zinv_abs_r, gpu.recip_q16_r,
+                         gpu.sp_persp_q29_mode, gpu.persp_pass, gpu.sp_count);
+        end
+    end
+end
+// Credit conservation is checked at every clock, including backend stalls
+// and reset recovery. Reservations include the DSP/pending-lookup slots.
+generate if (GPU_STREAM_PIPE) begin : stream_checks
+    always @(posedge clk) if (reset_n && !gpu.soft_reset) begin
+        if (gpu.tex_stream.req_reserved > 4 || gpu.tex_stream.res_reserved > 4)
+            $fatal(1, "Texture queue reservation overflow");
+        if ({1'b0, gpu.tex_stream.req_reserved}
+            != ({1'b0, gpu.tex_stream.req_count} + {3'd0, gpu.p0_valid}))
+            $fatal(1, "Texture request credit mismatch");
+        if ({1'b0, gpu.tex_stream.res_reserved}
+            != ({1'b0, gpu.tex_stream.res_count} + {3'd0, gpu.tex_stream.lookup_pending}))
+            $fatal(1, "Texture response credit mismatch");
+        if ((gpu.tex_stream.req_push && gpu.tex_stream.req_count == 4)
+            || (gpu.tex_stream.req_pop && gpu.tex_stream.req_count == 0)
+            || (gpu.tex_stream.res_push && gpu.tex_stream.res_count == 4)
+            || (gpu.stream_result_pop && gpu.tex_stream.res_count == 0))
+            $fatal(1, "Texture queue overflow/underflow");
+    end
+end endgenerate
+
 gpu_core #(
     .INCLUDE_PARAM_TRI(INCLUDE_PARAM_TRI),
     .INCLUDE_VERT_TRI(INCLUDE_VERT_TRI),
     .INCLUDE_PARAM_TRI_RECS(INCLUDE_PARAM_TRI_RECS),
     .GPU_Z_READ_WINDOW(GPU_Z_READ_WINDOW),
     .GPU_CB_READ_WINDOW(GPU_CB_READ_WINDOW),
+    .GPU_PSS_RECIP_CACHE(GPU_PSS_RECIP_CACHE),
+    .GPU_STREAM_PIPE(GPU_STREAM_PIPE),
+    .GPU_WRITE_COMBINE_PIPE(GPU_WRITE_COMBINE_PIPE),
+    .GPU_WRITE_COMBINE(GPU_WRITE_COMBINE),
     .GPU_EW_PARALLEL_DIVS(GPU_EW_PARALLEL_DIVS),
     .GPU_TEX_CACHE_SET_BITS(GPU_TEX_CACHE_SET_BITS),
     .INCLUDE_COMPACT_SPAN(INCLUDE_COMPACT_SPAN),

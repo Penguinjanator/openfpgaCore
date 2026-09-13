@@ -1,0 +1,14 @@
+('SLOT_5.SAV', 41488, 262144, False)
+('SLOT_6.SAV', 41744, 262144, False)
+('SLOT_7.SAV', 42000, 262144, False)
+('SLOT_8.SAV', 42256, 262144, False)
+('SLOT_9.SAV', 42512, 262144, False)
+SAVE_SHA256 769cbbadda215234032e6362899dd9bfd51ae21c24a785571728c3dd6e96ea40
+[os]
+GAME=Doom
+INSTANCE=Doom
+ELF=profile.elf
+ARGS=-iwad DOOM.WAD -loadgame 0 -noautoload -dehlump -config Doom.cfg -extraconfig Doom.cfg -saveprefix Doom -perfrotate -perfcapture yes -noperf
+
+
+Reference rotation started

@@ -10551,8 +10551,10 @@ static void test_truecolor_blend_full() {
     /* Pass 2 — blend at alpha 160 (a6 = 40): byte-exact everywhere. */
     tcbf_draw(160, 1);
     uint64_t t1 = sim_time;
+    uint32_t reads_before = tb->dbg_rd_txn_count_o;
     if (!submit_and_wait()) { check_fail("truecolor_blend_full", "blend timeout"); return; }
     uint64_t blend_cycles = sim_time - t1;
+    uint32_t blend_reads = tb->dbg_rd_txn_count_o - reads_before;
 
     /* PERF GUARD: byte-exact checks cannot see a silently-degraded read
      * window (misses render correctly too — the WINSEL suppression bug
@@ -10608,7 +10610,16 @@ static void test_truecolor_blend_full() {
         check_fail("truecolor_blend_full", m);
     } else if (covered < 1000) {
         check_fail("truecolor_blend_full", "coverage too small");
+    } else if (blend_reads > (uint32_t)covered / 3u + 80u) {
+        // At least two words per window: even odd span endpoints leave
+        // fewer than one read per three pixels. This also catches early
+        // probes that repeatedly refill a window, independent of opaque speed.
+        char m[96];
+        snprintf(m, sizeof m, "%u reads for %d pixels (window reuse degraded)",
+                 blend_reads, covered);
+        check_fail("truecolor_blend_full", m);
     } else {
+        printf("  blend reads=%u covered=%d\n", blend_reads, covered);
         check_pass("truecolor_blend_full");
     }
 }

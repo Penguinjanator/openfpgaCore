@@ -1,0 +1,122 @@
+[
+  {
+    "test": "video_pacing-doom-mister-period",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "video_pacing-doom-late-frame",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "video_pacing-doom-fresh-frame",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "video_pacing-doom-timedemo",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "video_pacing-doom-overload",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "video_pacing-doom-config-lifetime",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "video_pacing-doom-gamma",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sprite_sort-doom",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "wall_math-doom",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "wall_scale-doom",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "wall_divide-doom",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "view_cache-doom",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sprite_precache-doom",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "statusbar_overlay-doom",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "masked_bounds-doom",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sfx-doom-allocation",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sfx-doom-pcm",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sfx-doom-params",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sfx-heretic-allocation",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sfx-heretic-pcm",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sfx-heretic-params",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sfx-hexen-allocation",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sfx-hexen-pcm",
+    "passed": true,
+    "returncode": 0
+  },
+  {
+    "test": "sfx-hexen-params",
+    "passed": true,
+    "returncode": 0
+  }
+]
