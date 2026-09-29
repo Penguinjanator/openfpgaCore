@@ -1,0 +1,12 @@
+{
+  "variant": "combined",
+  "clock_hz": 100000000,
+  "parameters": {
+    "GPU_Z_READ_WINDOW": 16,
+    "GPU_CB_READ_WINDOW": 4
+  },
+  "baseline_core_sha256": "8fd02ca53bba4725f508e2b2fc5902878d652da49251be9a49226413911c6fa6",
+  "combined_core_sha256": "596577601cdd5111e06e7d40e8aa8df65efa55105f70921e531db715f9fa613f",
+  "software_patch_words_sha256": "6b27d32b2fdb67951dfbca252d5bfb130ab4f3ff9d34e73f820ca8aa1eea4266",
+  "note": "Private paired RTL/software prototype. No production capability negotiation, GCC rebuild, FPGA fit or timing qualification."
+}

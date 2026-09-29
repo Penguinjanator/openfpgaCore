@@ -1,0 +1,11 @@
+{
+  "variant": "selective16",
+  "clock_hz": 100000000,
+  "parameters": {
+    "GPU_Z_READ_WINDOW": 16,
+    "GPU_CB_READ_WINDOW": 4
+  },
+  "patch_base_sha256": "8fd02ca53bba4725f508e2b2fc5902878d652da49251be9a49226413911c6fa6",
+  "measured_core_sha256": "bf44971d9d57e0b499fe2742a76f51e34bdd56277108426f8fe294dccd42f322",
+  "note": "Experimental only. Target instantiation must pass these window parameters. No synthesis/timing qualification."
+}

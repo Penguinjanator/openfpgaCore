@@ -1,0 +1,431 @@
+--- a/gfx_gpu.c
++++ b/gfx_gpu.c
+@@ -1097,6 +1097,12 @@
+  * class (no rgb_d slot exists in the cache), decal (the per-vertex depth
+  * bias cannot ride a shared slot — GPU derives depth from w alone), and
+  * blend/XLU (opt_alpha with z-write off — see below). */
++
++static int g_vc_cd_on, g_vc_cd_indices[3];
++unsigned sm64_cd_triangles, sm64_cd_loads;
++void gfx_gpu_vtx_cache_cd_inputs(int indices[3]) {
++    indices[0]=g_vc_cd_indices[0]; indices[1]=g_vc_cd_indices[1]; indices[2]=g_vc_cd_indices[2];
++}
+ int gfx_gpu_vtx_cache_begin(int *rgb_input, int *alpha_input) {
+     if (!g_clip_load || !g_truecolor || !g_cur_shader)
+         return 0;
+@@ -1107,7 +1113,7 @@
+     }
+     const struct CCFeatures *cc = &g_cur_shader->cc;
+     const int textured = cc->used_textures[0] && g_cur_tex[0] && g_cur_tex[0]->ci8;
+-    int cd_a, cd_b, cd_d;
++    int cd_a=-1, cd_b=-1, cd_d=-1;
+     const int cd_on = textured ? classify_combine_cd(cc, &cd_a, &cd_b, &cd_d) : 0;
+     /* Blend/XLU ineligible (hardware A/B: FRAMERATE fix, not correctness).
+      * SM64's XLU surfaces are largely decals (already ineligible), so a
+@@ -1127,13 +1133,15 @@
+ 
+     g_vc_state_dirty = 0;
+     g_vc_textured = textured;
++    g_vc_cd_on = g_combine && cd_on;
++    g_vc_cd_indices[0]=cd_a; g_vc_cd_indices[1]=cd_b; g_vc_cd_indices[2]=cd_d;
+     g_vc_elig = 0;
+     g_vc_rgb_input = -1;
+     g_vc_alpha_input = -1;
+-    if (!cd_on && !g_decal && !xlu && !cc_blend_texel_alpha(cc)) {
++    if ((!cd_on || g_combine) && !g_decal && !xlu && !cc_blend_texel_alpha(cc)) {
+         g_vc_rgb_input = cc_cycle_input(cc, 0);
+         if (cc->opt_alpha) g_vc_alpha_input = cc_cycle_input(cc, 1);
+-        g_vc_elig = 1 | (textured ? GFX_VC_TEXTURED : 0);
++        g_vc_elig = 1 | (textured ? GFX_VC_TEXTURED : 0) | (g_vc_cd_on ? GFX_VC_CD : 0);
+     }
+     *rgb_input = g_vc_rgb_input;
+     *alpha_input = g_vc_alpha_input;
+@@ -1252,6 +1260,115 @@
+     *y = sy < -32768 ? -32768 : sy > 32767 ? 32767 : (int16_t)sy;
+ }
+ 
++static inline uint8_t enc_C_bytes(unsigned a,unsigned b,unsigned scale) {
++    int field=(((int)a-(int)b)*(int)scale+127+255*(int)scale)/255-(int)scale/2;
++    if(field<0)field=0;else if(field>=(int)scale)field=scale-1;
++    return (uint8_t)field;
++}
++void gfx_gpu_vtx_cache_cd_tri(const struct gfx_vc_cd_vtx v[3], const uint8_t slot[3],
++                           unsigned dirty_mask) {
++    /* The shared emitter checks material changes and dynamic draw fields
++     * before building state. Every path still passes through that one memo. */
++    g_cd_active = g_vc_cd_on;
++    if (g_vc_cd_on) sm64_cd_triangles++;
++    g_subpix_tri = 1;     /* viewport Y constants are scaled to Q12.4 */
++    g_surf_alpha = v[0].a;
++    emit_tri_state(g_vc_textured);
++
++    /* X projection returns Q12.4. Scaling both Y viewport constants by 16
++     * gives matching subpixel precision without changing the command ABI. */
++    if (!g_vc_vp_valid || g_vc_vp[0] != g_cx || g_vc_vp[1] != g_cy ||
++        g_vc_vp[2] != g_hw || g_vc_vp[3] != g_hh) {
++        of_gpu_object_state_t os;
++        memset(&os, 0, sizeof(os));
++        os.xcenter   = (int32_t)lrintf(g_cx);
++        os.ycenter   = (int32_t)lrintf(g_cy * 16.0f);
++        os.xscale    = (int32_t)lrintf(g_hw);
++        os.yscale    = (int32_t)lrintf(g_hh * 16.0f);
++        os.near_clip = 256;
++        os.rows      = 3;
++        of_gpu_set_object_state(&os);
++        g_vc_words += 27;              /* 0x50: 1 header + 26 payload */
++        g_vc_vp[0] = g_cx; g_vc_vp[1] = g_cy;
++        g_vc_vp[2] = g_hw; g_vc_vp[3] = g_hh;
++        g_vc_vp_valid = 1;
++    }
++
++    /* w PRE-SCALE (hardware-verified fix for misplaced distant triangles):
++     * the GPU's reciprocal is INTEGER — zi = floor(2^32 / w_q16) — and its
++     * projection ratio is (x_q16 * zi) >> 16.  At SM64's far w (~20000) raw
++     * Q16.16 gives zi = 3, and the zi quantization (stepping 4 -> 3 across a
++     * triangle's vertices) shifts each projected vertex DIFFERENTLY: up to
++     * 12.19 px of per-vertex error, i.e. the "20% of triangles misplaced"
++     * A/B artifact.  Scaling cx, cy, cw ALL by 1/256 before the Q16.16
++     * conversion leaves x/w (the projection) mathematically unchanged but
++     * moves zi into 838..168k over SM64's w range (100..22000) — monotonic,
++     * so z-ordering is preserved, and the worst projection error drops to
++     * 0.19 px (RTL-exact integer math, verified).  Since FIX E, the z-buffer
++     * depth is an explicit slot word (below) — the prescale only shapes the
++     * projection and the perspective-interpolation zi. */
++    for (int k = 0; k < 3; k++) {
++        if (!(dirty_mask & (1u << k)))
++            continue;
++        uint16_t rgb = (g_vc_rgb_input < 0)
++                           ? 0xFFFF : rgba_to_565(v[k].r, v[k].g, v[k].b);
++        /* FIX E (explicit depth, hardware round 3): the GPU-derived slot depth
++         * (= zi) flattened far-field z resolution ~64x vs the legacy 2^30
++         * scale — the "surfaces pop in/out" regression.  The 0x56 contract now
++         * carries an app-computed depth word: (1/w)*2^30 from the TRUE
++         * LoadedVertex w, with the SAME clamps + lrintf as the legacy 0x4E
++         * loop, so cached and fallback tris z-compare at full legacy
++         * precision in the shared z-buffer.  The VC_W_PRESCALE on cx/cy/cw
++         * below now affects position + zi (perspective interpolation) ONLY —
++         * depth no longer depends on it. */
++        float df = v[k].w_inv * 1073741824.0f;   /* 1/w * 2^30 */
++        if (df < 1.0f) df = 1.0f;
++        else if (df > 2147483520.0f) df = 2147483520.0f;
++        uint16_t rgb_d=0;
++        if (g_vc_cd_on) {
++            rgb = ((uint16_t)enc_C_bytes(v[k].r,v[k].cb[0],32)<<11)
++                | ((uint16_t)enc_C_bytes(v[k].g,v[k].cb[1],64)<<5)
++                | enc_C_bytes(v[k].b,v[k].cb[2],32);
++            rgb_d = ((uint16_t)((v[k].cd[0]*31u+127u)/255u)<<11)
++                  | ((uint16_t)((v[k].cd[1]*63u+127u)/255u)<<5)
++                  | ((v[k].cd[2]*31u+127u)/255u);
++            sm64_cd_loads++;
++        }
++        of_gpu_load_vert_clip_cd(slot[k],
++                              (int32_t)lrintf(v[k].cx * (65536.0f * VC_W_PRESCALE)),
++                              (int32_t)lrintf(v[k].cy * (65536.0f * VC_W_PRESCALE)),
++                              (int32_t)lrintf(v[k].cw * (65536.0f * VC_W_PRESCALE)),
++                              (int32_t)lrintf(v[k].u * 65536.0f),
++                              (int32_t)lrintf(v[k].v * 65536.0f),
++                              rgb,
++                              (uint32_t)lrintf(df), rgb_d, g_vc_cd_on);
++        g_vc_words += 9 + g_vc_cd_on;                   /* 0x56: 1 header + 8 payload */
++        g_vc_loads++;
++    }
++
++    // Match the original 0x4e adaptive scale, including float operation order.
++    float zscale=(float)ZI_SCALE, m=0.0f;
++    for(int k=0;k<3;k++) {
++        float a3=fabsf(v[k].w_inv),a4=fabsf(v[k].u*v[k].w_inv),a5=fabsf(v[k].v*v[k].w_inv);
++        if(a3>m)m=a3; if(a4>m)m=a4; if(a5>m)m=a5;
++    }
++    if(m>0.0f)zscale=ZI_DERIVE_TARGET/m;
++    if(zscale<1.0f)zscale=1.0f;
++    int32_t zi[3];
++    for(int k=0;k<3;k++) {int z=(int)lrintf(v[k].w_inv*(65536.0f*zscale)); zi[k]=z<1?1:z;}
++    of_gpu_draw_indexed_tri_zi(slot[0],slot[1],slot[2],zi);
++
++    g_vc_words += 5;                       /* 0x54: 1 header + 1 payload */
++    g_vc_tris_cached++;
++
++    /* Keep the GPU fed on long cached-only runs (the legacy path kicks once
++     * per material batch; match that cadence without a per-tri doorbell). */
++    if (++g_vc_kick >= 32u) {
++        g_vc_kick = 0;
++        of_gpu_kick();
++    }
++}
++
+ static void gpu_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
+                                size_t buf_vbo_num_tris) {
+     if (!g_has_gpu || !g_cur_shader || buf_vbo_num_tris == 0)
+--- a/gfx_pc.c
++++ b/gfx_pc.c
+@@ -1197,12 +1197,190 @@
+  * must live in rsp.loaded_vertices[0..31] (clipper-manufactured and rect
+  * scratch verts fail the address-range test) and w must fit Q16.16 (the
+  * backend applies a further 1/256 pre-scale, so 32767 is conservative). */
++static int gfx_vc_try_push_cd(const struct LoadedVertex *v1,
++                           const struct LoadedVertex *v2,
++                           const struct LoadedVertex *v3,
++                           const struct ColorCombiner *comb, bool use_fog) {
++    int rgb_in, alpha_in;
++    const int elig = gfx_gpu_vtx_cache_begin(&rgb_in, &alpha_in);
++    const struct LoadedVertex *v_arr[3] = {v1, v2, v3};
++    if (!elig)
++        goto per_tri_fallback;
++    uint8_t slot[3];
++    unsigned dirty = 0;
++    float w_first = 0.0f;
++    int   w_uniform = 1;
++    for (int i = 0; i < 3; i++) {
++        /* Clipped vertices can live on the stack. Subtracting unrelated
++         * pointers is undefined; range-check byte addresses first. */
++        const uintptr_t offset = (uintptr_t)v_arr[i] - (uintptr_t)rsp.loaded_vertices;
++        if (offset >= 32 * sizeof(struct LoadedVertex))
++            goto per_tri_fallback;          /* no stable slot */
++        const size_t idx = offset / sizeof(struct LoadedVertex);
++        const float w = RSPV_TO_FLOAT(v_arr[i]->w);
++        if (!(w > 0.0f && w < 32767.0f))
++            goto per_tri_fallback;          /* Q16.16 w overflow guard */
++        if (i == 0) w_first = w;
++        else if (w != w_first) w_uniform = 0;
++        slot[i] = (uint8_t)idx;
++        if (vc_slot_stale & (1u << idx))
++            dirty |= 1u << i;
++    }
++
++    /* ORTHOGRAPHIC TRIANGLES MUST NOT RIDE THE CACHE.
++     *
++     * The cached path ships clip-space x/y/w (struct gfx_vc_cd_vtx) and lets the
++     * GPU do the divide and derive its planes from the 1/w gradients.  An ortho
++     * projection has a zero fourth column -- segment2.c's matrix_fullscreen is
++     * m03=m13=m23=0, m33=1 -- so gfx_sp_vertex's
++     *     w = ox*m03 + oy*m13 + oz*m23 + m33
++     * yields exactly 1.0 for every vertex.  Constant w means d(1/w)/dx and
++     * d(1/w)/dy are both zero, the derive has no gradient to work from, and the
++     * triangle collapses: the intro's "(c) 1996 Nintendo" strip rendered as a
++     * line.  (It only showed up there because HUD/menu rects reach the GPU via
++     * gfx_draw_rectangle, whose scratch verts already fail the loaded_vertices
++     * address test above -- the intro strip is loaded by a real gsSPVertex and
++     * is the rare 2D draw that gets this far.)
++     *
++     * The flattened 0x4E path projects on the CPU and sends screen-space
++     * coordinates plus an explicit zi, so it has no such degeneracy.  Exact
++     * float equality is the right test: these w's are all literally m33, while
++     * three bit-identical w's in perspective geometry effectively never happen,
++     * so this costs no measurable cached-triangle throughput. */
++    if (w_uniform)
++        goto per_tri_fallback;
++
++    /* Surface alpha: the legacy path takes the csel input's ALPHA-cycle value
++     * of the batch's first vertex (with fog, shade alpha carries the fog
++     * intensity, so it reads as opaque — same exception as the fill loop). */
++    uint8_t surf_a = 255;
++    if (alpha_in >= 0) {
++        struct RGBA tmpa;
++        const struct RGBA *ac =
++            gfx_vc_resolve(comb->shader_input_mapping[1][alpha_in], v1, v1, &tmpa);
++        surf_a = (use_fog && ac == &v1->color) ? 255 : ac->a;
++    }
++
++    int cd_indices[3]={-1,-1,-1};
++    if (elig & GFX_VC_CD) gfx_gpu_vtx_cache_cd_inputs(cd_indices);
++    struct gfx_vc_cd_vtx vc[3];
++    const int   textured = elig & GFX_VC_TEXTURED;
++    const float uofs = textured ? (float)(rdp.texture_tile.uls * 8) : 0.0f;
++    const float vofs = textured ? (float)(rdp.texture_tile.ult * 8) : 0.0f;
++    const float bias = (textured &&
++                        (rdp.other_mode_h & (3U << G_MDSFT_TEXTFILT)) != G_TF_POINT)
++                       ? 0.5f : 0.0f;
++
++    /* Texture-affecting state changed since the last cached batch?  Wipe
++     * ALL slots — their baked s/t are relative to the OLD tile (see the
++     * vc_tex_sig note; uls/ult moves arrive with no flush at all, so the
++     * material dirty flag alone does not cover this). */
++    {
++        const uint8_t *taddr = textured ? rdp.loaded_texture[0].addr : NULL;
++        const uint8_t  tbias = bias != 0.0f;
++        if (taddr != vc_tex_sig.addr ||
++            comb->cc_id != vc_tex_sig.cc_id ||
++            rdp.texture_tile.uls != vc_tex_sig.uls ||
++            rdp.texture_tile.ult != vc_tex_sig.ult ||
++            rsp.texture_scaling_factor.s != vc_tex_sig.scale_s ||
++            rsp.texture_scaling_factor.t != vc_tex_sig.scale_t ||
++            (uint8_t)(textured != 0) != vc_tex_sig.textured ||
++            tbias != vc_tex_sig.bias ||
++            rdp.texture_tile.cms != vc_tex_sig.cms ||
++            rdp.texture_tile.cmt != vc_tex_sig.cmt) {
++            vc_slot_stale = 0xFFFFFFFFu;
++            vc_tex_sig.addr     = taddr;
++            vc_tex_sig.cc_id    = comb->cc_id;
++            vc_tex_sig.uls      = rdp.texture_tile.uls;
++            vc_tex_sig.ult      = rdp.texture_tile.ult;
++            vc_tex_sig.scale_s  = rsp.texture_scaling_factor.s;
++            vc_tex_sig.scale_t  = rsp.texture_scaling_factor.t;
++            vc_tex_sig.textured = (uint8_t)(textured != 0);
++            vc_tex_sig.bias     = tbias;
++            vc_tex_sig.cms      = rdp.texture_tile.cms;
++            vc_tex_sig.cmt      = rdp.texture_tile.cmt;
++            /* dirty bits were computed above from the pre-wipe map: redo */
++            dirty = 7u;
++        }
++    }
++
++    /* LOD shade is derived from the first vertex of each triangle, so it
++     * cannot be reused as a property of a shared GPU slot. */
++    if (rgb_in >= 0 && comb->shader_input_mapping[0][rgb_in] == CC_LOD)
++        dirty = 7u;
++    // Any LOD input depends on the first vertex of this triangle.
++    for (int c=0;c<3;c++)
++        if (cd_indices[c]>=0 && comb->shader_input_mapping[0][cd_indices[c]]==CC_LOD) dirty=7u;
++    vc[0].a = surf_a;
++    for (int i = 0; i < 3; i++) {
++        const struct LoadedVertex *v = v_arr[i];
++        vc[i].cx = RSPV_TO_FLOAT(v->x);
++        vc[i].cy = RSPV_TO_FLOAT(v->y);
++        vc[i].cw = RSPV_TO_FLOAT(v->w);
++        vc[i].w_inv = RSPV_TO_FLOAT(v->w_inv);
++        if (textured) {
++            vc[i].u = (RSPV_TO_FLOAT(v->u) - uofs) / 32.0f + bias;
++            vc[i].v = (RSPV_TO_FLOAT(v->v) - vofs) / 32.0f + bias;
++        } else {
++            vc[i].u = vc[i].v = 0.0f;       /* untextured truecolor: s=t=0 */
++        }
++        if (!(dirty & (1u << i))) continue;
++        if (rgb_in >= 0) {
++            struct RGBA tmpc;
++            const struct RGBA *c =
++                gfx_vc_resolve(comb->shader_input_mapping[0][rgb_in], v, v1, &tmpc);
++            vc[i].r = c->r; vc[i].g = c->g; vc[i].b = c->b;
++        } else {
++            vc[i].r = vc[i].g = vc[i].b = 255;  /* backend sends 0xFFFF anyway */
++        }
++        if (elig & GFX_VC_CD) {
++            for (int c=0;c<3;c++) {
++                struct RGBA tmp;
++                const struct RGBA *color;
++                if (cd_indices[c]<0) { memset(&tmp,0,sizeof tmp); color=&tmp; }
++                else color=gfx_vc_resolve(comb->shader_input_mapping[0][cd_indices[c]],v,v1,&tmp);
++                if (c==0) { vc[i].r=color->r; vc[i].g=color->g; vc[i].b=color->b; }
++                else {
++                    uint8_t *dst=c==1?vc[i].cb:vc[i].cd;
++                    dst[0]=color->r; dst[1]=color->g; dst[2]=color->b;
++                }
++            }
++        }
++        vc[i].a = surf_a;
++    }
++
++    /* Ring draw order: buffered 0x4E triangles must land before this one
++     * (rare — only when clipped-fan fallbacks interleave with cached tris
++     * inside one material batch). */
++    if (buf_vbo_len > 0)
++        gfx_flush();
++
++    gfx_gpu_vtx_cache_cd_tri(vc, slot, dirty);
++    if (dirty & 1u) vc_slot_stale &= ~(1u << slot[0]);
++    if (dirty & 2u) vc_slot_stale &= ~(1u << slot[1]);
++    if (dirty & 4u) vc_slot_stale &= ~(1u << slot[2]);
++    return 1;
++
++per_tri_fallback:
++    /* Preserve original coordinates even when a whole material falls back. */
++    if (buf_vbo_num_tris < GFX_VC_MAX_BUFFERED) {
++        struct gfx_vc_true_xyw *tv = &gfx_vc_true[buf_vbo_num_tris];
++        for (int i = 0; i < 3; i++) {
++            tv->x[i] = RSPV_TO_FLOAT(v_arr[i]->x);
++            tv->y[i] = RSPV_TO_FLOAT(v_arr[i]->y);
++            tv->w[i] = RSPV_TO_FLOAT(v_arr[i]->w);
++        }
++        tv->valid = 1;
++    }
++    return 0;
++}
+ static int gfx_vc_try_push(const struct LoadedVertex *v1,
+                            const struct LoadedVertex *v2,
+                            const struct LoadedVertex *v3,
+                            const struct ColorCombiner *comb, bool use_fog) {
+     int rgb_in, alpha_in;
+     const int elig = gfx_gpu_vtx_cache_begin(&rgb_in, &alpha_in);
++    if (elig & GFX_VC_CD) return gfx_vc_try_push_cd(v1,v2,v3,comb,use_fog);
+     const struct LoadedVertex *v_arr[3] = {v1, v2, v3};
+     if (!elig)
+         goto per_tri_fallback;
+--- a/gfx_gpu.h
++++ b/gfx_gpu.h
+@@ -51,12 +51,22 @@
+  * Caller guarantees: slots < 32, 0 < w < 32767 (Q16.16 fit), and that any
+  * buffered 0x4E triangles were flushed first (ring draw order). */
+ #define GFX_VC_TEXTURED  2
++#define GFX_VC_CD 4
++void gfx_gpu_vtx_cache_cd_inputs(int indices[3]);
+ 
+ struct gfx_vc_vtx {
+     float cx, cy, cw;     /* clip-space x,y,w (LoadedVertex x/y/w) */
+     float w_inv;          /* reciprocal already computed by the vertex loader */
+     float u, v;           /* final tile-relative texels (0 when untextured) */
+     uint8_t r, g, b;      /* resolved shade input, 0..255 (unused when white) */
++    uint8_t a;            /* resolved surface alpha (v[0] only is consumed) */
++};
++struct gfx_vc_cd_vtx {
++    float cx, cy, cw;     /* clip-space x,y,w (LoadedVertex x/y/w) */
++    float w_inv;          /* reciprocal already computed by the vertex loader */
++    float u, v;           /* final tile-relative texels (0 when untextured) */
++    uint8_t r, g, b;      /* resolved shade input, 0..255 (unused when white) */
++    uint8_t cb[3], cd[3]; /* second subtractive input and additive input */
+     uint8_t a;            /* resolved surface alpha (v[0] only is consumed) */
+ };
+ 
+@@ -80,4 +90,5 @@
+ void gpu_vc_prof_get(unsigned *words, unsigned *ctris, unsigned *ltris,
+                      unsigned *loads);
+ 
++void gfx_gpu_vtx_cache_cd_tri(const struct gfx_vc_cd_vtx v[3], const uint8_t slot[3], unsigned dirty_mask);
+ #endif /* GFX_GPU_H */
+--- a/of_gpu.h
++++ b/of_gpu.h
+@@ -2233,8 +2233,46 @@
+     _gpu_ring_commit(8u);
+ }
+ 
++/* PRIVATE EXPERIMENT: nine-word clip load appends additive RGB565. */
++static inline void of_gpu_load_vert_clip_cd(uint8_t slot, int32_t cx, int32_t cy, int32_t cw,
++                                         int32_t s, int32_t t, uint16_t rgb,
++                                         uint32_t depth, uint16_t cd, int combine) {
++#ifndef OF_PC
++    if (!of_has_feature(OF_HW_GPU_VERT_TRI) || !of_has_feature(OF_HW_GPU_CLIP_LOAD))
++        return;
++#endif
++    _gpu_cmd_header(GPU_CMD_LOAD_VERT_CLIP, combine ? 9 : 8);
++    uint32_t *w = _gpu_ring_claim();
++    *w++ = (uint32_t)(slot & 0x1Fu);
++    *w++ = (uint32_t)cx;
++    *w++ = (uint32_t)cy;
++    *w++ = (uint32_t)cw;
++    *w++ = (uint32_t)s;
++    *w++ = (uint32_t)t;
++    *w++ = (uint32_t)rgb;
++    *w++ = depth;   /* explicit z-buffer depth: the GPU-derived value (= zi)
++                     * quantizes far-field z; send (1/w)*2^30 computed in float
++                     * for full legacy-0x4E depth precision.  zi (perspective)
++                     * is still GPU-derived from cw. */
++    if (combine) *w++=cd;
++    _gpu_ring_commit(combine ? 9u : 8u);
++}
++
+ /* Draw a triangle from three previously-loaded vertex-cache slots (0x53/0x56/0x57).
+  * One word packs three 5-bit indices.  Cluster-gated (OF_HW_GPU_XFORM_RGB). */
++static inline void of_gpu_load_screen_vert(uint8_t slot,int16_t x,int16_t y,
++        int32_t s,int32_t t,uint16_t c,uint16_t d,uint32_t depth) {
++    _gpu_cmd_header(0x58,6);
++    uint32_t *w=_gpu_ring_claim();
++    *w++=slot; *w++=(uint16_t)x|((uint32_t)(uint16_t)y<<16); *w++=s; *w++=t;
++    *w++=c|((uint32_t)d<<16); *w++=depth; _gpu_ring_commit(6);
++}
++static inline void of_gpu_draw_indexed_tri_zi(uint8_t i0,uint8_t i1,uint8_t i2,const int32_t zi[3]) {
++    _gpu_cmd_header(GPU_CMD_DRAW_INDEXED_TRI,4);
++    uint32_t *w=_gpu_ring_claim();
++    *w++=i0|((uint32_t)i1<<5)|((uint32_t)i2<<10);
++    *w++=zi[0]; *w++=zi[1]; *w++=zi[2]; _gpu_ring_commit(4);
++}
+ static inline void of_gpu_draw_indexed_tri(uint8_t i0, uint8_t i1, uint8_t i2) {
+ #ifndef OF_PC
+     /* Cache draws work whenever ANY load path exists: matrix form (bit 26)

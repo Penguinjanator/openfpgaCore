@@ -96,6 +96,8 @@ def main():
     parser.add_argument("--netlist", type=Path, default=root /
                         "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_mister.v")
     parser.add_argument("--output", type=Path, default=root / "build/vexii-fetch-reads")
+    parser.add_argument("--aligner", action="store_true",
+                        help="Check the aligner PC hold instead of the prefetch PC hold")
     args = parser.parse_args()
     source = args.netlist.read_text()
     output = args.output.resolve()
@@ -118,10 +120,15 @@ always @(posedge clk) if (wr) mem[wa] <= wd;
                            stem + "_mem[" + stem + "_read_cmd_payload]",
                            64, f"en{bank}", f"mem[ra{bank}]")
         tb += f"assign out{bank} = {name};\n"
-    stem = "PrefetcherNextLinePlugin_logic_unbuffered"
-    tb += extract_read(source, stem + "_rData_pc", stem + "_ready",
-                       stem + "_payload_pc", 32, "enpc", "pc")
-    tb += f"assign outpc = {stem}_rData_pc;\nendmodule\n"
+    if args.aligner:
+        name = "AlignerPlugin_logic_buffer_pc"
+        enable = "when_AlignerPlugin_l256"
+        data = "fetch_logic_ctrls_3_down_Fetch_WORD_PC"
+    else:
+        stem = "PrefetcherNextLinePlugin_logic_unbuffered"
+        name, enable, data = stem + "_rData_pc", stem + "_ready", stem + "_payload_pc"
+    tb += extract_read(source, name, enable, data, 32, "enpc", "pc")
+    tb += f"assign outpc = {name};\nendmodule\n"
     (output / "tb_fetch_reads.v").write_text(tb)
     (output / "tb_fetch_reads.cpp").write_text(CPP)
     with (output / "build.log").open("w") as log:

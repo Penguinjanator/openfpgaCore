@@ -1,3 +1,0 @@
-before PASS 490541 columns; 19577526 pixels; 56402 flushes; 364243 fallback posts; 0 batch columns
-after PASS 490541 columns; 19577526 pixels; 56402 flushes; 364243 fallback posts; 531951 batch columns
-PASS identical masked/sprite records, flushes and fallback work bed5f3391743869aad93f1377c090274cb6c6b7c3ed6ebd3e20cdec25304ff3f

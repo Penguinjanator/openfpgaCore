@@ -249,25 +249,29 @@ $(BUILD_DIR)/app.elf: $(APP_OBJS) $(OF_INIT_OBJ) $(OF_SDL2_OBJ) $(APP_LD) $(CRT_
 	@mkdir -p $(dir $@)
 	$(LD) $(ALL_LDFLAGS) -o $@ $(CRT_OBJS) $(APP_OBJS) $(OF_INIT_OBJ) $(OF_SDL2_OBJ) $(LIBS)
 
+# Public APIs contain inline implementations; header updates must invalidate
+# existing objects even when they were built without dependency files.
+SDK_API_HEADERS := $(wildcard $(SDK_DIR)/include/*.h)
+
 define SDK_APP_C_RULE
-$(call sdk_app_object,$(1)): $(1)
+$(call sdk_app_object,$(1)): $(1) $(SDK_API_HEADERS)
 	@mkdir -p $$(dir $$@)
 	$$(CC) $$(ALL_CFLAGS) -c -o $$@ $$<
 endef
 $(foreach src,$(filter %.c,$(SRCS)),$(eval $(call SDK_APP_C_RULE,$(src))))
 
 define SDK_APP_CXX_RULE
-$(call sdk_app_object,$(1)): $(1)
+$(call sdk_app_object,$(1)): $(1) $(SDK_API_HEADERS)
 	@mkdir -p $$(dir $$@)
 	$$(CXX) $$(ALL_CXXFLAGS) -c -o $$@ $$<
 endef
 $(foreach src,$(filter %.cpp,$(SRCS_CXX)),$(eval $(call SDK_APP_CXX_RULE,$(src))))
 
-$(OF_INIT_OBJ): $(OF_INIT_SRC)
+$(OF_INIT_OBJ): $(OF_INIT_SRC) $(SDK_API_HEADERS)
 	@mkdir -p $(dir $@)
 	$(CC) $(ALL_CFLAGS) -c -o $@ $<
 
-$(OF_SDL2_OBJ): $(OF_SDL2_SRC)
+$(OF_SDL2_OBJ): $(OF_SDL2_SRC) $(SDK_API_HEADERS)
 	@mkdir -p $(dir $@)
 	$(CC) $(ALL_CFLAGS) -c -o $@ $<
 

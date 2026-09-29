@@ -8,9 +8,9 @@
 // GPU Core — span rasterizer
 //
 // Asynchronous 2D/3D GPU for openfpgaOS.  The CPU builds command streams in
-// SDRAM; a doorbell DMA copies them into an internal BRAM ring, then the GPU
-// rasterises textured/colormapped spans and writes pixels to the framebuffer
-// via AXI4.
+// SDRAM; either doorbell DMA or an optional CPU upload port copies them into
+// an internal BRAM ring. The GPU rasterises textured/colormapped spans and
+// writes pixels to the framebuffer via AXI4.
 //
 // Two AXI4 master ports:
 //   M_RD  — command-stream DMA + texture/cache fills (read only)
@@ -20,13 +20,26 @@
 //   for BRAM.  The current user is the translucency blend LUT.
 //
 // MMIO registers expose control, status, fence sync, texture flush and the
-// remaining translucency LUT upload path.  Command data is not accepted over
-// MMIO.
+// translucency LUT upload path. INCLUDE_CPU_RING also allows command uploads
+// through MMIO after the application selects that transport. Command DMA can
+// be omitted with INCLUDE_COMMAND_DMA=0 when all clients support CPU uploads.
 //
 
 `default_nettype none
 
 module gpu_core #(
+    // Capability-gated CPU upload port; legacy clients retain doorbell DMA.
+    parameter INCLUDE_CPU_RING = 0,
+    // Direct-only builds require INCLUDE_CPU_RING and updated applications.
+    // Disabling this removes descriptor storage, the pull FSM and read mux.
+    parameter INCLUDE_COMMAND_DMA = 1,
+    // Optional sparse write-cache drain and depth-tested write combining.
+    parameter GPU_WRITE_COMBINE_FAST_FLUSH = 0,
+    parameter GPU_WRITE_COMBINE_Z = 0,
+    parameter GPU_WRITE_GATHER = 0,
+    // Preserve per-beat byte enables when gathering adjacent writes.
+    parameter GPU_MASKED_WRITE_BURSTS = 0,
+    parameter GPU_WRITE_COMBINE_BURST_HASH = 0,
     // ----------------------------------------------------------------
     // Per-target feature gate: the 0x49 CMD_DRAW_PARAM_TRI param-triangle
     // path (header-carried planes + 3 vertices through the shared edge
@@ -76,7 +89,7 @@ module gpu_core #(
     parameter INCLUDE_PARAM_TRI_RECS = 1,
 
     // ----------------------------------------------------------------
-    // Z read-window depth: 4 (default) or 1.
+    // Z read-window depth: 1, 4 (default), 8 or 16 words.
     //   4 — the z-test detour fills the whole 16-byte z line in one 4-beat
     //       burst and caches the sibling words (window hit + write snoop
     //       logic live; see the "Z read window" block below).
@@ -85,7 +98,7 @@ module gpu_core #(
     //       barrier.  zw_valid is then never set non-zero, so the window-hit
     //       arm, the zw_word/zw_base storage and the fbwq write snoop are
     //       all constant-dead and Quartus sweeps them.
-    // Only the values 1 and 4 are supported.
+    //   8/16 — wider aligned bursts, with the same snoop/drain contract.
     parameter GPU_Z_READ_WINDOW = 4,
 
     // Truecolor-blend dst read-window size, in 32-bit words: 4, 2, or 1.
@@ -312,6 +325,17 @@ module gpu_core #(
     output reg  [1:0]  gpu_swap_idx,
 
     input  wire        slave_swap_pending,    // CMD_FLIP backpressure from display slave
+`ifdef INCLUDE_GPU_RENDER_CACHE
+    // Render cache barrier (gpu_color_depth_cache between the m_rd/m_wr ports
+    // and the arbiter): fences, flips and clears wait for memory_barrier_done
+    // after requesting a flush; clears write without allocating; soft reset
+    // and GPU_TEX_FLUSH reach the cache too.
+    input  wire        memory_barrier_done,
+    output wire        memory_barrier_req,
+    output wire        cache_clear_bypass,
+    output wire        cache_soft_reset,
+    output wire        cache_tex_flush,
+`endif
 
     // ================================================================
     // Status outputs
@@ -350,13 +374,15 @@ assign dbg_frag = 32'd0;
 // MMIO Register Map
 // ================================================================
 // 0x00  GPU_CTRL          W   bit0=enable, bit1=soft_reset, bit2=ring_reset
-// 0x04  GPU_RING_WRPTR    R   Published ring write pointer
+//                              bit3=CPU publish, bit4=select CPU, bit5=select DMA
+// 0x04  GPU_RING_WRPTR    R/W Published pointer / append word in CPU mode
 // 0x08  GPU_TEX_MEM_UP_ADDR W   Fast-texture upload word pointer
 // 0x0C  GPU_DMA_SRC       W   SDRAM byte address of command buffer to pull
 // 0x10  GPU_RING_RDPTR    R   GPU read pointer
 // 0x14  GPU_STATUS        R   bit0=busy, bit1=ring_empty, bit2=dma_busy,
 //                              bit3=transluc_busy, [5:4]=dma_state,
-//                              bit6=dma_desc_full
+//                              bit6=dma_desc_full, bit7=CPU upload capability,
+//                              bit8=CPU mode, bit9=CPU overflow
 // 0x18  GPU_FENCE         R   Last completed fence token
 // 0x1C  GPU_DMA_LEN       W   Word count to pull (max 4096)
 // 0x20  GPU_TRANSLUC_ADDR W   byte address into transluc[] upload window
@@ -374,16 +400,21 @@ assign dbg_frag = 32'd0;
 //     AXI INCR bursts.
 //   * The DMA publishes ring_wrptr only after the final word lands, so the
 //     decoder never observes a partial command.
+//   * CPU mode requires DMA idle and no unpublished words when selected.
+//     Writes to 0x04 append to BRAM; CTRL bit3 publishes the complete batch.
+//     DMA kicks are ignored in CPU mode. Ring reset restores DMA mode.
+//     A full ring rejects the appended word and sets sticky overflow;
+//     software must check overflow before publishing and reset on failure.
 // Poll GPU_STATUS:dma_busy before reusing an SDRAM batch/stream buffer.
 
 // Ring BRAM: 16 KB = 4096 words, dual-port M10K
-// Port A: doorbell-DMA writes command streams from SDRAM
+// Port A: DMA uploads, or CPU uploads while explicitly selected
 // Port B: GPU reads during command fetch (1-cycle latency)
 localparam RING_WORDS = 4096;  // 16 KB
 localparam RING_ADDR_BITS = 12;
 
 reg [31:0] ring_bram [0:RING_WORDS-1];
-reg [RING_ADDR_BITS-1:0] ring_wr_addr;  // DMA write pointer (word index)
+reg [RING_ADDR_BITS-1:0] ring_wr_addr;  // Append pointer (word index)
 reg [RING_ADDR_BITS-1:0] ring_wrptr;     // Published write pointer (word index)
 reg [RING_ADDR_BITS-1:0] ring_rdptr;     // GPU read pointer (word index)
 reg [RING_ADDR_BITS-1:0] ring_rd_addr;   // Port-B read address
@@ -438,10 +469,13 @@ reg [12:0] dma_desc_len [0:1];
 reg        dma_desc_rd;
 reg        dma_desc_wr;
 reg [1:0]  dma_desc_count;
+reg        cpu_ring_mode;
+reg        cpu_ring_overflow;
 wire       dma_desc_empty = (dma_desc_count == 2'd0);
 wire       dma_desc_full  = (dma_desc_count == 2'd2);
-wire       dma_desc_push_req = reg_wr && (reg_addr == 4'd11) && reg_wdata[0]
-                            && (dma_len_latched != 13'd0) && !dma_desc_full;
+wire       dma_desc_push_req = INCLUDE_COMMAND_DMA && reg_wr && (reg_addr == 4'd11) && reg_wdata[0]
+                            && (dma_len_latched != 13'd0) && !dma_desc_full
+                            && !(INCLUDE_CPU_RING && cpu_ring_mode);
 wire       dma_desc_pop_now = (dma_state == DMA_S_IDLE) && !dma_desc_empty;
 wire       dma_pull_busy = (dma_state != DMA_S_IDLE) || !dma_desc_empty;
 wire       dma_busy = dma_pull_busy;
@@ -475,13 +509,19 @@ always @(posedge clk)
 // "raw" wires are driven below where the DMA FSM lives.
 wire        dma_ring_wr_raw;
 wire [31:0] dma_ring_wdata_raw;
+wire cpu_ring_req = INCLUDE_CPU_RING && cpu_ring_mode && reg_wr
+                  && (reg_addr == 4'd1) && active;
+wire [11:0] cpu_ring_next = ring_wr_addr + 12'd1;
+wire cpu_ring_full = (cpu_ring_next == ring_rdptr);
+wire cpu_ring_write = cpu_ring_req && !cpu_ring_full && !dma_busy;
 
 // Canonical altsyncram-inferable single-port write to ring_bram.  Commands are
-// staged in SDRAM and copied here by the doorbell DMA only.  That leaves one
-// writer for port A, avoiding a CPU/DMA collision mux and skid registers.
+// uploaded by DMA or by the optional batched CPU port. CPU mode can be
+// selected only with DMA idle, and blocks new DMA kicks, so the writers
+// are mutually exclusive. Both use one BRAM write port and append pointer.
 always @(posedge clk) begin
-    if (dma_ring_wr_raw)
-        ring_bram[ring_wr_addr] <= dma_ring_wdata_raw;
+    if (dma_ring_wr_raw || cpu_ring_write)
+        ring_bram[ring_wr_addr] <= cpu_ring_write ? reg_wdata : dma_ring_wdata_raw;
 end
 
 // MMIO write handling + ring_wr_addr management (BRAM index pointer).
@@ -491,6 +531,8 @@ always @(posedge clk) begin
     if (!reset_n) begin
         ring_wrptr      <= 0;
         ring_wr_addr    <= 0;
+        cpu_ring_mode   <= 0;
+        cpu_ring_overflow <= 0;
         tex_flush_req   <= 0;
         soft_reset      <= 0;
         ring_reset      <= 0;
@@ -519,10 +561,12 @@ always @(posedge clk) begin
             else if (gpu_tex_mem_up_busy_seen)  gpu_tex_mem_up_inflight  <= 1'b0;
         end
 
-        // ring_wr_addr advances once per DMA beat.  Keeping it here
+        // ring_wr_addr advances once per accepted upload word. Keeping it here
         // (not in the BRAM-write block) means the BRAM block stays canonical.
-        if (dma_ring_wr_raw)
+        if (dma_ring_wr_raw || cpu_ring_write)
             ring_wr_addr <= ring_wr_addr + 1'b1;
+        if (cpu_ring_req && cpu_ring_full)
+            cpu_ring_overflow <= 1'b1;
 
         // Upload end publishes ring_wrptr atomically (covering every
         // payload word copied into ring BRAM).  Otherwise the decoder
@@ -535,23 +579,31 @@ always @(posedge clk) begin
             case (reg_addr)
                 4'd0: begin  // GPU_CTRL: bit1=soft_reset, bit2=ring_reset
                     if (reg_wdata[1]) soft_reset <= 1;
+                    if (INCLUDE_CPU_RING && !dma_busy && (ring_wr_addr == ring_wrptr)) begin
+                        if (reg_wdata[4]) cpu_ring_mode <= 1'b1;
+                        if (INCLUDE_COMMAND_DMA && reg_wdata[5]) cpu_ring_mode <= 1'b0;
+                    end
+                    if (INCLUDE_CPU_RING && cpu_ring_mode && reg_wdata[3] && !dma_busy)
+                        ring_wrptr <= ring_wr_addr;
                     if (reg_wdata[2]) begin
                         ring_reset   <= 1;
                         ring_wr_addr <= 0;
                         ring_wrptr   <= 0;
+                        cpu_ring_mode <= 0;
+                        cpu_ring_overflow <= 0;
                     end
                 end
-                4'd1: begin end // GPU_RING_WRPTR is read-only now
+                4'd1: begin end // CPU append handled above; read still returns published pointer
                 4'd2: begin // GPU_TEX_MEM_UP_ADDR: set the upload word pointer
                     // No-op when INCLUDE_TEX_MEM == 0 (the ptr has no consumer).
                     if (INCLUDE_TEX_MEM != 0)
                         gpu_tex_mem_up_ptr <= reg_wdata[21:0];
                 end
                 4'd3: begin  // GPU_DMA_SRC
-                    dma_src_latched <= reg_wdata[GPU_ADDR_W-1:0];
+                    if (INCLUDE_COMMAND_DMA) dma_src_latched <= reg_wdata[GPU_ADDR_W-1:0];
                 end
                 4'd7: begin  // GPU_DMA_LEN — clamp to ring depth
-                    dma_len_latched <= reg_wdata[12:0];
+                    if (INCLUDE_COMMAND_DMA) dma_len_latched <= reg_wdata[12:0];
                 end
                 4'd8: begin end // GPU_TRANSLUC_ADDR handled by SRAM LUT upload FSM
                 4'd9: begin end // GPU_TRANSLUC_DATA handled by SRAM LUT upload FSM
@@ -636,7 +688,12 @@ always @(*) begin
         //   bit 3     = translucency SRAM upload/lookup busy
         //   bits[5:4] = dma_state (0=IDLE, 1=AR, 2=R, 3=PUBLISH)
         //   bit 6     = DMA descriptor FIFO full
-        4'd5:    reg_rdata = {25'b0, dma_desc_full, dma_state, transluc_upload_busy,
+        //   bit 7     = CPU upload capability
+        //   bit 8     = CPU upload mode selected
+        //   bit 9     = sticky CPU append overflow (cleared by ring reset)
+        4'd5:    reg_rdata = {22'b0, (INCLUDE_CPU_RING && cpu_ring_overflow),
+                              (INCLUDE_CPU_RING && cpu_ring_mode), (INCLUDE_CPU_RING != 0),
+                              dma_desc_full, dma_state, transluc_upload_busy,
                               dma_busy, ring_empty, busy};
         4'd6:    reg_rdata = fence_reached;
         4'd12:   reg_rdata = {6'b0, palookup_base};
@@ -1030,7 +1087,7 @@ assign m_rd_araddr     = dma_owns_ar   ? dma_araddr
                        : blend_owns_m0 ? {{(32-GPU_ADDR_W){1'b0}}, blend_araddr}
                        :                 tex_axi_araddr;
 assign m_rd_arlen      = dma_owns_ar   ? dma_arlen
-                       : blend_owns_m0 ? {6'b0, blend_arlen_r}
+                       : blend_owns_m0 ? {4'b0, blend_arlen_r}
                        :                 tex_axi_arlen;
 
 // Fast-texture fill master — driven only when redirected.  Independent of the
@@ -1068,7 +1125,7 @@ assign dma_ring_wr_raw    = (dma_state == DMA_S_R) && m_rd_rvalid;
 assign dma_ring_wdata_raw = m_rd_rdata;
 
 always @(posedge clk) begin
-    if (!reset_n) begin
+    if (!reset_n || !INCLUDE_COMMAND_DMA) begin
         dma_state         <= DMA_S_IDLE;
         dma_burst_addr    <= {GPU_ADDR_W{1'b0}};
         dma_words_left    <= 13'd0;
@@ -1418,6 +1475,9 @@ localparam CMD_DRAW_COLUMN_LIST       = 8'h4C;
 // ════════════════════════════════════════════════════════════════════════
 localparam EFF_TRUECOLOR = (INCLUDE_DIRECT_COLOR != 0);              // truecolor RGB565 fragment datapath
 localparam EFF_COMBINE   = EFF_TRUECOLOR && (INCLUDE_COMBINE != 0); // texel*C+D HILITE: needs truecolor
+// Setup routing is qualified independently of rendering capabilities. Keep
+// the established datapaths on other profiles until their timing is re-fitted.
+localparam PRUNE_DISABLED_SETUP = `ifdef VEXII_CPU_OS30 1 `else 0 `endif;
 localparam EFF_Q29       = (INCLUDE_PARAM_SPAN_Q29 != 0);           // param-span/tri Q29 dynamic-scale precision (folds the z-step cone when 0)
 
 // 0x4C delegates its payload to the 0x48 compact-direct loader arms, so the
@@ -1605,6 +1665,9 @@ reg        spanprod_blend;       // staged alpha-blend flag (control flag bit 1)
 reg [7:0]  spanprod_const_alpha; // staged per-surface src alpha (0x4A word 16)
 reg        spanprod_attr_persp;
 reg        spanprod_attr_q29;
+// Gate reads as well as writes: disabled feature registers alone do not
+// eliminate unreachable DSP operand muxes during synthesis.
+wire spanprod_use_q29 = (!PRUNE_DISABLED_SETUP || EFF_Q29) && spanprod_attr_q29;
 reg [4:0]  spanprod_q29_attr_shift;
 reg        spanprod_span_axis;
 reg        spanprod_header_supported;
@@ -1810,6 +1873,28 @@ function [15:0] mirror_idx;
     end
 endfunction
 
+`ifdef INCLUDE_GPU_CLAMP_PARALLEL
+// Keep the octave reduction parallel to the signed clamp comparisons.  The
+// selected coordinate and its selected mirror polarity meet only at the final
+// XOR/mask, instead of reducing the bits of the clamp mux's result.
+function [15:0] clamp_mirror_idx;
+    input signed [15:0] raw, minimum, maximum;
+    input clamp_en;
+    input [15:0] mask, octave;
+    input mirror_en;
+    reg below, above, flip;
+    reg [15:0] clamped;
+    begin
+        below = clamp_en && (raw < minimum);
+        above = clamp_en && (raw > maximum);
+        clamped = below ? minimum : above ? maximum : raw;
+        flip = below ? (|(minimum & octave))
+                     : above ? (|(maximum & octave)) : (|(raw & octave));
+        clamp_mirror_idx = (clamped ^ {16{mirror_en && flip}}) & mask;
+    end
+endfunction
+`endif
+
 wire [1:0] spanprod_last_idx =
       (spanprod_record_count >= 3'd4) ? 2'd3
     : (spanprod_record_count == 3'd3) ? 2'd2
@@ -2008,9 +2093,9 @@ task load_param_span_list_payload_word;
                     spanprod_cmap_valid <= 4'b0000;
                 end
                 6'd30: begin
-                    spanprod_q29_attr_shift <= spanprod_attr_q29 ? data[4:0] : 5'd0;
+                    spanprod_q29_attr_shift <= spanprod_use_q29 ? data[4:0] : 5'd0;
                     if ((data[31:5] != 27'd0)
-                        || (!spanprod_attr_q29 && (data[4:0] != 5'd0)))
+                        || (!spanprod_use_q29 && (data[4:0] != 5'd0)))
                         spanprod_header_supported <= 1'b0;
                 end
                 6'd31: begin
@@ -2323,6 +2408,7 @@ task spanprod_launch_fb_mul;
     // Address-step operands are GPU_ADDR_W-bit signed; sign-extend to the
     // 32-bit DSP operand width so the screen-space address product is exact.
     begin
+`ifndef INCLUDE_SPAN_DEDICATED_MULT
         if (spanprod_span_axis) begin
             dsp_a  <= $signed({{16{spanprod_cur_u[15]}}, spanprod_cur_u});
             dsp_b  <= {{(32-GPU_ADDR_W){spanprod_fb_major_step[GPU_ADDR_W-1]}}, spanprod_fb_major_step};
@@ -2334,11 +2420,13 @@ task spanprod_launch_fb_mul;
             dsp2_a <= $signed({{16{spanprod_cur_u[15]}}, spanprod_cur_u});
             dsp2_b <= {{(32-GPU_ADDR_W){spanprod_fb_minor_step[GPU_ADDR_W-1]}}, spanprod_fb_minor_step};
         end
+`endif
     end
 endtask
 
 task spanprod_launch_z_mul;
     begin
+`ifndef INCLUDE_SPAN_DEDICATED_MULT
         if (spanprod_span_axis) begin
             dsp_a  <= $signed({{16{spanprod_cur_u[15]}}, spanprod_cur_u});
             dsp_b  <= {{(32-GPU_ADDR_W){spanprod_z_major_step[GPU_ADDR_W-1]}}, spanprod_z_major_step};
@@ -2350,6 +2438,7 @@ task spanprod_launch_z_mul;
             dsp2_a <= $signed({{16{spanprod_cur_u[15]}}, spanprod_cur_u});
             dsp2_b <= {{(32-GPU_ADDR_W){spanprod_z_minor_step[GPU_ADDR_W-1]}}, spanprod_z_minor_step};
         end
+`endif
     end
 endtask
 
@@ -2357,10 +2446,16 @@ task spanprod_launch_attr_mul;
     input signed [31:0] du;
     input signed [31:0] dv;
     begin
+`ifndef INCLUDE_SPAN_DEDICATED_MULT
+`ifndef INCLUDE_SPAN_OPERAND_DEFAULT
         dsp_a  <= $signed({{16{spanprod_cur_u[15]}}, spanprod_cur_u});
+`endif
         dsp_b  <= du;
+`ifndef INCLUDE_SPAN_OPERAND_DEFAULT
         dsp2_a <= $signed({{16{spanprod_cur_v[15]}}, spanprod_cur_v});
+`endif
         dsp2_b <= dv;
+`endif
     end
 endtask
 
@@ -2445,15 +2540,20 @@ task spanprod_launch_step_mul;
     input [3:0] stepv;
     begin
         case (stepv)
+`ifndef VEXII_CPU_OS30
             4'd0: spanprod_launch_fb_mul;
+            SPANPROD_STEP_NONE: ;
+`endif
             4'd5: spanprod_launch_z_mul;
-            SPANPROD_STEP_NONE: ;  // none pending — operands default-clear, product unused
             default: begin
                 // One prefetched row per array replaces the ten
                 // per-plane operand mux arms (rows for the 24-bit planes hold
                 // the sign-extended value, so the read IS the old
                 // {{8{v[23]}},v}).  Codes 6/14/15 never occur: launch_step is
-                // only ever 7 (init) or a spanprod_next_calc output.
+                // only ever 7 (init) or a spanprod_next_calc output. Framebuffer
+                // step 0 launches only in SETUP; it cannot enter this dispatcher.
+                // After the chain ends, launch an unused plane product while
+                // the last two valid products drain. Their captures are unchanged.
                 spanprod_launch_attr_mul(spanprod_plane_du,
                                          spanprod_plane_dv);
                 // Walk-time pre-capture of the EMIT step operand for the two
@@ -2493,9 +2593,40 @@ wire signed [31:0] spanprod_capture_origin_w =
         ? $signed({{(32-GPU_ADDR_W){1'b0}}, spanprod_z_base})
     : spanprod_plane_origin;
 
+`ifdef INCLUDE_SPAN_DEDICATED_MULT
+// Screen coordinates are signed 16-bit values, and every span destination
+// consumes only the low 32 product bits. Separate multipliers remove the
+// span dispatcher from the shared perspective/transform operand mux.
+reg signed [15:0] span_mul_u, span_mul_v;
+reg signed [31:0] span_mul_du, span_mul_dv;
+(* multstyle = "dsp" *) reg signed [31:0] span_mul_pu, span_mul_pv;
+wire span_mul_fb = (state == S_SPANPROD_SETUP);
+wire span_mul_address = span_mul_fb || (spanprod_launch_step == 4'd5);
+always @(posedge clk) begin
+    span_mul_u <= (span_mul_address && !spanprod_span_axis)
+        ? spanprod_cur_v : spanprod_cur_u;
+    span_mul_v <= (span_mul_address && !spanprod_span_axis)
+        ? spanprod_cur_u : spanprod_cur_v;
+    span_mul_du <= span_mul_fb
+        ? {{(32-GPU_ADDR_W){spanprod_fb_major_step[GPU_ADDR_W-1]}}, spanprod_fb_major_step}
+        : (spanprod_launch_step == 4'd5)
+        ? {{(32-GPU_ADDR_W){spanprod_z_major_step[GPU_ADDR_W-1]}}, spanprod_z_major_step}
+        : spanprod_plane_du;
+    span_mul_dv <= span_mul_fb
+        ? {{(32-GPU_ADDR_W){spanprod_fb_minor_step[GPU_ADDR_W-1]}}, spanprod_fb_minor_step}
+        : (spanprod_launch_step == 4'd5)
+        ? {{(32-GPU_ADDR_W){spanprod_z_minor_step[GPU_ADDR_W-1]}}, spanprod_z_minor_step}
+        : spanprod_plane_dv;
+    span_mul_pu <= span_mul_u * span_mul_du;
+    span_mul_pv <= span_mul_v * span_mul_dv;
+end
+wire signed [31:0] spanprod_capture_sum = spanprod_capture_origin_w
+    + span_mul_pu + span_mul_pv;
+`else
 wire signed [31:0] spanprod_capture_sum =
     spanprod_capture_origin_w
     + $signed(dsp_p[31:0]) + $signed(dsp2_p[31:0]);
+`endif
 
 // Same-cycle rgb-mode select for the unified zc pipeline: this is the exact
 // value being written into sp_rgb at EMIT (NOT the stale sp_rgb register,
@@ -2515,6 +2646,10 @@ task spanprod_load_generated_span;
         sp_const_alpha <= spanprod_const_alpha;
         sp_a6          <= (spanprod_const_alpha == 8'd255) ? 7'd64
                                                           : {1'b0, spanprod_const_alpha[7:2]};
+`ifdef INCLUDE_CB_SPLIT_MULT
+        cb_inv_a6 <= (spanprod_const_alpha == 8'd255) ? 7'd0
+                      : 7'd64 - {1'b0, spanprod_const_alpha[7:2]};
+`endif
         sp_rgb         <= spanprod_rgb_mode_w; // per-vertex RGB modulate (0x4E/0x52/0x54/0x4F)
 
         // Span-rate +1 (16-bit wrap) replaces the per-pixel add inside
@@ -2522,6 +2657,16 @@ task spanprod_load_generated_span;
         // also a 16-bit self-determined add (0xFFFF -> 0x0000).
         sp_tex_w_octave <= spanprod_tex_w_mask + 16'd1;
         sp_tex_h_octave <= spanprod_tex_h_mask + 16'd1;
+`ifdef INCLUDE_GPU_CLAMP_PIPE
+        sp_s_min_mirrored <= mirror_idx(sp_s_clamp_min[31:16], sp_tex_w_mask,
+                                        sp_tex_w_mask + 16'd1, sp_mirror_s);
+        sp_s_max_mirrored <= mirror_idx(sp_s_clamp_max[31:16], sp_tex_w_mask,
+                                        sp_tex_w_mask + 16'd1, sp_mirror_s);
+        sp_t_min_mirrored <= mirror_idx(sp_t_clamp_min[31:16], sp_tex_h_mask,
+                                        sp_tex_h_mask + 16'd1, sp_mirror_t);
+        sp_t_max_mirrored <= mirror_idx(sp_t_clamp_max[31:16], sp_tex_h_mask,
+                                        sp_tex_h_mask + 16'd1, sp_mirror_t);
+`endif
 
         sp_cd_combine  <= spanprod_cd_combine;
 
@@ -2620,9 +2765,9 @@ task spanprod_load_generated_span;
             // feedback on sp_z_value defeated const-propagation, leaving
             // q29_restore_z_saturating (spanprod_q29_attr_shift -> sp_z_value)
             // live as a critical path.  EFF_Q29 forces the fold.
-            sp_q29_z_enable <= EFF_Q29 && spanprod_attr_q29
+            sp_q29_z_enable <= EFF_Q29 && spanprod_use_q29
                              && (spanprod_z_write || spanprod_z_test);
-            sp_z_value <= (EFF_Q29 && spanprod_attr_q29
+            sp_z_value <= (EFF_Q29 && spanprod_use_q29
                               && (spanprod_z_write || spanprod_z_test))
                              ? q29_restore_z_saturating(spanprod_attr2_start_r,
                                                         spanprod_q29_attr_shift)
@@ -2630,7 +2775,7 @@ task spanprod_load_generated_span;
             // Operand comes from the free-running q29_zstep_op_r capture
             // (see its declaration) — the EMIT cycle pays only the barrel
             // shift + saturate, not the span_axis mux in front of it.
-            sp_z_value_step <= (EFF_Q29 && spanprod_attr_q29
+            sp_z_value_step <= (EFF_Q29 && spanprod_use_q29
                                    && (spanprod_z_write || spanprod_z_test))
                                   ? q29_restore_z_saturating(
                                       q29_zstep_op_r,
@@ -2646,7 +2791,7 @@ task spanprod_load_generated_span;
                                   ? spanprod_attr2_dv : spanprod_attr2_du) == 32'sd0);
             sp_light_step  <= spanprod_span_axis
                             ? spanprod_light_dv : spanprod_light_du;
-            sp_persp_q29_mode <= spanprod_attr_q29;
+            sp_persp_q29_mode <= spanprod_use_q29;
             if (spanprod_attr_persp) begin
             sp_s           <= 32'sd0;
             sp_t           <= 32'sd0;
@@ -3205,13 +3350,13 @@ reg [4:0]         vt_q29_shift;
 //     32 bits (DERIV_SAT32) before the plane solve so every numerator multiply
 //     stays within one 32x32 DSP pass; this is the same clamp the C ref applies.
 //   * Determinant:  det = d1x*d2y - d2x*d1y  (Q12.4-scaled, signed 35-bit).
-//   * Reciprocal:  rdet = min(2^N + (|det|>>1)) / |det|, RDET_MAX) with N=44.
-//       N=44 gives >=12 guard bits over a <=1024px bbox at Q16.16 attrs.
-//       RDET_MAX = 2^32-1 caps rdet so it fits one 32-bit DSP operand; for
-//       sliver triangles (|det| so small that 2^44/|det| > 2^32-1) rdet
-//       saturates, the plane slopes blow up bounded, and the final du/dv
-//       clamp to INT32 — deterministic, overflow-free.  |det|==0 (collinear)
-//       is treated as |det|==1; such triangles also clip out in the walker.
+//   * Reciprocal: rdet = min(round(2^N/|det|), 2^31-1). Normally N=44.
+//       Subpixel non-Q29 triangles use N=31 when |det|<=8192, with the
+//       matching final scale shift. This prevents reciprocal saturation from
+//       flattening representable gradients on ordinary small triangles.
+//       At |det|=1 the signed-operand cap loses only one reciprocal ULP.
+//       Integer-Y and explicit Q29 commands retain their original scaling.
+//       |det|==0 is treated as 1; the walker rejects degenerate coverage.
 //   * Plane terms, per attribute a (da1 = a1-a0, da2 = a2-a0, both clamped):
 //       num_du = 16 * (da1*d2y - da2*d1y)   (the x16 corrects det's Q12.4 scale
 //                                            to per-integer-pixel-x du units)
@@ -3247,21 +3392,18 @@ reg [4:0]         vt_q29_shift;
 //   bring-up (persp_pss) only runs once spans are being filled in S_FRAG_PIPE,
 //   long after DRV_DONE released the DSPs.  So no DSP usage window overlaps
 //   another; no arbitration.
-//   * Origin lands the spanprod plane in the SAME (0,0)-extrapolated form the
-//     0x49 header uses:  origin = (a0 - du*x0_px - dv*y0) truncated to 32 bits,
-//     where x0_px = x0(Q12.4) >>> 4 (floor).  spanprod evaluates
-//     origin + u*du + v*dv mod 2^32 at each record's absolute integer (u,v);
-//     the mod-2^32 wraparound cancels the large anchor offset, so the visible
-//     value equals a0 + (u-x0_px)*du + (v-y0)*dv with no overflow (the spec's
-//     "anchoring" property).  The light plane truncates origin/du/dv to 24 bits
-//     (Q6.16) to match spanprod_light_*.
+//   * Origin lands the plane in the same (0,0)-extrapolated form as 0x49.
+//     Multiply gradients by the full vertex coordinates before removing the
+//     Q12.4 fraction; add the half-pixel center offsets. Evaluation at integer
+//     (u,v) then samples (u+0.5,v+0.5). Arithmetic wraps modulo 2^32 so large
+//     anchor offsets cancel. The light plane truncates to Q6.16 (24 bits).
 //
 // FINAL CONSTANTS (validated against the acceptance C reference, bit-for-bit):
-//   N = 44  : rounded reciprocal Q-format.  >=12 guard bits over a <=1024px
-//             bbox at Q16.16 attrs; rdet = round(2^44/|det|) caps at 2^31-1.
+//   N = 44 normally, 31 for small subpixel non-Q29 triangles. The latter
+//             keeps at least 18 reciprocal bits at the switching threshold.
 //   SPLIT = 24 : DSP two-pass numerator split (num_hi*rdet then num_lo*rdet).
-//   |det| floored to 1 (collinear); rdet saturates at 2^31-1 for slivers, then
-//   du/dv clamp to INT32 — deterministic, overflow-free, mirrored in the ref.
+//   |det| is floored to 1; the signed reciprocal and final gradients saturate
+//   to INT32_MAX as needed. The reference mirrors both reciprocal formats.
 // STORAGE: vertices are NOT physically sorted.  The 3 compare-swaps only build
 //   the order permutation dv_ord[]; x/y come straight from tri_v*_x/y and zi/
 //   light straight from vt_zi/vt_lrow, both indexed through dv_ord.  The
@@ -3285,9 +3427,8 @@ reg [4:0]         vt_q29_shift;
 localparam DERIV_N      = 6'd44;
 localparam DERIV_SPLIT  = 6'd24;
 // rdet is fed to the signed 32x32 DSP, so it is capped at 2^31-1 (always
-// non-negative — sign(det) is applied separately to the final du/dv).  The cap
-// only engages for extreme slivers where the true gradient already exceeds
-// Q16.16; those du/dv then clamp to INT32 deterministically (see rdet_ovf).
+// non-negative — sign(det) is applied separately to the final du/dv). Small
+// subpixel triangles select Q31 before division so ordinary slopes stay valid.
 
 // Saturating clamp of a signed 64-bit value to int32 — the single shared
 // saturate unit for the num_hi shift before the DSP multiply and for the final
@@ -3360,14 +3501,14 @@ assign dvx[0] = tri_v0_x; assign dvx[1] = tri_v1_x; assign dvx[2] = tri_v2_x;
 // (rounding Y collapsed det -> garbage du/dv on sharp-angle planes).  Using
 // Q12.4 Y makes du still correct (its x16 + det's extra y-x16 cancel) but dv
 // 16x too small and the origin's y0 in Q12.4 — both compensated below
-// (num_dv <<4 and dd_y0 = sy0>>4 under spanprod_subpix_y).
+// (num_dv <<4 and the y-origin product >>4 under spanprod_subpix_y).
 assign dvy[0] = tri_v0_y; assign dvy[1] = tri_v1_y; assign dvy[2] = tri_v2_y;
 
 // Edge deltas + determinant.
 reg signed [16:0] dd1x, dd2x, dd1y, dd2y;
 reg               dd_detsign;     // 1 = det<0
 reg [34:0]        dd_detabs;
-reg signed [15:0] dd_x0px, dd_y0;
+reg signed [15:0] dd_x0, dd_y0; // raw vertex coordinates, fractions preserved
 
 // Serial restoring divider for rdet = (2^N rounded) / |det|.
 // Dividend is the 45-bit rounded numerator (2^44 + (|det|>>1)); divisor is the
@@ -3381,6 +3522,10 @@ reg [34:0]  rdet_divisor;
 reg [34:0]  rdet_rem;             // partial remainder (< divisor < 2^35)
 reg [5:0]   rdet_cnt;
 reg         rdet_ovf;             // quotient reached >=2^31 -> saturate rdet
+// A Q44 reciprocal overflows for ordinary small triangles, even when their
+// gradients fit. Use Q31 for subpixel, non-Q29 triangles with |det| <= 8192;
+// the matching scale shift preserves depth, color and texture interpolation.
+reg         rdet_small;
 // Reciprocal as a signed 32b DSP operand: capped non-negative value.
 wire signed [31:0] rdet_operand = rdet_ovf ? 32'sh7FFFFFFF : {1'b0, rdet_q[30:0]};
 wire [35:0] rdet_try  = {rdet_rem, rdet_dividend[44]};
@@ -3428,7 +3573,7 @@ reg signed [31:0] a0_eff_r;
 reg [DERIV_SPLIT-1:0] dv_num_lo;
 reg               dv_doing_dv;    // 0 = computing du, 1 = computing dv
 reg [3:0]         dv_attr;        // 0=szi 1=tzi 2=zi 3=light 4=R 5=B 6=depth 7=Dr 8=Dg 9=Db
-reg [4:0]         dstate;         // derivation sub-FSM state
+reg [5:0]         dstate;         // derivation sub-FSM state
 
 // Per-attribute clamped edge differences da1 = sat33(a1-a0), da2 = sat33(a2-a0)
 // (area-shrink Lever 1, 2026-06).  Both du and dv numerators reuse the SAME two
@@ -3565,6 +3710,26 @@ localparam DRV_PROD_L2C0 = 5'd25; // launch k=2, capture k=0
 localparam DRV_PROD_C1   = 5'd26; // capture k=1
 localparam DRV_PROD_C2   = 5'd27; // capture k=2 -> DRV_DELTA
 
+// Projected reciprocal values can be small at long distances. Shift the
+// three perspective attributes together before deriving gradients; their
+// ratio is unchanged and explicit z-buffer depth stays independent.
+// Only RGB commands carry independent depth. Scalar/palettized 0x51 keeps
+// its original zi scale for compatibility with other depth writers.
+// A one-bit shift uses wiring and one shared enable across the nine values:
+// no magnitude scan, absolute-value adders or variable barrel shifter.
+localparam DRV_NORMALIZE = 6'd32;
+reg [4:0] norm_shift;
+wire norm_ready =
+    (dv_szi[0][31:28] != {4{dv_szi[0][31]}}) ||
+    (dv_szi[1][31:28] != {4{dv_szi[1][31]}}) ||
+    (dv_szi[2][31:28] != {4{dv_szi[2][31]}}) ||
+    (dv_tzi[0][31:28] != {4{dv_tzi[0][31]}}) ||
+    (dv_tzi[1][31:28] != {4{dv_tzi[1][31]}}) ||
+    (dv_tzi[2][31:28] != {4{dv_tzi[2][31]}}) ||
+    (vt_zi[0][31:28] != {4{vt_zi[0][31]}}) ||
+    (vt_zi[1][31:28] != {4{vt_zi[1][31]}}) ||
+    (vt_zi[2][31:28] != {4{vt_zi[2][31]}});
+
 // ============================================================
 // CMD_DRAW_XFORM_TRI (0x51) transform front-end registers.
 // Per-vertex cam = M*{v,1} (Q16.16) + perspective projection, producing the
@@ -3581,9 +3746,62 @@ reg signed [31:0] xf_M [0:19];          // up to 5x4 matrix (rows 0-2 cam,
 reg signed [31:0] xf_xc, xf_yc;         // screen center (px)
 reg signed [31:0] xf_xscale, xf_yscale; // pixel scale
 reg signed [31:0] xf_nearclip;          // Q16.16 min cam.z
+// Matrix operands have a read-address cycle before the DSP launch. Keep the
+// three coordinate banks in block RAM and use that existing cycle for reads.
+`ifdef INCLUDE_XFORM_VERTEX_RAM
+(* ramstyle = "M10K, no_rw_check" *) reg signed [31:0] xf_vx [0:2];
+(* ramstyle = "M10K, no_rw_check" *) reg signed [31:0] xf_vy [0:2];
+(* ramstyle = "M10K, no_rw_check" *) reg signed [31:0] xf_vz [0:2];
+reg signed [31:0] xf_vx_q, xf_vy_q, xf_vz_q;
+reg [1:0] xf_vert_wr_addr;
+reg [2:0] xf_vert_wr_en;
+always @* begin
+    xf_vert_wr_addr = 2'd0;
+    xf_vert_wr_en = 3'b000;
+    if (reset_n && !soft_reset && state == S_PAY_DATA) begin
+        case (cmd_class)
+            CMDCLS_XFORM_TRI, CMDCLS_XFORM_RGB_CLIP: begin
+                case (pay_idx)
+                    6'd0: begin xf_vert_wr_addr = 2'd0; xf_vert_wr_en = 3'b001; end
+                    6'd1: begin xf_vert_wr_addr = 2'd0; xf_vert_wr_en = 3'b010; end
+                    6'd2: begin xf_vert_wr_addr = 2'd0; xf_vert_wr_en = 3'b100; end
+                    6'd3: begin xf_vert_wr_addr = 2'd1; xf_vert_wr_en = 3'b001; end
+                    6'd4: begin xf_vert_wr_addr = 2'd1; xf_vert_wr_en = 3'b010; end
+                    6'd5: begin xf_vert_wr_addr = 2'd1; xf_vert_wr_en = 3'b100; end
+                    6'd6: begin xf_vert_wr_addr = 2'd2; xf_vert_wr_en = 3'b001; end
+                    6'd7: begin xf_vert_wr_addr = 2'd2; xf_vert_wr_en = 3'b010; end
+                    6'd8: begin xf_vert_wr_addr = 2'd2; xf_vert_wr_en = 3'b100; end
+                    default: ;
+                endcase
+            end
+            CMDCLS_LOAD_VERTS, CMDCLS_LOAD_VERT_CLIP, CMDCLS_LOAD_VERT_LIT: begin
+                case (pay_idx)
+                    6'd1: xf_vert_wr_en = 3'b001;
+                    6'd2: xf_vert_wr_en = 3'b010;
+                    6'd3: xf_vert_wr_en = 3'b100;
+                    default: ;
+                endcase
+            end
+            default: ;
+        endcase
+    end
+end
+always @(posedge clk) begin
+    if (xf_vert_wr_en[0]) xf_vx[xf_vert_wr_addr] <= ring_rd_data;
+    if (xf_vert_wr_en[1]) xf_vy[xf_vert_wr_addr] <= ring_rd_data;
+    if (xf_vert_wr_en[2]) xf_vz[xf_vert_wr_addr] <= ring_rd_data;
+    xf_vx_q <= xf_vx[xf_vtx];
+    xf_vy_q <= xf_vy[xf_vtx];
+    xf_vz_q <= xf_vz[xf_vtx];
+end
+`else
 reg signed [31:0] xf_vx [0:2];          // raw verts {x,y,z} Q16.16
 reg signed [31:0] xf_vy [0:2];
 reg signed [31:0] xf_vz [0:2];
+wire signed [31:0] xf_vx_q = xf_vx[xf_vtx];
+wire signed [31:0] xf_vy_q = xf_vy[xf_vtx];
+wire signed [31:0] xf_vz_q = xf_vz[xf_vtx];
+`endif
 reg signed [31:0] xf_camx, xf_camy, xf_camz;
 reg signed [63:0] xf_acc;               // MAC accumulator (full products, Q32.32)
 reg [1:0]  xf_vtx, xf_idx;
@@ -3693,6 +3911,15 @@ reg signed [31:0] xf_dot;                  // clamped N.L (Q16.16, 0..0x10000)
 localparam XF_LIT_DL=5'd19, XF_LIT_DW=5'd20, XF_LIT_DC=5'd21, XF_LIT_CLAMP=5'd22,
            XF_LIT_CL=5'd23, XF_LIT_CW=5'd24, XF_LIT_CC=5'd25;
 localparam XF_MAC_A=5'd26;   // M10K read-issue cycle before XF_MAC_L (xf_M_q latency)
+`ifdef INCLUDE_XFORM_VERTEX_RAM
+localparam XF_CLIP_ADDR=5'd28;
+localparam XF_CLIP_ENTRY=XF_CLIP_ADDR;
+`else
+localparam XF_CLIP_ENTRY=5'd27;
+`endif
+`ifdef INCLUDE_XFORM_RATIO_PIPE
+localparam XF_PROJ_XL=5'd29, XF_PROJ_YL=5'd30;
+`endif
 localparam XF_CLIP_FEED=5'd27;  // clip-tri: load cam{x,y,z}<=clip{x,y,w}, jump to XF_RECIP_INIT
 
 // Outstanding-write tracker for CMD_FENCE / CMD_FLIP drain semantics.
@@ -3784,6 +4011,15 @@ reg signed [15:0] p0a_s_int;
 reg [GPU_ADDR_W-1:0] p0a_tex_base;
 (* preserve *) reg signed [15:0] p0a_t_y;
 (* preserve *) reg [15:0] p0a_tex_width;
+`ifdef INCLUDE_GPU_CLAMP_PIPE
+reg [15:0] sp_s_min_mirrored, sp_s_max_mirrored;
+reg [15:0] sp_t_min_mirrored, sp_t_max_mirrored;
+reg p0a_s_below, p0a_s_above, p0a_t_below, p0a_t_above;
+wire signed [15:0] p0a_s_resolved = p0a_s_below ? sp_s_min_mirrored
+                                  : p0a_s_above ? sp_s_max_mirrored : p0a_s_int;
+wire signed [15:0] p0a_t_resolved = p0a_t_below ? sp_t_min_mirrored
+                                  : p0a_t_above ? sp_t_max_mirrored : p0a_t_y;
+`endif
 reg        p0a_z_test;
 reg        p0a_z_write;
 reg [GPU_ADDR_W-1:0] p0a_z_addr;
@@ -3963,16 +4199,16 @@ reg [1:0]  blend_lut_lane;
 reg        blend_arvalid;
 reg [GPU_ADDR_W-1:0] blend_araddr;
 // Per-issue AR length for the blend/z M0 reads: 0 (translucent FB word
-// read), CBW_ARLEN (blend-window fill: 0/1/3), or 3 (4-word z-window
-// fill).  Stored as the 2-bit arlen value and zero-extended at the
+// read), CBW_ARLEN (blend-window fill: 0/1/3), or ZW_WORDS-1 (z-window
+// fill). Stored as a 4-bit arlen value and zero-extended at the
 // m_rd_arlen mux.
-reg [1:0]  blend_arlen_r;
+reg [3:0]  blend_arlen_r;
 
 // ----------------------------------------------------------------
-// Z read window (4 words = 8 z pixels).  The z-test detour used to
+// Z read window (default 4 words = 8 z pixels). The z-test detour used to
 // issue one single-word SDRAM read — behind a full write-drain
 // barrier — per 32-bit z word, i.e. every 2 z-tested pixels.  The
-// window turns that into one 4-beat burst read per 16-byte z line:
+// window turns that into one aligned burst read per ZW_WORDS-word line:
 // the requested word feeds the current test exactly as the old
 // single-word read did, and the sibling words are cached for the
 // following pixels.
@@ -3981,9 +4217,9 @@ reg [1:0]  blend_arlen_r;
 // reflect every prior write.  Three rules enforce that:
 //   1. The fill itself sits behind the same drain-complete barrier
 //      the single-word read used, so nothing is in flight when the
-//      4 words are captured.
+//      line's words are captured.
 //   2. EVERY fbwq push (z, color, clear — all writes go through the
-//      queue) that lands in the window's 16-byte line invalidates
+//      queue) that lands in the window's line invalidates
 //      that word, at push-accept time (before the write can even
 //      reach the queue).  A later test of that word re-reads behind
 //      the barrier.
@@ -3994,10 +4230,13 @@ reg [1:0]  blend_arlen_r;
 // FBSS_IDLE arm, exactly as it had priority over the single-word
 // read — the freshest copy always wins.
 // ----------------------------------------------------------------
-reg [3:0]              zw_valid;
-reg [GPU_ADDR_W-5:0]   zw_base;       // byte addr [GPU_ADDR_W-1:4]
-reg [31:0]             zw_word [0:3];
-reg [1:0]              zw_fill_beat;
+localparam ZW_WORDS = (GPU_Z_READ_WINDOW >= 16) ? 16 : (GPU_Z_READ_WINDOW >= 8) ? 8 : 4;
+localparam ZW_LG = $clog2(ZW_WORDS);
+localparam ZW_LOW = ZW_LG + 2;
+reg [ZW_WORDS-1:0] zw_valid;
+reg [GPU_ADDR_W-ZW_LOW-1:0] zw_base;
+reg [31:0] zw_word [0:ZW_WORDS-1];
+reg [ZW_LG-1:0] zw_fill_beat;
 
 // Registered write snoop (timing: 156 of the 200 worst paths on the first
 // OS30 fit ended at zw_valid — the push-address mux from fb_acc/z_acc/p3
@@ -4152,6 +4391,7 @@ reg [GPU_ADDR_W-1:0] fbwq_req_addr;
 reg [31:0] fbwq_req_data;
 reg [3:0]  fbwq_req_strb;
 reg        fbwq_req_combine;
+reg        fbwq_req_z_combine;
 reg        fbwq_stage_valid;
 reg [GPU_ADDR_W-1:0] fbwq_stage_addr;
 reg [31:0] fbwq_stage_data;
@@ -4163,26 +4403,34 @@ wire       fbwq_full  = (fbwq_count == 5'd16);
 // The combiner sits between the two existing registered write skid slots.
 // Its output still traverses the AXI queue: fences wait for real B responses.
 wire wc_busy;
+wire wc_draining;
 wire wc_input_ready;
 wire wc_output_valid;
 wire [GPU_ADDR_W-1:0] wc_output_addr;
 wire [31:0] wc_output_data;
 wire [3:0] wc_output_strb;
+wire wc_z_read_miss = !(z_acc_valid && (z_acc_addr == (p3_z_addr & ~3)))
+                      && !((GPU_Z_READ_WINDOW > 1) && !zw_snoop_pending
+                           && zw_valid[p3_z_addr[ZW_LOW-1:2]]
+                           && (zw_base == p3_z_addr[GPU_ADDR_W-1:ZW_LOW]));
 wire wc_flush = ((state == S_EXECUTE) && (cmd_is_fence || cmd_is_flip))
              || ((state == S_IDLE) && ring_empty && !dma_pull_busy)
              || ((state == S_FRAG_PIPE)
                  && ((fbss == FBSS_CB_REQ) || (fbss == FBSS_BLEND_REQ)
                      || ((fbss == FBSS_IDLE) && p3_valid
-                         && !p3_discard && p3_z_test)));
+                         && !p3_discard && p3_z_test
+                         && (!GPU_WRITE_COMBINE_Z || wc_z_read_miss))));
 wire [GPU_ADDR_W-1:0] fbwq_in_addr = GPU_WRITE_COMBINE ? wc_output_addr : fbwq_req_addr;
 wire [31:0] fbwq_in_data = GPU_WRITE_COMBINE ? wc_output_data : fbwq_req_data;
 wire [3:0] fbwq_in_strb = GPU_WRITE_COMBINE ? wc_output_strb : fbwq_req_strb;
 wire fbwq_in_valid = GPU_WRITE_COMBINE ? wc_output_valid : fbwq_req_valid;
 
+genvar wc_group;
 generate if (GPU_WRITE_COMBINE) begin : write_combine
     localparam TAG_W = GPU_ADDR_W-2;
     localparam WORD_W = TAG_W+36;
-    localparam WC_IDLE=3'd0, WC_APPLY=3'd1, WC_SCAN_READ=3'd2, WC_SCAN_APPLY=3'd3;
+    localparam WC_IDLE=3'd0, WC_APPLY=3'd1, WC_SCAN_READ=3'd2, WC_SCAN_APPLY=3'd3,
+               WC_SCAN_GROUP=3'd4, WC_SCAN_SELECT=3'd5;
     // One synchronous read and one write port, two M10Ks at 256 entries.
     (* ramstyle = "M10K, no_rw_check" *) reg [WORD_W-1:0] words [0:255];
     reg [WORD_W-1:0] word_r;
@@ -4194,6 +4442,23 @@ generate if (GPU_WRITE_COMBINE) begin : write_combine
     reg initializing;
     reg [7:0] walk;
     reg [8:0] dirty_count;
+    reg hash_burst_mode;
+    // A dirty bitmap skips empty entries during a forced drain. The two
+    // selection stages keep the priority encoders off the RAM/merge path.
+    reg [255:0] dirty_map;
+    wire [15:0] dirty_groups;
+    for (wc_group=0; wc_group<16; wc_group=wc_group+1) begin : dirty_group
+        assign dirty_groups[wc_group] = |dirty_map[wc_group*16 +: 16];
+    end
+    function [3:0] first_dirty;
+        input [15:0] bits;
+        integer bit_index;
+        begin
+            first_dirty = 0;
+            for (bit_index=15; bit_index>=0; bit_index=bit_index-1)
+                if (bits[bit_index]) first_dirty = bit_index;
+        end
+    endfunction
     reg flush_pending;
     reg [7:0] input_index;
     reg [TAG_W-1:0] input_tag;
@@ -4210,7 +4475,8 @@ generate if (GPU_WRITE_COMBINE) begin : write_combine
     wire [3:0] old_strb = lookup_word[3:0];
     wire hit = (old_tag == input_tag);
     wire output_free = !output_valid || fbwq_stage_can_load;
-    wire bypass = !fbwq_req_combine || ((fbwq_req_strb == 4'hf) && (dirty_count == 0));
+    wire bypass = !fbwq_req_combine || (!fbwq_req_z_combine
+                    && (fbwq_req_strb == 4'hf) && (dirty_count == 0));
     wire accept = fbwq_req_valid && wc_input_ready;
     wire apply = (phase == WC_APPLY) && (hit || (old_strb == 0) || output_free);
     wire scan_emit = (phase == WC_SCAN_APPLY) && (old_strb != 0) && output_free;
@@ -4218,13 +4484,25 @@ generate if (GPU_WRITE_COMBINE) begin : write_combine
     // Folding at bit 10 distributes 320/640-byte row strides over the RAM;
     // the full word address is still compared, so collisions only evict.
     wire [TAG_W-1:0] folded = address_word ^ (address_word >> 10) ^ (address_word >> 18);
-    wire [7:0] address_index = folded[7:0];
+    // Preserve the low three word bits for depth-tested surfaces, so a
+    // cache drain emits adjacent words in their native eight-word burst order.
+    // Legacy column writes keep their original hash and vertical reuse.
+    wire [TAG_W-1:0] line_folded = (address_word >> 3) ^ (address_word >> 10)
+                                  ^ (address_word >> 18) ^ (address_word >> 23);
+    wire request_burst_mode = GPU_WRITE_COMBINE_BURST_HASH && fbwq_req_z_combine;
+    wire hash_mode_change = fbwq_req_combine && (fbwq_req_strb != 0)
+                          && (request_burst_mode != hash_burst_mode)
+                          && ((dirty_count != 0) || (phase == WC_APPLY));
+    // Drain before changing hashes: one physical word must never be retained
+    // in two entries, even when framebuffer and depth addresses alias.
+    wire [7:0] address_index = request_burst_mode
+                            ? {line_folded[4:0], address_word[2:0]} : folded[7:0];
     wire [31:0] byte_mask = {{8{input_strb[3]}}, {8{input_strb[2]}},
                              {8{input_strb[1]}}, {8{input_strb[0]}}};
     wire [31:0] merged_data = (input_data & byte_mask)
                            | (old_data & ~byte_mask & {32{hit}});
     wire [3:0] merged_strb = input_strb | (old_strb & {4{hit}});
-    assign wc_input_ready = !initializing
+    assign wc_input_ready = !initializing && !hash_mode_change
                          && (((phase == WC_IDLE)
                               && ((fbwq_req_strb == 0) || !bypass
                                   || ((dirty_count == 0) && output_free)))
@@ -4233,6 +4511,8 @@ generate if (GPU_WRITE_COMBINE) begin : write_combine
     // Initialization blocks incoming writes but contains no older work to
     // drain. An empty fence/flip can retire while the RAM walk finishes.
     assign wc_busy = (phase != WC_IDLE) || (dirty_count != 0) || output_valid;
+    assign wc_draining = (phase == WC_SCAN_READ) || (phase == WC_SCAN_APPLY)
+                       || (phase == WC_SCAN_GROUP) || (phase == WC_SCAN_SELECT);
     assign wc_output_valid = output_valid;
     assign wc_output_addr = output_addr;
     assign wc_output_data = output_data;
@@ -4258,10 +4538,17 @@ generate if (GPU_WRITE_COMBINE) begin : write_combine
             phase <= WC_IDLE;
             walk <= 0;
             dirty_count <= 0;
+            dirty_map <= 0;
+            hash_burst_mode <= 0;
             flush_pending <= 0;
             output_valid <= 0;
             forward_valid <= 0;
         end else begin
+            if (read_input) hash_burst_mode <= request_burst_mode;
+            if (GPU_WRITE_COMBINE_FAST_FLUSH) begin
+                if (apply && (old_strb == 0)) dirty_map[input_index] <= 1'b1;
+                if (scan_emit) dirty_map[walk] <= 1'b0;
+            end
             if (ram_read) begin
                 forward_valid <= apply && (ram_write_addr == ram_read_addr);
                 forward_word <= ram_write_data;
@@ -4298,9 +4585,9 @@ generate if (GPU_WRITE_COMBINE) begin : write_combine
                             phase <= WC_APPLY;
                         end
                     end else if ((dirty_count != 0)
-                        && (wc_flush || flush_pending || (fbwq_req_valid && bypass))) begin
+                        && (wc_flush || flush_pending || (fbwq_req_valid && (bypass || hash_mode_change)))) begin
                         walk <= 0;
-                        phase <= WC_SCAN_READ;
+                        phase <= GPU_WRITE_COMBINE_FAST_FLUSH ? WC_SCAN_GROUP : WC_SCAN_READ;
                     end
                 end
                 WC_APPLY: if (apply) begin
@@ -4313,6 +4600,14 @@ generate if (GPU_WRITE_COMBINE) begin : write_combine
                     if (old_strb == 0) dirty_count <= dirty_count + 1'b1;
                     phase <= (GPU_WRITE_COMBINE_PIPE && read_input) ? WC_APPLY : WC_IDLE;
                 end
+                WC_SCAN_GROUP: begin
+                    walk[7:4] <= first_dirty(dirty_groups);
+                    phase <= WC_SCAN_SELECT;
+                end
+                WC_SCAN_SELECT: begin
+                    walk[3:0] <= first_dirty(dirty_map[{walk[7:4],4'b0} +: 16]);
+                    phase <= WC_SCAN_READ;
+                end
                 WC_SCAN_READ: phase <= WC_SCAN_APPLY;
                 WC_SCAN_APPLY: if ((old_strb == 0) || output_free) begin
                     if (old_strb != 0) begin
@@ -4322,10 +4617,16 @@ generate if (GPU_WRITE_COMBINE) begin : write_combine
                         output_strb <= old_strb;
                         dirty_count <= dirty_count - 1'b1;
                     end
-                    walk <= walk + 1'b1;
-                    if ((walk == 8'hff) || (dirty_count == 0)
-                        || ((dirty_count == 1) && (old_strb != 0))) phase <= WC_IDLE;
-                    else phase <= WC_SCAN_READ;
+                    if (GPU_WRITE_COMBINE_FAST_FLUSH) begin
+                        if ((dirty_count == 0) || ((dirty_count == 1) && (old_strb != 0)))
+                            phase <= WC_IDLE;
+                        else phase <= WC_SCAN_GROUP;
+                    end else begin
+                        walk <= walk + 1'b1;
+                        if ((walk == 8'hff) || (dirty_count == 0)
+                            || ((dirty_count == 1) && (old_strb != 0))) phase <= WC_IDLE;
+                        else phase <= WC_SCAN_READ;
+                    end
                 end
                 default: phase <= WC_IDLE;
             endcase
@@ -4333,6 +4634,7 @@ generate if (GPU_WRITE_COMBINE) begin : write_combine
     end
 end else begin : write_passthrough
     assign wc_busy = 0;
+    assign wc_draining = 0;
     assign wc_input_ready = 0;
     assign wc_output_valid = 0;
     assign wc_output_addr = 0;
@@ -4352,6 +4654,15 @@ wire fb_write_drain_complete = !z_flush_valid
                              && !z_src_pending_valid
                              && !wc_busy && !fbwq_req_valid && !fbwq_stage_valid && fbwq_empty
                              && (m_wr_inflight == 4'b0) && !m_wr_chan_busy;
+`ifdef INCLUDE_GPU_RENDER_CACHE
+assign cache_clear_bypass = cmd_is_clear_rect;
+assign cache_soft_reset   = soft_reset;
+assign cache_tex_flush    = tex_flush_req;
+assign memory_barrier_req = (state == S_EXECUTE)
+    && (cmd_class == CMDCLS_FENCE || cmd_class == CMDCLS_FLIP || cmd_class == CMDCLS_CLEAR_RECT)
+    && fb_write_drain_complete;
+`endif
+
 wire fbwq_output_idle = !m_wr_awvalid && !m_wr_wvalid;
 wire fbwq_drain_can_load = !m_wr_inflight_near_full && fbwq_output_idle;
 wire [3:0] fbwq_rd_ptr_1 = fbwq_rd_ptr + 4'd1;
@@ -4433,8 +4744,15 @@ wire fbwq_w_tail_retiring = m_wr_wvalid && m_wr_wready
                           && (fbwq_burst_remaining == 4'd0);
 wire fbwq_w_chain_start = fbwq_aw_ahead_valid
                         && (fbwq_w_tail_retiring || !m_wr_wvalid);
+// During a cache drain, allow the pending contiguous prefix to grow before
+// issuing AW. Otherwise four-cycle cache outputs become isolated one-word
+// transactions even though their addresses are consecutive. Eight words, an
+// address/mask break, or exhaustion of the cache/staging work ends the wait.
+// The queue has sixteen slots, so a full queue always permits a drain.
+wire fbwq_gather_prefix = GPU_WRITE_GATHER && !fbwq_head_chain_final
+                        && (wc_draining || wc_output_valid || fbwq_stage_valid);
 wire fbwq_start_now = !fbwq_empty && fbwq_drain_can_load
-                    && !fbwq_aw_ahead_valid;
+                    && !fbwq_aw_ahead_valid && !fbwq_gather_prefix;
 wire fbwq_continue_now = m_wr_wvalid && m_wr_wready && (fbwq_burst_remaining != 4'd0);
 wire fbwq_pop_now = fbwq_start_now || fbwq_continue_now || fbwq_w_chain_start;
 wire [4:0] fbwq_pop_count = fbwq_pop_now ? 5'd1 : 5'd0;
@@ -4449,8 +4767,9 @@ wire [4:0] fbwq_pop_count = fbwq_pop_now ? 5'd1 : 5'd0;
 // by the acceptance suite.
 wire fbwq_can_enqueue = !fbwq_full;
 // Burst-link compares, hoisted to wires (also reused by the swap path
-// below).  "older entry links newer" = both full-word strobes, older's
-// address word-consecutive with newer's, and no 4 KB-page cross.
+// below). "older entry links newer" requires consecutive word addresses
+// and no 4 KB-page cross. Legacy builds also require full-word strobes;
+// masked bursts retain each entry's byte enables on its individual W beat.
 // The req-side ±4 offsets are computed ONCE and the compares moved onto
 // them (equality under mod-2^GPU_ADDR_W addition is bijective, so
 // (a == b + 4) <=> (a - 4 == b) — bit-identical) so the three predicates
@@ -4458,18 +4777,18 @@ wire fbwq_can_enqueue = !fbwq_full;
 wire [GPU_ADDR_W-1:0] fbwq_req_m4 = fbwq_in_addr - {{(GPU_ADDR_W-3){1'b0}}, 3'd4};
 wire [GPU_ADDR_W-1:0] fbwq_req_p4 = fbwq_req_addr + {{(GPU_ADDR_W-3){1'b0}}, 3'd4};
 wire fbwq_req_links_fifo_tail_w =
-       (fbwq_tail_strb == 4'hF)
-    && (fbwq_in_strb == 4'hF)
+       (GPU_MASKED_WRITE_BURSTS || (fbwq_tail_strb == 4'hF))
+    && (GPU_MASKED_WRITE_BURSTS || (fbwq_in_strb == 4'hF))
     && (fbwq_tail_addr[11:0] <= 12'hFF8)
     && (fbwq_req_m4 == fbwq_tail_addr);
 wire fbwq_req_links_stage_tail_w =
-       (fbwq_stage_strb == 4'hF)
-    && (fbwq_in_strb == 4'hF)
+       (GPU_MASKED_WRITE_BURSTS || (fbwq_stage_strb == 4'hF))
+    && (GPU_MASKED_WRITE_BURSTS || (fbwq_in_strb == 4'hF))
     && (fbwq_stage_addr[11:0] <= 12'hFF8)
     && (fbwq_req_m4 == fbwq_stage_addr);
 wire fbwq_stage_links_req_w =
-       (fbwq_req_strb == 4'hF)
-    && (fbwq_stage_strb == 4'hF)
+       (GPU_MASKED_WRITE_BURSTS || (fbwq_req_strb == 4'hF))
+    && (GPU_MASKED_WRITE_BURSTS || (fbwq_stage_strb == 4'hF))
     && (fbwq_req_addr[11:0] <= 12'hFF8)
     && (fbwq_stage_addr == fbwq_req_p4);
 // Tail-1 link repair ("skid swap"): FB/Z interleave lands entries in
@@ -4482,7 +4801,15 @@ wire fbwq_stage_links_req_w =
 // inequality term (every RMW reader — z-test, blend — gates on
 // fb_write_drain_complete, so in-queue order is invisible to reads).
 // The swap repairs the chain: ...FB1, FB2, Z1...
-wire fbwq_swap_now = !GPU_WRITE_COMBINE && fbwq_stage_valid && fbwq_req_valid && fbwq_can_enqueue
+// Behind the render cache the swap never changes SM64's timing (co-sim
+// events identical, tools/experiments/sm64_cache_20260924), and its link
+// compare was os30's widest GPU setup cone, through fp_pipe_shift_blocked.
+`ifdef INCLUDE_GPU_RENDER_CACHE
+localparam FBWQ_SKID_SWAP = 0;
+`else
+localparam FBWQ_SKID_SWAP = 1;
+`endif
+wire fbwq_swap_now = FBWQ_SKID_SWAP && !GPU_WRITE_COMBINE && fbwq_stage_valid && fbwq_req_valid && fbwq_can_enqueue
                   && !fbwq_empty
                   && fbwq_req_links_fifo_tail_w
                   && !fbwq_stage_link_tail
@@ -4503,6 +4830,106 @@ wire p3_needs_fb_flush = p3_valid && !p3_discard && !p3_flags[SPAN_TRANSLUC]
                        && (fb_acc_addr[GPU_ADDR_W-1:2] != p3_fb_addr[GPU_ADDR_W-1:2]);
 wire fb_write_buffer_stall = p3_needs_fb_flush && !fb_write_can_issue;
 wire [GPU_ADDR_W-1:0] p3_fb_word_addr_w = p3_fb_addr & {{(GPU_ADDR_W-2){1'b1}}, 2'b00};
+
+// Barrier for the z / blend-dst window fills.  The arbiter lets GPU reads
+// overtake posted GPU writes, so the default waits for every write to drain.
+// INCLUDE_GPU_SELECTIVE_READ_WAIT instead waits only while a queued or
+// posted write touches the read's 64-byte line.  Every fbwq entry carries a
+// line tag until its W beat leaves; once a burst's first beat leaves, a
+// scoreboard entry holds the first and latest departed beats' tags until the
+// burst's (in-order) B.  Burst beats are consecutive words (<= 8, so at most
+// two lines), hence {queued entries} U {first, latest} covers every line a
+// posted burst writes, from AW issue until B.
+// Tags are XOR-folds of the line address: equal lines always fold equal, so
+// narrowing SRW_TAG_W only adds false waits, never a missed conflict.  All
+// tags are registered where their address is (the read tags ride with
+// p3_*_addr / blend_group_word_addr), so the decision cone is 6-bit compares.
+// The req/stage/combiner/z-flush holding registers still force a full wait.
+// 6 bits: SM64 castle/Bowser/CPU-contention frame times identical to the
+// full 20-bit tag in the live model (tools/experiments/sm64_srw_20260923).
+`ifdef INCLUDE_GPU_SELECTIVE_READ_WAIT
+`ifndef GPU_SRW_TAG_W
+`define GPU_SRW_TAG_W 6
+`endif
+localparam SRW_TAG_W = `GPU_SRW_TAG_W;
+function [SRW_TAG_W-1:0] srw_tag(input [GPU_ADDR_W-1:0] a);
+    integer k;
+    begin
+        srw_tag = {SRW_TAG_W{1'b0}};
+        for (k = 6; k < GPU_ADDR_W; k = k + 1)
+            srw_tag[(k - 6) % SRW_TAG_W] = srw_tag[(k - 6) % SRW_TAG_W] ^ a[k];
+    end
+endfunction
+reg [SRW_TAG_W-1:0] p3_z_srw_tag, p3_fb_srw_tag, blend_srw_tag;
+reg [SRW_TAG_W-1:0] srw_q_tag [0:FBWQ_DEPTH-1];
+reg [FBWQ_DEPTH-1:0] srw_q_valid;
+reg [SRW_TAG_W-1:0] srw_b_first [0:15], srw_b_last [0:15];
+reg [15:0] srw_b_valid;
+reg [3:0] srw_b_head, srw_b_tail;
+wire [3:0] srw_b_cur = srw_b_tail - 4'd1;
+wire srw_q_push = fbwq_swap_now || fbwq_stage_drain_now;
+wire srw_first_beat = fbwq_start_now || fbwq_w_chain_start;
+wire srw_q_pop = srw_first_beat || fbwq_continue_now;
+// A push lands in a one-entry pending register first and reaches the tag
+// array a cycle later, so the late swap/stage decision only drives a few
+// flops.  The pending entry is part of the conflict check and bypasses the
+// first-beat tag read, so the checked set of lines is unchanged every cycle.
+reg srw_p_valid;
+reg [3:0] srw_p_idx;
+reg [SRW_TAG_W-1:0] srw_p_tag;
+wire [SRW_TAG_W-1:0] srw_pop_tag = (srw_p_valid && srw_p_idx == fbwq_rd_ptr)
+                                 ? srw_p_tag : srw_q_tag[fbwq_rd_ptr];
+always @(posedge clk) begin
+    if (!reset_n || soft_reset) begin
+        srw_q_valid <= {FBWQ_DEPTH{1'b0}};
+        srw_p_valid <= 1'b0;
+        srw_b_valid <= 16'b0;
+        srw_b_head <= 4'd0;
+        srw_b_tail <= 4'd0;
+    end else begin
+        srw_p_valid <= srw_q_push;
+        srw_p_idx <= fbwq_wr_ptr;
+        // Fold both registered candidates; the late swap decision only selects.
+        srw_p_tag <= fbwq_swap_now ? srw_tag(fbwq_req_addr) : srw_tag(fbwq_stage_addr);
+        if (srw_p_valid) begin
+            srw_q_valid[srw_p_idx] <= 1'b1;
+            srw_q_tag[srw_p_idx] <= srw_p_tag;
+        end
+        // After the commit: an entry popped the cycle after its push ends invalid.
+        if (srw_q_pop) srw_q_valid[fbwq_rd_ptr] <= 1'b0;
+        if (m_wr_bvalid) begin
+            srw_b_valid[srw_b_head] <= 1'b0;
+            srw_b_head <= srw_b_head + 1'b1;
+        end
+        if (srw_first_beat) begin
+            srw_b_valid[srw_b_tail] <= 1'b1;
+            srw_b_first[srw_b_tail] <= srw_pop_tag;
+            srw_b_last[srw_b_tail] <= srw_pop_tag;
+            srw_b_tail <= srw_b_tail + 1'b1;
+        end else if (fbwq_continue_now) begin
+            srw_b_last[srw_b_cur] <= srw_pop_tag;
+        end
+    end
+end
+wire [SRW_TAG_W-1:0] srw_read_tag = (fbss == FBSS_CB_REQ) ? p3_fb_srw_tag
+    : (fbss == FBSS_BLEND_REQ) ? blend_srw_tag : p3_z_srw_tag;
+reg srw_conflict;
+integer srw_i;
+always @* begin
+    srw_conflict = srw_p_valid && (srw_p_tag == srw_read_tag);
+    for (srw_i = 0; srw_i < 16; srw_i = srw_i + 1) begin
+        if (srw_q_valid[srw_i] && (srw_q_tag[srw_i] == srw_read_tag))
+            srw_conflict = 1'b1;
+        if (srw_b_valid[srw_i] && ((srw_b_first[srw_i] == srw_read_tag)
+                                  || (srw_b_last[srw_i] == srw_read_tag)))
+            srw_conflict = 1'b1;
+    end
+end
+wire fb_read_barrier_clear = !z_flush_valid && !z_src_pending_valid && !wc_busy
+                           && !fbwq_req_valid && !fbwq_stage_valid && !srw_conflict;
+`else
+wire fb_read_barrier_clear = fb_write_drain_complete;
+`endif
 // Truecolor writes a 16-bit RGB565 pixel (2 byte lanes, selected by
 // p3_fb_addr[1]); palettized writes one CI8 byte lane (existing path).
 wire [3:0]  p3_fb_lane_mask_w = sp_truecolor
@@ -4619,14 +5046,40 @@ wire [15:0] cb_acc_dst_w   = p3_fb_addr[1] ? fb_acc_data[31:16]
 // decode ahead of the multipliers cost -1.5 ns (sp_truecolor -> cb_sr), so
 // the stale refresh is a 1-cycle FSM state like RESOLVE, not an IDLE-cycle
 // special case.
+`ifdef INCLUDE_CB_REFRESH_PIPE
+// Refresh selects the accumulator half into cb_dst_r first.  RESOLVE then
+// shares the normal multipliers without a framebuffer lane mux at their input.
+wire [15:0] cbm_src_w   = (fbss == FBSS_CB_RESOLVE) ? p3_color : p2b_color;
+wire [15:0] cbm_dst_w   = (fbss == FBSS_CB_RESOLVE) ? cb_dst_r : p2b_cb_dst;
+`else
 wire [15:0] cbm_src_w   = (fbss == FBSS_CB_RESOLVE || fbss == FBSS_CB_REFRESH)
                         ? p3_color : p2b_color;
 wire [15:0] cbm_dst_w   = (fbss == FBSS_CB_REFRESH) ? cb_acc_dst_w
                         : (fbss == FBSS_CB_RESOLVE) ? cb_dst_r
                         :                             p2b_cb_dst;
+`endif
+`ifdef INCLUDE_CB_SPLIT_MULT
+// Spare DSPs separate normal fragments from parked blend misses.  Selecting
+// the completed sums keeps the FSM operand mux off the multiplier inputs.
+reg [6:0] cb_inv_a6; // Span-constant destination weight, captured with sp_a6.
+wire [15:0] cb_slow_dst_w = `ifdef INCLUDE_CB_REFRESH_PIPE cb_dst_r;
+                          `else (fbss == FBSS_CB_REFRESH) ? cb_acc_dst_w : cb_dst_r;
+                          `endif
+wire cb_slow_sum_w = (fbss == FBSS_CB_RESOLVE || fbss == FBSS_CB_REFRESH);
+wire [12:0] cb_fast_r_w = p2b_color[15:11] * sp_a6 + p2b_cb_dst[15:11] * cb_inv_a6;
+wire [12:0] cb_fast_g_w = p2b_color[10:5] * sp_a6 + p2b_cb_dst[10:5] * cb_inv_a6;
+wire [12:0] cb_fast_b_w = p2b_color[4:0] * sp_a6 + p2b_cb_dst[4:0] * cb_inv_a6;
+wire [12:0] cb_slow_r_w = p3_color[15:11] * sp_a6 + cb_slow_dst_w[15:11] * cb_inv_a6;
+wire [12:0] cb_slow_g_w = p3_color[10:5] * sp_a6 + cb_slow_dst_w[10:5] * cb_inv_a6;
+wire [12:0] cb_slow_b_w = p3_color[4:0] * sp_a6 + cb_slow_dst_w[4:0] * cb_inv_a6;
+wire [12:0] cbm_sum_r_w = cb_slow_sum_w ? cb_slow_r_w : cb_fast_r_w;
+wire [12:0] cbm_sum_g_w = cb_slow_sum_w ? cb_slow_g_w : cb_fast_g_w;
+wire [12:0] cbm_sum_b_w = cb_slow_sum_w ? cb_slow_b_w : cb_fast_b_w;
+`else
 wire [12:0] cbm_sum_r_w = cbm_src_w[15:11] * sp_a6 + cbm_dst_w[15:11] * (7'd64 - sp_a6);
 wire [12:0] cbm_sum_g_w = cbm_src_w[10:5]  * sp_a6 + cbm_dst_w[10:5]  * (7'd64 - sp_a6);
 wire [12:0] cbm_sum_b_w = cbm_src_w[4:0]   * sp_a6 + cbm_dst_w[4:0]   * (7'd64 - sp_a6);
+`endif
 // ADDR dedup (audit A1): the 32-bit byte-lane data mask is the byte-wise
 // replication of the 4-bit strobe — derive it from the ONE lane decoder
 // above instead of elaborating fb_lane_data_mask()'s second 2:4 decode.
@@ -4701,6 +5154,103 @@ wire [TEX_META_W+15:0] stream_result;
 wire stream_result_pop = GPU_STREAM_PIPE && (state == S_FRAG_PIPE)
                       && stream_result_valid && (!p1_valid || !fp_pipe_stall);
 generate if (GPU_STREAM_PIPE) begin : tex_stream
+`ifdef INCLUDE_TEX_QUEUE_RAM
+    // Queue RAM form (os30).  Fragment metadata is written ONCE, at request
+    // push, into its own 8-entry FIFO and read at result pop; the request and
+    // result RAMs carry only {texel address, wide} and the texel.  Every
+    // fragment between push and pop is either a queued request (<= 4, the
+    // launch credit) or a reserved result (<= 4), so 8 entries never
+    // overflow.  A result pops >= 3 cycles after its request push (push ->
+    // req_pop -> res_push -> pop, each registered), and meta_raw re-reads the
+    // head every cycle, so the metadata read never needs write forwarding.
+    // Counters, credits and request/response cycles are unchanged.
+    localparam REQ_W = GPU_ADDR_W + 1;
+`ifdef INCLUDE_TEX_QUEUE_MLAB
+    // Same RTL in MLABs (registered reads in LAB flops): for builds with no
+    // M10K to spare, ~9 MLABs instead of the 14 the combined-entry MLAB form
+    // needs, and without its 110-bit lookup copy.
+    (* ramstyle = "MLAB, no_rw_check" *) reg [REQ_W-1:0] requests [0:3];
+    (* ramstyle = "MLAB, no_rw_check" *) reg [15:0] results [0:3];
+    (* ramstyle = "MLAB, no_rw_check" *) reg [TEX_META_W-1:0] metas [0:7];
+`else
+    (* ramstyle = "M10K, no_rw_check" *) reg [REQ_W-1:0] requests [0:3];
+    (* ramstyle = "M10K, no_rw_check" *) reg [15:0] results [0:3];
+    (* ramstyle = "M10K, no_rw_check" *) reg [TEX_META_W-1:0] metas [0:7];
+`endif
+    reg [1:0] req_rd, req_wr, res_rd, res_wr;
+    reg [2:0] meta_rd, meta_wr;
+    reg [2:0] req_count, req_reserved, res_count, res_reserved;
+    reg lookup_pending;
+    reg lookup_wide;
+    wire req_push = (state == S_FRAG_PIPE) && p0_valid;
+    wire req_pop = tex_req_valid && tex_req_ready;
+    wire res_push = lookup_pending && tex_resp_valid;
+    wire [15:0] res_data = lookup_wide ? tex_resp_data : {8'd0, tex_resp_data[7:0]};
+    // Prefetch the head used after this edge. A same-address write forwards
+    // the newly enqueued word, including the first push into an empty queue.
+    wire [1:0] req_next = req_rd + {1'b0, req_pop};
+    wire [1:0] res_next = res_rd + {1'b0, stream_result_pop};
+    wire [2:0] meta_next = meta_rd + {2'b0, stream_result_pop};
+    reg [REQ_W-1:0] req_raw, req_forward;
+    reg [15:0] res_raw, res_forward;
+    reg [TEX_META_W-1:0] meta_raw;
+    reg req_forward_valid, res_forward_valid;
+    always @(posedge clk) begin
+        req_raw <= requests[req_next];
+        res_raw <= results[res_next];
+        meta_raw <= metas[meta_next];
+        req_forward <= {fp_tex_addr_full, sp_truecolor};
+        res_forward <= res_data;
+        req_forward_valid <= req_push && (req_wr == req_next);
+        res_forward_valid <= res_push && (res_wr == res_next);
+    end
+    wire [REQ_W-1:0] req_head = req_forward_valid ? req_forward : req_raw;
+    assign stream_result = {meta_raw, res_forward_valid ? res_forward : res_raw};
+
+    assign stream_launch = (state == S_FRAG_PIPE) && p0a_valid
+                        && (req_reserved < 3'd4);
+    assign stream_pending = (req_reserved != 0) || (res_reserved != 0);
+    assign stream_result_valid = (res_count != 0);
+    assign tex_req_valid = (state == S_FRAG_PIPE) && (req_count != 0)
+                        && (res_reserved < 3'd4)
+                        && (!lookup_pending || tex_resp_valid);
+    assign {tex_req_addr, tex_req_wide} = req_head;
+
+    always @(posedge clk) begin
+        if (req_push) begin
+            requests[req_wr] <= {fp_tex_addr_full, sp_truecolor};
+            metas[meta_wr] <= p0_tex_meta;
+        end
+        if (res_push)
+            results[res_wr] <= res_data;
+        if (!reset_n || soft_reset) begin
+            req_rd <= 0; req_wr <= 0; res_rd <= 0; res_wr <= 0;
+            meta_rd <= 0; meta_wr <= 0;
+            req_count <= 0; req_reserved <= 0;
+            res_count <= 0; res_reserved <= 0;
+            lookup_pending <= 0;
+        end else begin
+            req_count <= req_count + {2'd0, req_push} - {2'd0, req_pop};
+            req_reserved <= req_reserved + {2'd0, stream_launch} - {2'd0, req_pop};
+            res_count <= res_count + {2'd0, res_push} - {2'd0, stream_result_pop};
+            res_reserved <= res_reserved + {2'd0, req_pop} - {2'd0, stream_result_pop};
+            if (req_push) begin
+                req_wr <= req_wr + 1'b1;
+                meta_wr <= meta_wr + 1'b1;
+            end
+            if (req_pop) begin
+                req_rd <= req_rd + 1'b1;
+                lookup_wide <= tex_req_wide;
+                lookup_pending <= 1;
+            end else if (res_push) lookup_pending <= 0;
+            if (res_push) res_wr <= res_wr + 1'b1;
+            if (stream_result_pop) begin
+                res_rd <= res_rd + 1'b1;
+                meta_rd <= meta_rd + 1'b1;
+            end
+        end
+    end
+`else
     localparam REQ_W = TEX_META_W + GPU_ADDR_W + 1;
     // Four entries absorb backend pauses without a combinational fallthrough.
     (* ramstyle = "MLAB, no_rw_check" *) reg [REQ_W-1:0] requests [0:3];
@@ -4752,6 +5302,7 @@ generate if (GPU_STREAM_PIPE) begin : tex_stream
             if (stream_result_pop) res_rd <= res_rd + 1'b1;
         end
     end
+`endif
 end else begin : tex_single
     assign stream_launch = 1'b0;
     assign stream_pending = 1'b0;
@@ -4932,6 +5483,7 @@ reg [5:0] persp_pss;
 reg signed [31:0] recip_q16_r;       // Q16, or Q(16+PSS_Q29_RECIP_EXTRA) for Q29
 reg signed [31:0] nr_two_minus_xy;
 reg        sp_persp_q29_mode;
+wire pss_use_q29 = (!PRUNE_DISABLED_SETUP || EFF_Q29) && sp_persp_q29_mode;
 
 // PSS pass type — what PSS_FINAL should do with the computed (s_end, t_end).
 localparam PSS_PASS_ANCHOR = 2'd0;  // pass 1: anchor only → persp_anchor_s/t
@@ -4958,9 +5510,9 @@ generate if (GPU_PSS_RECIP_CACHE && INCLUDE_PARAM_SPAN_Q29) begin : pss_recip_ca
     reg [64:0] entry_r;
     reg valid_r;
     wire lookup = state == S_FRAG_PIPE && persp_active
-               && persp_pss == PSS_CLZ && sp_persp_q29_mode;
+               && persp_pss == PSS_CLZ && pss_use_q29;
     wire fill = state == S_FRAG_PIPE && persp_active
-             && persp_pss == PSS_NR_CAPTURE && sp_persp_q29_mode;
+             && persp_pss == PSS_NR_CAPTURE && pss_use_q29;
 
     // Lookup overlaps the existing CLZ stage. A miss follows the original
     // schedule; a hit skips LUT scaling and Newton-Raphson. Full tags make
@@ -5071,6 +5623,8 @@ reg pss_zinv_prev_negative;
 reg pss_zinv_prev_nonzero;
 reg        [31:0] pss_zinv_abs_na_r;
 reg [4:0] pss_slope_divisor;
+wire [4:0] pss_effective_divisor = (!PRUNE_DISABLED_SETUP || EFF_Q29)
+    ? pss_slope_divisor : 5'd16;
 reg signed [31:0] pss_slope_s_delta;
 reg signed [31:0] pss_slope_t_delta;
 reg        pss_slope_s_neg;
@@ -5087,7 +5641,9 @@ reg        pss_slope_t_corr;
 reg signed [31:0] pss_tail_s_delta;
 reg signed [31:0] pss_tail_t_delta;
 reg [4:0] pss_tail_advance;
-wire pss_full_advance = (pss_tail_advance == 5'd16);
+wire [4:0] pss_effective_tail = (!PRUNE_DISABLED_SETUP || EFF_Q29)
+    ? pss_tail_advance : 5'd16;
+wire pss_full_advance = (pss_effective_tail == 5'd16);
 wire signed [31:0] pss_advance_s_delta = pss_full_advance
     ? (sp_sZstep <<< 4) : pss_tail_s_delta;
 wire signed [31:0] pss_advance_t_delta = pss_full_advance
@@ -5240,21 +5796,32 @@ wire [GPU_ADDR_W-1:0] p2b_z_word_addr_w = p2b_z_addr & {{(GPU_ADDR_W-2){1'b1}}, 
 wire p2b_zf_acc_hit = z_acc_valid && (z_acc_addr == p2b_z_word_addr_w);
 wire p2b_zf_zw_hit  = (GPU_Z_READ_WINDOW > 1)
                     && !zw_snoop_pending
-                    && zw_valid[p2b_z_word_addr_w[3:2]]
-                    && (zw_base == p2b_z_word_addr_w[GPU_ADDR_W-1:4]);
+                    && zw_valid[p2b_z_word_addr_w[ZW_LOW-1:2]]
+                    && (zw_base == p2b_z_word_addr_w[GPU_ADDR_W-1:ZW_LOW]);
 // PRUNE GATE: with GPU_Z_READ_WINDOW==1 the zw arm is constant 0 so the
 // zw_word read below folds to the constant else-arm and the window
 // storage stays write-only (swept), as before.
 wire [31:0] p2b_zf_word = p2b_zf_acc_hit ? {z_acc_hi, z_acc_lo}
                         : (GPU_Z_READ_WINDOW > 1)
-                          ? zw_word[p2b_z_word_addr_w[3:2]]
+                          ? zw_word[p2b_z_word_addr_w[ZW_LOW-1:2]]
                           : 32'd0;
 wire [15:0] p2b_zf_old_half = fb_halfword_read(p2b_zf_word, p2b_z_addr[1]);
 wire p2b_zf_fold = p2b_valid && p2b_z_test && !p2b_discard
                  && !p2b_flags[SPAN_TRANSLUC]
                  && (p2b_zf_acc_hit
                      || (p2b_zf_zw_hit && (!z_acc_valid || !p2b_z_write)));
+`ifdef INCLUDE_Z_COMPARE_PARALLEL
+// Compare both resident sources while their address tags are checked.  The
+// tag selects one verdict instead of preceding a 16-bit depth comparator.
+// The live accumulator still wins, including the preceding pixel's write.
+wire [31:0] p2b_zf_window_word = (GPU_Z_READ_WINDOW > 1)
+                                ? zw_word[p2b_z_word_addr_w[ZW_LOW-1:2]] : 32'd0;
+wire p2b_zf_acc_pass = p2b_z_value >= (p2b_z_addr[1] ? z_acc_hi : z_acc_lo);
+wire p2b_zf_window_pass = p2b_z_value >= fb_halfword_read(p2b_zf_window_word, p2b_z_addr[1]);
+wire p2b_zf_pass = p2b_zf_acc_hit ? p2b_zf_acc_pass : p2b_zf_window_pass;
+`else
 wire p2b_zf_pass = (p2b_z_value >= p2b_zf_old_half);
+`endif
 reg        z_flush_valid;
 reg [GPU_ADDR_W-1:0] z_flush_addr;
 reg [31:0] z_flush_data;
@@ -5485,6 +6052,12 @@ always @(posedge clk) begin : main_fsm
         p0a_fb_addr <= 0;
         p0a_s_int <= 0; p0a_tex_base <= 0;
         p0a_t_y <= 0; p0a_tex_width <= 0;
+`ifdef INCLUDE_GPU_CLAMP_PIPE
+        sp_s_min_mirrored <= 0; sp_s_max_mirrored <= 0;
+        sp_t_min_mirrored <= 0; sp_t_max_mirrored <= 0;
+        p0a_s_below <= 0; p0a_s_above <= 0;
+        p0a_t_below <= 0; p0a_t_above <= 0;
+`endif
         p0a_z_test <= 0; p0a_z_write <= 0; p0a_z_addr <= 0; p0a_z_value <= 0;
         p0_valid <= 0; p0_light <= 0; p0_colormap_id <= 0; p0_flags <= 0;
         p0_fb_addr <= 0;
@@ -5507,6 +6080,9 @@ always @(posedge clk) begin : main_fsm
         p3_valid <= 0; p3_color <= 0; p3_flags <= 0;
         p3_fb_addr <= 0; p3_discard <= 0;
         p3_z_test <= 0; p3_z_write <= 0; p3_z_addr <= 0; p3_z_value <= 0;
+`ifdef INCLUDE_GPU_SELECTIVE_READ_WAIT
+        p3_fb_srw_tag <= 0; p3_z_srw_tag <= 0; blend_srw_tag <= 0;
+`endif
         transluc_rd_addr <= 15'b0;
         transluc_lookup_fire <= 1'b0;
         cmap_pending_valid <= 1'b0;
@@ -5519,7 +6095,7 @@ always @(posedge clk) begin : main_fsm
         blend_araddr     <= 0;
         blend_arlen_r    <= 2'd0;
         zw_valid         <= 4'b0;
-        zw_base          <= {(GPU_ADDR_W-4){1'b0}};
+        zw_base          <= 0;
         zw_fill_beat     <= 2'd0;
         zw_snoop_pending <= 1'b0;
         cbw_valid        <= 4'b0;
@@ -5747,9 +6323,23 @@ always @(posedge clk) begin : main_fsm
             // Otherwise Quartus maps the sparse state-machine assignments
             // into a wide DSP input clock-enable cone that reaches through
             // the texture-cache stall path.
+`ifdef INCLUDE_SPAN_OPERAND_DEFAULT
+            // Span attributes share these coordinates. Leave them on the
+            // input between launches so the span state does not gate a
+            // wide operand mux. Other clients override both operands;
+            // idle products remain zero because the B defaults are zero.
+            dsp_a <= $signed({{16{spanprod_cur_u[15]}}, spanprod_cur_u});
+            dsp2_a <= $signed({{16{spanprod_cur_v[15]}}, spanprod_cur_v});
+            dsp_b <= 32'sd0;
+`elsif INCLUDE_SPAN_DEDICATED_MULT
+            dsp_a <= 32'sd0;
+            dsp2_a <= 32'sd0;
+            dsp_b <= 32'sd0;
+`else
             dsp_a <= 32'sd0;
             dsp_b <= 32'sd0;
             dsp2_a <= 32'sd0;
+`endif
             dsp2_b <= 32'sd0;
             // m_wr inflight counter for CMD_FENCE / CMD_FLIP drain.
             // Increment when an AW handshake fires; decrement when a B
@@ -6443,12 +7033,24 @@ always @(posedge clk) begin : main_fsm
                 // 0x51: 3 raw verts {x,y,z} Q16.16 + s/t passthrough (parked in
                 // the derive's raw-s/t slots) + light.  S_XFORM transforms them.
                 case (pay_idx)
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd0: xf_vx[0] <= ring_rd_data; 6'd1: xf_vy[0] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd2: xf_vz[0] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd3: xf_vx[1] <= ring_rd_data; 6'd4: xf_vy[1] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd5: xf_vz[1] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd6: xf_vx[2] <= ring_rd_data; 6'd7: xf_vy[2] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd8: xf_vz[2] <= ring_rd_data;
+`endif
                     6'd9:  dv_szi[0] <= ring_rd_data; 6'd10: dv_szi[1] <= ring_rd_data;
                     6'd11: dv_szi[2] <= ring_rd_data;
                     6'd12: dv_tzi[0] <= ring_rd_data; 6'd13: dv_tzi[1] <= ring_rd_data;
@@ -6468,12 +7070,24 @@ always @(posedge clk) begin : main_fsm
                 // in place of 0x51's packed light word.  zi+depth are GPU-computed
                 // in S_XFORM (no per-draw zi/depth words).
                 case (pay_idx)
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd0: xf_vx[0] <= ring_rd_data; 6'd1: xf_vy[0] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd2: xf_vz[0] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd3: xf_vx[1] <= ring_rd_data; 6'd4: xf_vy[1] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd5: xf_vz[1] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd6: xf_vx[2] <= ring_rd_data; 6'd7: xf_vy[2] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd8: xf_vz[2] <= ring_rd_data;
+`endif
                     6'd9:  dv_szi[0] <= ring_rd_data; 6'd10: dv_szi[1] <= ring_rd_data;
                     6'd11: dv_szi[2] <= ring_rd_data;
                     6'd12: dv_tzi[0] <= ring_rd_data; 6'd13: dv_tzi[1] <= ring_rd_data;
@@ -6499,9 +7113,15 @@ always @(posedge clk) begin : main_fsm
                 // transforms it and writes the slot (see XF_PROJ_LAUNCH).
                 case (pay_idx)
                     6'd0: xf_load_slot <= ring_rd_data[4:0];
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd1: xf_vx[0] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd2: xf_vy[0] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd3: xf_vz[0] <= ring_rd_data;
+`endif
                     6'd4: dv_szi[0] <= ring_rd_data;   // raw s (rows==3 passthrough)
                     6'd5: dv_tzi[0] <= ring_rd_data;   // raw t
                     6'd6: begin vt_rrow[0] <= ring_rd_data[15:11];
@@ -6549,9 +7169,15 @@ always @(posedge clk) begin : main_fsm
                 // and computes lighting -> RGB565, then writes the cache slot.
                 case (pay_idx)
                     6'd0: xf_load_slot <= ring_rd_data[4:0];
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd1: xf_vx[0] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd2: xf_vy[0] <= ring_rd_data;
+`endif
+`ifndef INCLUDE_XFORM_VERTEX_RAM
                     6'd3: xf_vz[0] <= ring_rd_data;
+`endif
                     6'd4: xf_nx <= ring_rd_data;
                     6'd5: xf_ny <= ring_rd_data;
                     6'd6: xf_nz <= ring_rd_data;
@@ -6633,7 +7259,11 @@ always @(posedge clk) begin : main_fsm
             CMDCLS_FENCE: begin
                 // Stall until all outstanding m_wr_* writes commit; then
                 // publish the fence token and retire to S_IDLE.
-                if (fb_write_drain_complete) begin
+                if (fb_write_drain_complete
+`ifdef INCLUDE_GPU_RENDER_CACHE
+                    && memory_barrier_done
+`endif
+                    ) begin
                     fence_reached <= pending_fence_token;
                     state         <= S_IDLE;
                 end
@@ -6646,7 +7276,11 @@ always @(posedge clk) begin : main_fsm
                 // if we pulse while it is already full, the ready index is
                 // overwritten.  Hold the command here until vsync consumes the
                 // previous request, then publish fence with the swap pulse.
-                if (fb_write_drain_complete && !slave_swap_pending) begin
+                if (fb_write_drain_complete && !slave_swap_pending
+`ifdef INCLUDE_GPU_RENDER_CACHE
+                    && memory_barrier_done
+`endif
+                    ) begin
                     gpu_swap_req  <= 1'b1;
                     gpu_swap_idx  <= pending_swap_idx;
                     fence_reached <= pending_fence_token;
@@ -6657,6 +7291,10 @@ always @(posedge clk) begin : main_fsm
                 state <= S_IDLE;
             end
             CMDCLS_CLEAR_RECT: begin
+`ifdef INCLUDE_GPU_RENDER_CACHE
+                // Write back and invalidate first: the clear bypasses the cache.
+                if (fb_write_drain_complete && memory_barrier_done)
+`endif
                 state <= S_CLEAR_RECT;
             end
             CMDCLS_SPAN_COL: begin
@@ -6806,7 +7444,7 @@ always @(posedge clk) begin : main_fsm
                     xf_lit      <= 1'b0;   // T4: explicit RGB, no GPU lighting
                     xf_clip     <= cmd_is_draw_clip_tri;  // 0x4F: skip the MAC
                     xf_last_vtx <= 2'd2;   // 3 verts -> a triangle
-                    xf_state    <= cmd_is_draw_clip_tri ? XF_CLIP_FEED : XF_MAC_A;
+                    xf_state    <= cmd_is_draw_clip_tri ? XF_CLIP_ENTRY : XF_MAC_A;
                     state       <= S_XFORM;
                 end else begin
                     state <= S_IDLE;
@@ -6850,7 +7488,7 @@ always @(posedge clk) begin : main_fsm
                     xf_lit      <= 1'b0;
                     xf_clip     <= 1'b1;   // multi-vert-safe if last_vtx ever grows
                     xf_last_vtx <= 2'd0;
-                    xf_state    <= XF_CLIP_FEED;
+                    xf_state    <= XF_CLIP_ENTRY;
                     state       <= S_XFORM;
                 end else begin
                     state <= S_IDLE;
@@ -7018,7 +7656,30 @@ always @(posedge clk) begin : main_fsm
                     // settled s*zi / t*zi products read by DRV_DA_PREP later.
                     dv_szi[2] <= dsp_p[47:16];
                     dv_tzi[2] <= dsp2_p[47:16];
-                    dstate <= DRV_DELTA;
+                    if ((INCLUDE_XFORM_RGB != 0) && !vt_q29_en &&
+                        (cmd_is_draw_indexed_tri || cmd_is_draw_clip_tri ||
+                         cmd_is_draw_xform_tri_rgb)) begin
+                        norm_shift <= 0;
+                        dstate <= DRV_NORMALIZE;
+                    end else dstate <= DRV_DELTA;
+                end
+                DRV_NORMALIZE: begin
+                    // Stop once a value needs more than 28 signed magnitude
+                    // bits, or after 16 shifts. Every shifted value fits in
+                    // [-2^29, 2^29), retaining headroom for edge differences.
+                    if (norm_ready || norm_shift == 16) dstate <= DRV_DELTA;
+                    else begin
+                        dv_szi[0] <= dv_szi[0] << 1;
+                        dv_szi[1] <= dv_szi[1] << 1;
+                        dv_szi[2] <= dv_szi[2] << 1;
+                        dv_tzi[0] <= dv_tzi[0] << 1;
+                        dv_tzi[1] <= dv_tzi[1] << 1;
+                        dv_tzi[2] <= dv_tzi[2] << 1;
+                        vt_zi[0] <= vt_zi[0] << 1;
+                        vt_zi[1] <= vt_zi[1] << 1;
+                        vt_zi[2] <= vt_zi[2] << 1;
+                        norm_shift <= norm_shift + 1'b1;
+                    end
                 end
                 // ---- edge deltas + determinant products ----
                 DRV_DELTA: begin : drv_delta_blk
@@ -7034,10 +7695,8 @@ always @(posedge clk) begin : main_fsm
                     e1y = {sy1[15], sy1} - {sy0[15], sy0};
                     e2y = {sy2[15], sy2} - {sy0[15], sy0};
                     dd1x <= e1x; dd2x <= e2x; dd1y <= e1y; dd2y <= e2y;
-                    dd_x0px <= {{4{sx0[15]}}, sx0[15:4]}; // x0 Q12.4 >>4
-                    // subpix: y0 is Q12.4 here, floor to a scanline (like x0px)
-                    // so origin = a0 - du*x0px - dv*y0 anchors at integer (u,v).
-                    dd_y0   <= spanprod_subpix_y ? {{4{sy0[15]}}, sy0[15:4]} : sy0;
+                    dd_x0 <= sx0;  // retain Q12.4 fractions in the plane anchor
+                    dd_y0 <= sy0;  // integer or Q12.4 according to subpix_y
                     // det = d1x*d2y - d2x*d1y : launch both products.  17-bit
                     // edge deltas sign-extended to the 32-bit signed DSP.
                     dsp_a  <= {{15{e1x[16]}}, e1x};
@@ -7083,10 +7742,15 @@ always @(posedge clk) begin : main_fsm
                     rdet_dividend <= 45'd0;
                     rdet_divisor  <= 35'd0;
                 end
-                // ---- serial restoring divide: rdet = round(2^44/|det|) ----
+                // ---- serial restoring divide: rdet = round(2^N/|det|) ----
                 DRV_RDET: begin
                     if (rdet_cnt == 6'd46) begin
-                        rdet_dividend <= ({10'd0, dd_detabs} >> 1) + (45'd1 << DERIV_N);
+                        rdet_small <= spanprod_subpix_y && !vt_q29_en
+                                   && (dd_detabs <= 35'd8192);
+                        rdet_dividend <= ({10'd0, dd_detabs} >> 1)
+                            + ((spanprod_subpix_y && !vt_q29_en
+                                && (dd_detabs <= 35'd8192))
+                               ? (45'd1 << 31) : (45'd1 << DERIV_N));
                         rdet_divisor  <= dd_detabs;
                         rdet_rem      <= 35'd0;
                         rdet_q        <= 32'd0;
@@ -7102,7 +7766,7 @@ always @(posedge clk) begin : main_fsm
                         // the 32-bit register; q_next[31] catches the final
                         // value's MSB (set on the last beat, which would never
                         // shift out) — both mean the rounded reciprocal needs
-                        // >=2^31, i.e. a sliver triangle (du/dv then clamp).
+                        // >=2^31. Small subpixel triangles use Q31 to avoid this cap.
                         if (rdet_q[31] || q_next[31])
                             rdet_ovf <= 1'b1;
                         rdet_q        <= q_next;
@@ -7140,7 +7804,16 @@ always @(posedge clk) begin : main_fsm
                                          - {deriv_a0_q[31], deriv_a0_q});
                     da2_sat <= deriv_sat33({deriv_a2_q[31], deriv_a2_q}
                                          - {deriv_a0_q[31], deriv_a0_q});
-                    dstate  <= DRV_PLANE_NUM;
+                    // Constant attributes have exact zero gradients in every
+                    // format, including Q29. Reuse the ordinary origin/packing
+                    // path while skipping both numerator and scale products.
+                    if (deriv_a0_q == deriv_a1_q && deriv_a0_q == deriv_a2_q) begin
+                        dv_du <= 32'sd0;
+                        dv_dv <= 32'sd0;
+                        dstate <= DRV_PLANE_ORG;
+                    end else begin
+                        dstate <= DRV_PLANE_NUM;
+                    end
                 end
                 DRV_PLANE_NUM: begin
                     // Launch the two numerator sub-products for du or dv from the
@@ -7236,7 +7909,8 @@ always @(posedge clk) begin : main_fsm
                     // instead of 6 bits over 64.  Do NOT re-add the +7 here.
                     q29_shamt_r <= (vt_q29_en && (dv_attr != 3'd3))
                                  ? vt_q29_shift
-                                 : (DERIV_N - DERIV_SPLIT - 6'd7);
+                                 : (rdet_small ? 6'd0
+                                    : (DERIV_N - DERIV_SPLIT - 6'd7));
                     dstate <= DRV_SCALE_LF;
                 end
                 // Q29 BARREL-SHIFT PIPELINE (fixes the -3.97 dv_du cone — all 400+
@@ -7270,23 +7944,26 @@ always @(posedge clk) begin : main_fsm
                         dstate <= DRV_PLANE_ORG;
                     end
                 end
-                // ---- origin = a0 - du*x0px - dv*y0  (mod 2^32) ----
+                // ---- origin: subtract the full fractional anchor products (mod 2^32) ----
                 DRV_PLANE_ORG: begin
                     dsp_a  <= dv_du;
-                    dsp_b  <= {{16{dd_x0px[15]}}, dd_x0px};
+                    dsp_b  <= {{16{dd_x0[15]}}, dd_x0};
                     dsp2_a <= dv_dv;
                     dsp2_b <= {{16{dd_y0[15]}}, dd_y0};
                     dstate <= DRV_ORG_W;
                 end
                 DRV_ORG_W: dstate <= DRV_ORG_CAP;
                 DRV_ORG_CAP: begin
-                    // timing: origin products (du*x0px, dv*y0) captured in
+                    // timing: fractional anchor products are captured in
                     // drv_prod_r/drv2_prod_r the cycle before.  This state used to
                     // fuse dsp_p/dsp2_p -> subtract -> spanprod_attr*_origin (a
                     // plane-staging write); now a pure capture.  dv_attr is NOT
                     // advanced here, so deriv_a0_q stays stable into DRV_ORG_FORM.
-                    drv_prod_r  <= dsp_p;
-                    drv2_prod_r <= dsp2_p;
+                    // Multiply before removing the coordinate fraction. Flooring
+                    // x0/y0 first shifts each triangle's texture, color and depth
+                    // planes by a different amount along their shared edges.
+                    drv_prod_r  <= dsp_p >>> 4;
+                    drv2_prod_r <= spanprod_subpix_y ? (dsp2_p >>> 4) : dsp2_p;
                     // Pre-form the Q29-scaled anchor (a0 << (13-sh), arithmetic,
                     // mod 2^32) here so DRV_ORG_FORM stays a pure subtract.  Same
                     // value the in-line a0_eff produced — deriv_a0_q/vt_q29_shift/
@@ -7302,7 +7979,7 @@ always @(posedge clk) begin : main_fsm
                     dstate <= DRV_ORG_FORM;
                 end
                 DRV_ORG_FORM: begin : drv_org_form_blk
-                    // origin = a0_eff - du*x0px - dv*y0, truncated to 32 bits (the
+                    // Subtract the two scaled products, truncated to 32 bits (the
                     // spanprod plane eval wraps mod 2^32, so the large anchor
                     // offset cancels for on-screen records — the "anchoring").
                     // a0_eff (the Q29 anchor scale) was pre-formed in DRV_ORG_CAP,
@@ -7436,9 +8113,9 @@ always @(posedge clk) begin : main_fsm
                         xf_state  <= XF_ROW_DONE;
                     end else begin
                         dsp_a <= xf_M_q;
-                        dsp_b <= (xf_idx == 2'd0) ? xf_vx[xf_vtx]
-                                  : (xf_idx == 2'd1) ? xf_vy[xf_vtx]
-                                                     : xf_vz[xf_vtx];
+                        dsp_b <= (xf_idx == 2'd0) ? xf_vx_q
+                                  : (xf_idx == 2'd1) ? xf_vy_q
+                                                     : xf_vz_q;
                         xf_state <= XF_MAC_W;
                     end
                 end
@@ -7467,10 +8144,13 @@ always @(posedge clk) begin : main_fsm
                 // ---- clip-feed (0x4F): the CPU already did M*v, so the 3 "verts"
                 // ARE clip {x,y,w}.  Load cam{x,y,z} directly and skip to the recip
                 // (no matrix MAC).  cam.z = clip.w is the perspective divisor. ----
+`ifdef INCLUDE_XFORM_VERTEX_RAM
+                XF_CLIP_ADDR: xf_state <= XF_CLIP_FEED;
+`endif
                 XF_CLIP_FEED: begin
-                    xf_camx  <= xf_vx[xf_vtx];
-                    xf_camy  <= xf_vy[xf_vtx];
-                    xf_camz  <= xf_vz[xf_vtx];
+                    xf_camx  <= xf_vx_q;
+                    xf_camy  <= xf_vy_q;
+                    xf_camz  <= xf_vz_q;
                     xf_state <= XF_RECIP_INIT;
                 end
                 // ---- zi = floor(2^32 / max(cam.z, near_clip)) ----
@@ -7503,9 +8183,24 @@ always @(posedge clk) begin : main_fsm
                     xf_state <= XF_PROJ_XW;
                 end
                 XF_PROJ_XW: xf_state <= XF_PROJ_XC;
+`ifdef INCLUDE_XFORM_RATIO_PIPE
                 XF_PROJ_XC: begin
+                    // Matrix translation is no longer live during projection.
+                    // Reuse it to separate product recombination from the next
+                    // DSP operand mux; the 32-bit ratio slice is unchanged.
+                    xf_transl <= dsp_p[47:16];
+                    xf_state <= XF_PROJ_XL;
+                end
+                XF_PROJ_XL: begin
+`else
+                XF_PROJ_XC: begin
+`endif
                     dsp_a <= xf_xscale;
+`ifdef INCLUDE_XFORM_RATIO_PIPE
+                    dsp_b <= xf_transl;
+`else
                     dsp_b <= dsp_p[47:16];      // ratio_x = (cam.x*zi)>>16
+`endif
                     xf_state <= XF_PROJ_XW2;
                 end
                 XF_PROJ_XW2: xf_state <= XF_PROJ_XS;
@@ -7533,9 +8228,24 @@ always @(posedge clk) begin : main_fsm
                     xf_state <= XF_PROJ_YW;
                 end
                 XF_PROJ_YW: xf_state <= XF_PROJ_YC;
+`ifdef INCLUDE_XFORM_RATIO_PIPE
                 XF_PROJ_YC: begin
+                    // Matrix translation is no longer live during projection.
+                    // Reuse it to separate product recombination from the next
+                    // DSP operand mux; the 32-bit ratio slice is unchanged.
+                    xf_transl <= dsp_p[47:16];
+                    xf_state <= XF_PROJ_YL;
+                end
+                XF_PROJ_YL: begin
+`else
+                XF_PROJ_YC: begin
+`endif
                     dsp_a <= xf_yscale;
+`ifdef INCLUDE_XFORM_RATIO_PIPE
+                    dsp_b <= xf_transl;
+`else
                     dsp_b <= dsp_p[47:16];      // ratio_y
+`endif
                     xf_state <= XF_PROJ_YW2;
                 end
                 XF_PROJ_YW2: xf_state <= XF_PROJ_YS;
@@ -7572,7 +8282,7 @@ always @(posedge clk) begin : main_fsm
                         xf_vtx   <= xf_vtx + 2'd1;
                         xf_row   <= 2'd0;
                         xf_idx   <= 2'd0;
-                        xf_state <= xf_clip ? XF_CLIP_FEED : XF_MAC_A;
+                        xf_state <= xf_clip ? XF_CLIP_ENTRY : XF_MAC_A;
                     end
                 end
                 XF_PROJ_LAUNCH: begin : xf_proj_launch_blk
@@ -7631,18 +8341,18 @@ always @(posedge clk) begin : main_fsm
                 // ---- T4: per-vertex lighting (lit cache-load 0x57) ----
                 // dot = sum_k normal[k]*lightdir[k] (Q32.32), clamp [0,1.0], then
                 // per channel: clamp(ambient + (dot*lightcolor)>>16) -> RGB565.
-                XF_LIT_DL: begin   // launch N[idx]*L[idx]
+                XF_LIT_DL: if (!PRUNE_DISABLED_SETUP || INCLUDE_GPU_LIGHT != 0) begin   // launch N[idx]*L[idx]
                     dsp_a <= (xf_idx == 2'd0) ? xf_nx : (xf_idx == 2'd1) ? xf_ny : xf_nz;
                     dsp_b <= (xf_idx == 2'd0) ? lt_lx : (xf_idx == 2'd1) ? lt_ly : lt_lz;
                     xf_state <= XF_LIT_DW;
                 end
-                XF_LIT_DW: xf_state <= XF_LIT_DC;   // DSP latency
-                XF_LIT_DC: begin
+                XF_LIT_DW: if (!PRUNE_DISABLED_SETUP || INCLUDE_GPU_LIGHT != 0) xf_state <= XF_LIT_DC;   // DSP latency
+                XF_LIT_DC: if (!PRUNE_DISABLED_SETUP || INCLUDE_GPU_LIGHT != 0) begin
                     xf_acc <= (xf_idx == 2'd0) ? dsp_p : (xf_acc + dsp_p);  // Q32.32
                     if (xf_idx == 2'd2) xf_state <= XF_LIT_CLAMP;
                     else begin xf_idx <= xf_idx + 2'd1; xf_state <= XF_LIT_DL; end
                 end
-                XF_LIT_CLAMP: begin : xf_lit_clamp_blk
+                XF_LIT_CLAMP: if (!PRUNE_DISABLED_SETUP || INCLUDE_GPU_LIGHT != 0) begin : xf_lit_clamp_blk
                     reg signed [63:0] dotf;
                     dotf = xf_acc >>> 16;                 // Q32.32 -> Q16.16
                     if (dotf < 0)               xf_dot <= 32'sd0;
@@ -7651,15 +8361,15 @@ always @(posedge clk) begin : main_fsm
                     xf_idx   <= 2'd0;
                     xf_state <= XF_LIT_CL;
                 end
-                XF_LIT_CL: begin   // launch dot * lightcolor[idx]
+                XF_LIT_CL: if (!PRUNE_DISABLED_SETUP || INCLUDE_GPU_LIGHT != 0) begin   // launch dot * lightcolor[idx]
                     dsp_a <= xf_dot;
                     dsp_b <= (xf_idx == 2'd0) ? {27'd0, lt_lr}
                               : (xf_idx == 2'd1) ? {26'd0, lt_lg}
                                                  : {27'd0, lt_lb};
                     xf_state <= XF_LIT_CW;
                 end
-                XF_LIT_CW: xf_state <= XF_LIT_CC;   // DSP latency
-                XF_LIT_CC: begin : xf_lit_cc_blk
+                XF_LIT_CW: if (!PRUNE_DISABLED_SETUP || INCLUDE_GPU_LIGHT != 0) xf_state <= XF_LIT_CC;   // DSP latency
+                XF_LIT_CC: if (!PRUNE_DISABLED_SETUP || INCLUDE_GPU_LIGHT != 0) begin : xf_lit_cc_blk
                     // contrib = (dot*lightcolor)>>16 (0..channel); chan=clamp(amb+contrib)
                     reg [7:0] sum8;
                     case (xf_idx)
@@ -7787,6 +8497,12 @@ always @(posedge clk) begin : main_fsm
         end
 
         S_SPANPROD_SETUP: begin
+            // The product is consumed only after a nonempty parametric record
+            // enters MUL_WAIT. Launching it speculatively keeps the count-RAM
+            // reduction and direct-affine selection out of the DSP input mux.
+`ifdef VEXII_CPU_OS30
+            spanprod_launch_fb_mul;
+`endif
             if (!spanprod_active) begin
                 state <= S_IDLE;
             end else if (!spanprod_cur_nonzero) begin
@@ -7852,7 +8568,9 @@ always @(posedge clk) begin : main_fsm
                 if (spanprod_direct_affine) begin
                     state <= S_SPANPROD_EMIT;
                 end else begin
+`ifndef VEXII_CPU_OS30
                     spanprod_launch_fb_mul;
+`endif
                     spanprod_launch_step <= spanprod_next_calc(3'd0);
                     state <= S_SPANPROD_MUL_WAIT;
                 end
@@ -8141,6 +8859,10 @@ always @(posedge clk) begin : main_fsm
                                 ? {8'b0, cmap_rd_data} : p2b_color;
                 p3_flags     <= p2b_flags;
                 p3_fb_addr   <= p2b_fb_addr;
+`ifdef INCLUDE_GPU_SELECTIVE_READ_WAIT
+                p3_fb_srw_tag <= srw_tag(p2b_fb_addr);
+                p3_z_srw_tag  <= srw_tag(p2b_z_addr);
+`endif
                 // Z-test fold: a fragment whose old z half is resident in
                 // z_acc / the z window enters p3 pre-resolved — z_test
                 // cleared on pass, discard on fail — and never takes the
@@ -8317,6 +9039,16 @@ always @(posedge clk) begin : main_fsm
                     {p1_light, p1_R, p1_B, p1_Dr, p1_Dg, p1_Db,
                      p1_colormap_id, p1_flags, p1_fb_addr, p1_z_test,
                      p1_z_write, p1_z_addr, p1_z_value, p1_tex_color} <= stream_result;
+                    // Re-apply the span_flags_from_wire chokepoints: synthesis
+                    // cannot see a constant through the queue RAM, so without
+                    // these the disabled blend/colormap consumers survive.
+                    if (INCLUDE_PALETTE == 0) begin
+                        p1_flags[SPAN_COLORMAP] <= 1'b0;
+                        p1_colormap_id <= 4'd0;
+                    end
+`ifndef INCLUDE_TRANSLUC
+                    p1_flags[SPAN_TRANSLUC] <= 1'b0;
+`endif
                 end
             end
 
@@ -8334,13 +9066,21 @@ always @(posedge clk) begin : main_fsm
                 p0_colormap_id <= p0a_colormap_id;
                 p0_flags     <= p0a_flags;
                 p0_fb_addr   <= p0a_fb_addr;
+`ifdef INCLUDE_GPU_CLAMP_PIPE
+                p0_s_int     <= p0a_s_resolved;
+`else
                 p0_s_int     <= p0a_s_int;
+`endif
                 p0_tex_base  <= p0a_tex_base;
                 p0_z_test    <= p0a_z_test;
                 p0_z_write   <= p0a_z_write;
                 p0_z_addr    <= p0a_z_addr;
                 p0_z_value   <= p0a_z_value;
+`ifdef INCLUDE_GPU_CLAMP_PIPE
+                tx_mul_q     <= $signed(p0a_t_resolved)
+`else
                 tx_mul_q     <= $signed(p0a_t_y)
+`endif
                               * $signed({1'b0, p0a_tex_width});
             end
 
@@ -8379,10 +9119,32 @@ always @(posedge clk) begin : main_fsm
                 p0a_z_write   <= sp_z_test_enable && sp_z_write_enable;
                 p0a_z_addr    <= sp_z_addr;
                 p0a_z_value   <= source_z_half;
+`ifdef INCLUDE_GPU_CLAMP_PIPE
+                // Register the raw mirrored coordinate and clamp decisions
+                // in parallel.  Only a three-way selection precedes the row
+                // DSP.  Span limits stay fixed until p0a/p0 and the queues
+                // drain, including the early record handoff.
+                p0a_s_int <= mirror_idx(sp_s[31:16], sp_tex_w_mask,
+                                        sp_tex_w_octave, sp_mirror_s);
+                p0a_t_y <= mirror_idx(sp_t[31:16], sp_tex_h_mask,
+                                      sp_tex_h_octave, sp_mirror_t);
+                p0a_s_below <= sp_clamp_enable[0] && ($signed(sp_s[31:16]) < $signed(sp_s_clamp_min[31:16]));
+                p0a_s_above <= sp_clamp_enable[0] && ($signed(sp_s[31:16]) > $signed(sp_s_clamp_max[31:16]));
+                p0a_t_below <= sp_clamp_enable[1] && ($signed(sp_t[31:16]) < $signed(sp_t_clamp_min[31:16]));
+                p0a_t_above <= sp_clamp_enable[1] && ($signed(sp_t[31:16]) > $signed(sp_t_clamp_max[31:16]));
+`elsif INCLUDE_GPU_CLAMP_PARALLEL
+                p0a_s_int <= clamp_mirror_idx(sp_s[31:16], sp_s_clamp_min[31:16],
+                    sp_s_clamp_max[31:16], sp_clamp_enable[0], sp_tex_w_mask,
+                    sp_tex_w_octave, sp_mirror_s);
+                p0a_t_y <= clamp_mirror_idx(sp_t[31:16], sp_t_clamp_min[31:16],
+                    sp_t_clamp_max[31:16], sp_clamp_enable[1], sp_tex_h_mask,
+                    sp_tex_h_octave, sp_mirror_t);
+`else
                 p0a_s_int <= mirror_idx(source_s_clamped, sp_tex_w_mask,
                                         sp_tex_w_octave, sp_mirror_s);
                 p0a_t_y   <= mirror_idx(source_t_clamped, sp_tex_h_mask,
                                         sp_tex_h_octave, sp_mirror_t);
+`endif
 
                 if (load_p0a_z) begin
                     z_src_push      = 1'b1;
@@ -8490,6 +9252,9 @@ always @(posedge clk) begin : main_fsm
                         if (!blend_group_active) begin
                             blend_group_active    <= 1'b1;
                             blend_group_word_addr <= p3_fb_word_addr_w;
+`ifdef INCLUDE_GPU_SELECTIVE_READ_WAIT
+                            blend_srw_tag <= p3_fb_srw_tag;
+`endif
                             blend_group_mask      <= p3_fb_lane_mask_w;
                             blend_group_src_data  <= p3_fb_lane_data_w;
                             p3_consumed = 1'b1;
@@ -8529,11 +9294,11 @@ always @(posedge clk) begin : main_fsm
                                 // before.
                                 if ((GPU_Z_READ_WINDOW > 1)
                                     && !zw_snoop_pending
-                                    && zw_valid[p3_z_word_addr[3:2]]
-                                    && (zw_base == p3_z_word_addr[GPU_ADDR_W-1:4])) begin
+                                    && zw_valid[p3_z_word_addr[ZW_LOW-1:2]]
+                                    && (zw_base == p3_z_word_addr[GPU_ADDR_W-1:ZW_LOW])) begin
                                     ztest_cap_fire = 1'b1;
                                     ztest_cap_from_read = 1'b1;
-                                    ztest_cap_word = zw_word[p3_z_word_addr[3:2]];
+                                    ztest_cap_word = zw_word[p3_z_word_addr[ZW_LOW-1:2]];
                                     fbss <= FBSS_ZTEST_ACC_EVAL;
                                 end
                             end else begin
@@ -8546,10 +9311,10 @@ always @(posedge clk) begin : main_fsm
                             fbss               <= FBSS_ZTEST_ACC_EVAL;
                         end else if ((GPU_Z_READ_WINDOW > 1)
                                   && !zw_snoop_pending
-                                  && zw_valid[p3_z_word_addr[3:2]]
-                                  && (zw_base == p3_z_word_addr[GPU_ADDR_W-1:4])) begin
+                                  && zw_valid[p3_z_word_addr[ZW_LOW-1:2]]
+                                  && (zw_base == p3_z_word_addr[GPU_ADDR_W-1:ZW_LOW])) begin
                             // Z-window hit: serve the old word from the
-                            // 4-word read cache — no SDRAM round trip, no
+                            // depth read cache — no SDRAM round trip, no
                             // drain barrier.  Same ACC_EVAL inputs the
                             // single-word read produced.
                             //
@@ -8560,12 +9325,12 @@ always @(posedge clk) begin : main_fsm
                             // Shared ztest capture (source: z-window word).
                             ztest_cap_fire = 1'b1;
                             ztest_cap_from_read = 1'b1;
-                            ztest_cap_word = zw_word[p3_z_word_addr[3:2]];
+                            ztest_cap_word = zw_word[p3_z_word_addr[ZW_LOW-1:2]];
                             fbss               <= FBSS_ZTEST_ACC_EVAL;
                         end else if (!tex_axi_arvalid && !tex_m0_in_flight
-                                  && fb_write_drain_complete) begin
-                            // Z-window fill: 4-beat burst read of the whole
-                            // 16-byte z line.  The drain barrier is the
+                                  && fb_read_barrier_clear) begin
+                            // Z-window fill: burst read of the whole aligned
+                            // depth line.  The drain barrier is the
                             // conservative fb_write_drain_complete: the whole
                             // fb write queue drains before the z line is read,
                             // so no z-read overlaps any pending write.
@@ -8575,12 +9340,11 @@ always @(posedge clk) begin : main_fsm
                             // test, nothing cached.
                             blend_arvalid <= 1'b1;
                             blend_araddr  <= (GPU_Z_READ_WINDOW > 1)
-                                           ? {p3_z_word_addr[GPU_ADDR_W-1:4],
-                                              4'b0}
+                                           ? {p3_z_word_addr[GPU_ADDR_W-1:ZW_LOW], {ZW_LOW{1'b0}}}
                                            : p3_z_word_addr;
-                            blend_arlen_r <= (GPU_Z_READ_WINDOW > 1) ? 2'd3
+                            blend_arlen_r <= (GPU_Z_READ_WINDOW > 1) ? (ZW_WORDS-1)
                                                                      : 2'd0;
-                            zw_base       <= p3_z_word_addr[GPU_ADDR_W-1:4];
+                            zw_base       <= p3_z_word_addr[GPU_ADDR_W-1:ZW_LOW];
                             zw_valid      <= 4'b0;
                             zw_fill_beat  <= 2'd0;
                             fbss          <= FBSS_ZTEST_R_WAIT;
@@ -8679,17 +9443,17 @@ always @(posedge clk) begin : main_fsm
 		                        // goes write-only (unread -> swept), and zw_valid
 		                        // stays constant 0.
 		                        zw_word[zw_fill_beat] <= blend_rdata;
-		                        zw_fill_beat          <= zw_fill_beat + 2'd1;
+		                        zw_fill_beat          <= zw_fill_beat + 1'b1;
 		                        if ((GPU_Z_READ_WINDOW <= 1)
-		                          || (zw_fill_beat == p3_z_word_addr[3:2])) begin
+		                          || (zw_fill_beat == p3_z_word_addr[ZW_LOW-1:2])) begin
 		                            // Shared ztest capture (source: read return).
 		                            ztest_cap_fire = 1'b1;
 		                            ztest_cap_from_read = 1'b1;
 		                            ztest_cap_word = blend_rdata;
 		                        end
 		                        if ((GPU_Z_READ_WINDOW <= 1)
-		                          || (zw_fill_beat == 2'd3)) begin
-		                            zw_valid <= (GPU_Z_READ_WINDOW > 1) ? 4'hF
+		                          || (zw_fill_beat == (ZW_WORDS-1))) begin
+		                            zw_valid <= (GPU_Z_READ_WINDOW > 1) ? {ZW_WORDS{1'b1}}
 		                                                                : 4'h0;
 		                            fbss     <= FBSS_ZTEST_ACC_EVAL;
 		                        end
@@ -8764,7 +9528,7 @@ always @(posedge clk) begin : main_fsm
                             fbss <= FBSS_FLUSH_W_RSP;   // queue full: drain, retry
                         end
                     end else if (!tex_axi_arvalid && !tex_m0_in_flight
-                              && fb_write_drain_complete) begin
+                              && fb_read_barrier_clear) begin
                         // All writes drained: fill the dst window with one
                         // aligned burst (the requested word feeds this pixel;
                         // the siblings serve the following pixels' p2b
@@ -8816,6 +9580,13 @@ always @(posedge clk) begin : main_fsm
                     fbss        <= FBSS_IDLE;
                 end
                 FBSS_CB_REFRESH: begin
+`ifdef INCLUDE_CB_REFRESH_PIPE
+                    // The pipe remains frozen through RESOLVE.  Reuse its
+                    // destination register so lane selection and weighted
+                    // sums occupy separate cycles on same-half overdraw.
+                    cb_dst_r <= cb_acc_dst_w;
+                    fbss <= FBSS_CB_RESOLVE;
+`else
                     // One cycle: re-derive the stale pixel's sums from the
                     // fb_acc-resident dst half through the shared
                     // multipliers, then commit normally from IDLE.
@@ -8824,6 +9595,7 @@ always @(posedge clk) begin : main_fsm
                     cb_sb       <= cbm_sum_b_w;
                     p3_cb_stale <= 1'b0;
                     fbss        <= FBSS_IDLE;
+`endif
                 end
 
 	                // --------------------------------------------------------
@@ -8854,7 +9626,7 @@ always @(posedge clk) begin : main_fsm
                     if (!blend_group_active) begin
                         fbss <= FBSS_IDLE;
                     end else if (!tex_axi_arvalid && !tex_m0_in_flight
-                              && fb_write_drain_complete) begin
+                              && fb_read_barrier_clear) begin
                         blend_arvalid <= 1;
                         blend_araddr  <= blend_group_word_addr;
                         blend_arlen_r <= 2'd0;
@@ -8971,9 +9743,9 @@ always @(posedge clk) begin : main_fsm
                     ztest_acc_from_read <= 1'b0;
                     ztest_acc_word <= {z_acc_hi, z_acc_lo};
                 end else if (GPU_Z_READ_WINDOW > 1) begin
-                    ztest_acc_old_half <= fb_halfword_read(zw_word[p3_z_word_addr[3:2]], p3_z_hi);
+                    ztest_acc_old_half <= fb_halfword_read(zw_word[p3_z_word_addr[ZW_LOW-1:2]], p3_z_hi);
                     ztest_acc_from_read <= 1'b1;
-                    ztest_acc_word <= zw_word[p3_z_word_addr[3:2]];
+                    ztest_acc_word <= zw_word[p3_z_word_addr[ZW_LOW-1:2]];
                 end
             end else
 `endif
@@ -9042,7 +9814,7 @@ always @(posedge clk) begin : main_fsm
                     // endpoint (count-1) and divides by (count-1).  The old
                     // GPU path always advanced by 16 and divided by 16, which
                     // over-projected every short/remainder floor span.
-	                    if (!sp_persp_q29_mode) begin
+	                    if (!pss_use_q29) begin
 	                        end_advance = PERSPECTIVE_SEG_LEN[4:0];
 	                        slope_divisor = PERSPECTIVE_SEG_LEN[4:0];
 	                    end else begin
@@ -9083,30 +9855,30 @@ always @(posedge clk) begin : main_fsm
                         persp_pss <= PSS_ADV_CLAMP;
                     end else begin
                         dsp_a  <= sp_sZstep;
-                        dsp_b  <= $signed({27'd0, pss_tail_advance});
+                        dsp_b  <= $signed({27'd0, pss_effective_tail});
                         dsp2_a <= sp_tZstep;
-                        dsp2_b <= $signed({27'd0, pss_tail_advance});
+                        dsp2_b <= $signed({27'd0, pss_effective_tail});
                         persp_pss <= PSS_ADV_TAIL_ST_WAIT;
                     end
                 end
 
-	                PSS_ADV_TAIL_ST_WAIT: begin
+	                PSS_ADV_TAIL_ST_WAIT: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
 	                    persp_pss <= PSS_ADV_TAIL_ST_CAPTURE;
 	                end
 
-	                PSS_ADV_TAIL_ST_CAPTURE: begin
+	                PSS_ADV_TAIL_ST_CAPTURE: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
 	                    pss_tail_s_delta <= dsp_p[31:0];
 	                    pss_tail_t_delta <= dsp2_p[31:0];
 	                    dsp_a  <= sp_zinv_step;
-	                    dsp_b  <= $signed({27'd0, pss_tail_advance});
+	                    dsp_b  <= $signed({27'd0, pss_effective_tail});
 	                    persp_pss <= PSS_ADV_TAIL_Z_WAIT;
 	                end
 
-	                PSS_ADV_TAIL_Z_WAIT: begin
+	                PSS_ADV_TAIL_Z_WAIT: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
 	                    persp_pss <= PSS_ADV_TAIL_COMMIT;
 	                end
 
-                PSS_ADV_TAIL_COMMIT: begin
+                PSS_ADV_TAIL_COMMIT: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
                     persp_pss <= PSS_ADV_CLAMP;
                 end
 
@@ -9121,7 +9893,7 @@ always @(posedge clk) begin : main_fsm
                     // Quake floor perspective, where a valid 16-pixel
                     // segment can shrink |1/z| by more than 4x.  Keep the
                     // ratio guard for the legacy Q16 path only.
-                    if (sp_persp_q29_mode) begin
+                    if (pss_use_q29) begin
                         pss_zinv_clamp_r <=
                             (pss_zinv_adv_abs_r == 32'd0)
                          || ((pss_zinv_adv_r[31] ^ pss_zinv_prev_negative)
@@ -9164,7 +9936,7 @@ always @(posedge clk) begin : main_fsm
                     // recip_rd_addr. Variable barrel shift is the only
                     // combinational chain in this stage.
                     recip_rd_addr <= recip_top10_pipe;
-                    if (sp_persp_q29_mode && pss_recip_cache_hit) begin
+                    if (pss_use_q29 && pss_recip_cache_hit) begin
                         recip_q16_r <= $signed(pss_recip_cache_value);
                         persp_pss <= PSS_MUL;
                     end else begin
@@ -9195,7 +9967,7 @@ always @(posedge clk) begin : main_fsm
                     // at 35 (persp_clz max 31 + Q29 extra 4), so a 45-bit
                     // container keeps every bit of the consumed slice; bits
                     // above 44 match the original 32-bit truncation.
-                    recip_shamt  = sp_persp_q29_mode ? pss_q29_recip_shift
+                    recip_shamt  = pss_use_q29 ? pss_q29_recip_shift
                                                      : {1'b0, persp_clz};
                     recip_funnel = {29'd0, recip_rd_data} << recip_shamt;
                     recip_q16_r <= $signed(recip_funnel[44:13]);
@@ -9222,7 +9994,7 @@ always @(posedge clk) begin : main_fsm
                     // a small offset.  N-R uses (2 - x*y0) to "correct"
                     // the offset on the next multiply.
                     xy_shifted = dsp_p >>> (16 + PSS_Q29_RECIP_EXTRA_INT);
-                    xy_q16 = sp_persp_q29_mode ? xy_shifted[31:0]
+                    xy_q16 = pss_use_q29 ? xy_shifted[31:0]
                                                 : $signed(dsp_p[47:16]);
                     nr_two_minus_xy <= 32'h00020000 - xy_q16;
                     persp_pss <= PSS_NR_MUL_Y;
@@ -9244,7 +10016,7 @@ always @(posedge clk) begin : main_fsm
                     // column.  Bias constant-Z by one reciprocal LSB so exact
                     // boundaries land on/above the intended texel while full
                     // perspective spans keep the unbiased reciprocal.
-                    if (sp_persp_q29_mode) begin
+                    if (pss_use_q29) begin
                         recip_shifted = dsp_p >>> 16;
                         recip_q16_r <= recip_shifted[31:0];
                     end else begin
@@ -9318,13 +10090,13 @@ always @(posedge clk) begin : main_fsm
                     // PSS_FINAL_PROD, so this cone starts at pss_prod_*_r
                     // FF outputs — the Mult fabric recombination no longer
                     // shares this cycle with the 64-bit rounding carry.
-                    s_round64 = pss_prod_s_r + (sp_persp_q29_mode
+                    s_round64 = pss_prod_s_r + (pss_use_q29
                                           ? (64'sd1 << (15 + PSS_Q29_RECIP_EXTRA_INT))
                                           : 64'sd32768);
-                    t_round64 = pss_prod_t_r + (sp_persp_q29_mode
+                    t_round64 = pss_prod_t_r + (pss_use_q29
                                           ? (64'sd1 << (15 + PSS_Q29_RECIP_EXTRA_INT))
                                           : 64'sd32768);
-                    if (sp_persp_q29_mode) begin
+                    if (pss_use_q29) begin
                         s_projected64 = s_round64 >>> (16 + PSS_Q29_RECIP_EXTRA_INT);
                         t_projected64 = t_round64 >>> (16 + PSS_Q29_RECIP_EXTRA_INT);
                     end else begin
@@ -9349,7 +10121,10 @@ always @(posedge clk) begin : main_fsm
                     // raw and PSS_CONSTZ_STEP_CAPTURE rounds/slices — same
                     // total state count as the old launch position, so
                     // constant-Z spans pay only the PSS_FINAL_PROD cycle.
-                    if (pss_constz_go_r) begin
+                    // Only the constant-Z successor consumes these products.
+                    // Other passes ignore them before their next DSP launch.
+                    // Issuing unconditionally removes a late select qualifier.
+                    if (`ifdef INCLUDE_PSS_SPECULATIVE_STEP 1'b1 `else pss_constz_go_r `endif) begin
                         dsp_a  <= sp_sZstep;
                         dsp_b  <= recip_q16_r;
                         dsp2_a <= sp_tZstep;
@@ -9411,7 +10186,7 @@ always @(posedge clk) begin : main_fsm
                             // (persp_prev_valid) and not Q29.  SLOPE_PREP consumes
                             // persp_pend_scc next cycle for the d0 step.
                             if ((INCLUDE_DIRECT_COLOR != 0) && sp_truecolor
-                                && persp_prev_valid && !sp_persp_q29_mode) begin
+                                && persp_prev_valid && !pss_use_q29) begin
                                 persp_pend_scc <= ($signed(pss_s_end_r)
                                                    - ($signed(persp_anchor_s) <<< 1)
                                                    + $signed(persp_prev_anchor_s)) >>> 8;
@@ -9432,15 +10207,15 @@ always @(posedge clk) begin : main_fsm
                     reg [31:0] s_mag;
                     reg [31:0] t_mag;
                     reg [1:0]  pow2_shift;
-                    pow2_shift = (pss_slope_divisor == 5'd1) ? 2'd0
-                               : (pss_slope_divisor == 5'd2) ? 2'd1
-                               : (pss_slope_divisor == 5'd4) ? 2'd2
+                    pow2_shift = (pss_effective_divisor == 5'd1) ? 2'd0
+                               : (pss_effective_divisor == 5'd2) ? 2'd1
+                               : (pss_effective_divisor == 5'd4) ? 2'd2
                                                              : 2'd3;
                     persp_pss <= PSS_IDLE;
-                    if (pss_slope_divisor == 5'd1
-                     || pss_slope_divisor == 5'd2
-                     || pss_slope_divisor == 5'd4
-                     || pss_slope_divisor == 5'd8) begin
+                    if (pss_effective_divisor == 5'd1
+                     || pss_effective_divisor == 5'd2
+                     || pss_effective_divisor == 5'd4
+                     || pss_effective_divisor == 5'd8) begin
                         // Shared slope commit — pow2-exact divide step
                         // source.  (Also halves the pss_div_pow2_trunc
                         // barrel-shift cones: the TO_A/TO_B copies used
@@ -9448,7 +10223,7 @@ always @(posedge clk) begin : main_fsm
                         pss_slope_commit_fire = 1'b1;
                         pss_commit_s_step = pss_div_pow2_trunc(pss_slope_s_delta, pow2_shift);
                         pss_commit_t_step = pss_div_pow2_trunc(pss_slope_t_delta, pow2_shift);
-                    end else if (pss_slope_divisor < 5'd16) begin
+                    end else if (pss_effective_divisor < 5'd16) begin
                         s_mag = pss_slope_s_delta[31] ? (32'd0 - pss_slope_s_delta[31:0])
                                                       : pss_slope_s_delta[31:0];
                         t_mag = pss_slope_t_delta[31] ? (32'd0 - pss_slope_t_delta[31:0])
@@ -9458,9 +10233,9 @@ always @(posedge clk) begin : main_fsm
                         pss_slope_s_delta <= s_mag;
                         pss_slope_t_delta <= t_mag;
                         dsp_a  <= $signed(s_mag);
-                        dsp_b  <= $signed(pss_div_recip32(pss_slope_divisor));
+                        dsp_b  <= $signed(pss_div_recip32(pss_effective_divisor));
                         dsp2_a <= $signed(t_mag);
-                        dsp2_b <= $signed(pss_div_recip32(pss_slope_divisor));
+                        dsp2_b <= $signed(pss_div_recip32(pss_effective_divisor));
                         persp_pss <= PSS_SLOPE_DIV_WAIT;
                     end else begin
                         // Full-segment (divisor==16) step commit.  The per-pixel
@@ -9500,37 +10275,37 @@ always @(posedge clk) begin : main_fsm
                     end
                 end
 
-                PSS_SLOPE_DIV_WAIT: begin
+                PSS_SLOPE_DIV_WAIT: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
                     persp_pss <= PSS_SLOPE_DIV_COMMIT;
                 end
 
-                PSS_SLOPE_DIV_COMMIT: begin
+                PSS_SLOPE_DIV_COMMIT: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
                     pss_slope_s_quot <= dsp_p[63:32];
                     pss_slope_t_quot <= dsp2_p[63:32];
                     dsp_a  <= $signed(dsp_p[63:32]);
-                    dsp_b  <= $signed({27'd0, pss_slope_divisor});
+                    dsp_b  <= $signed({27'd0, pss_effective_divisor});
                     dsp2_a <= $signed(dsp2_p[63:32]);
-                    dsp2_b <= $signed({27'd0, pss_slope_divisor});
+                    dsp2_b <= $signed({27'd0, pss_effective_divisor});
                     persp_pss <= PSS_SLOPE_DIV_CORR_WAIT;
                 end
 
-                PSS_SLOPE_DIV_CORR_WAIT: begin
+                PSS_SLOPE_DIV_CORR_WAIT: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
                     persp_pss <= PSS_SLOPE_DIV_CORR_COMMIT;
                 end
 
-                PSS_SLOPE_DIV_CORR_COMMIT: begin
+                PSS_SLOPE_DIV_CORR_COMMIT: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
                     pss_slope_s_corr <= (dsp_p[36:0] > {5'd0, pss_slope_s_mag});
                     pss_slope_t_corr <= (dsp2_p[36:0] > {5'd0, pss_slope_t_mag});
                     persp_pss <= PSS_SLOPE_DIV_QUOT_COMMIT;
                 end
 
-                PSS_SLOPE_DIV_QUOT_COMMIT: begin
+                PSS_SLOPE_DIV_QUOT_COMMIT: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
                     pss_slope_s_quot <= pss_slope_s_quot - {31'd0, pss_slope_s_corr};
                     pss_slope_t_quot <= pss_slope_t_quot - {31'd0, pss_slope_t_corr};
                     persp_pss <= PSS_SLOPE_DIV_STEP_COMMIT;
                 end
 
-                PSS_SLOPE_DIV_STEP_COMMIT: begin
+                PSS_SLOPE_DIV_STEP_COMMIT: if (!PRUNE_DISABLED_SETUP || EFF_Q29) begin
                     // Shared slope commit — restored-sign divider quotient
                     // step source.
                     persp_pss <= PSS_IDLE;
@@ -9560,13 +10335,13 @@ always @(posedge clk) begin : main_fsm
                     reg signed [63:0] t_step_projected;
                     // Shared Q29/Q16 rounding adder — see PSS_FINAL.  Reads
                     // the pss_prod_*_r stage registers (T-split), not dsp_p.
-                    s_round64 = pss_prod_s_r + (sp_persp_q29_mode
+                    s_round64 = pss_prod_s_r + (pss_use_q29
                                           ? (64'sd1 << (15 + PSS_Q29_RECIP_EXTRA_INT))
                                           : 64'sd32768);
-                    t_round64 = pss_prod_t_r + (sp_persp_q29_mode
+                    t_round64 = pss_prod_t_r + (pss_use_q29
                                           ? (64'sd1 << (15 + PSS_Q29_RECIP_EXTRA_INT))
                                           : 64'sd32768);
-                    if (sp_persp_q29_mode) begin
+                    if (pss_use_q29) begin
                         s_step_projected = s_round64 >>> (16 + PSS_Q29_RECIP_EXTRA_INT);
                         t_step_projected = t_round64 >>> (16 + PSS_Q29_RECIP_EXTRA_INT);
                     end else begin
@@ -9956,8 +10731,11 @@ always @(posedge clk) begin : main_fsm
                 // Clears and read-modify-write traffic drain then bypass.
                 fbwq_req_combine <= ((state == S_FRAG_PIPE) || (state == S_FB_FLUSH)
                                      || (state == S_SPANPROD_SETUP))
-                                 && !sp_z_test_enable && !sp_blend
+                                 && (!sp_z_test_enable || GPU_WRITE_COMBINE_Z) && !sp_blend
                                  && !sp_flags[SPAN_TRANSLUC];
+                // Depth-tested writes must accumulate full words too; the
+                // next read miss drains them before fetching its depth line.
+                fbwq_req_z_combine <= GPU_WRITE_COMBINE_Z && sp_z_test_enable;
             end else if (fbwq_req_to_stage_now || fbwq_swap_now) begin
                 fbwq_req_valid <= 1'b0;
             end
@@ -9972,7 +10750,7 @@ always @(posedge clk) begin : main_fsm
                                                  : spanprod_attr2_du;
 
             // Z-window write snoop (item 5 exactness rule 2): every write
-            // entering the queue that lands in the window's 16-byte line
+            // entering the queue that lands in the window's depth line
             // invalidates that word.  REGISTERED (timing): the compare runs
             // one cycle after push-accept on fbwq_req_addr — the register
             // the queue already loads at accept — instead of on the
@@ -9988,8 +10766,8 @@ always @(posedge clk) begin : main_fsm
             zw_snoop_pending <= (GPU_Z_READ_WINDOW > 1)
                               && fbwq_push_req && fbwq_can_push;
             if ((GPU_Z_READ_WINDOW > 1) && zw_snoop_pending
-                && (fbwq_req_addr[GPU_ADDR_W-1:4] == zw_base))
-                zw_valid[fbwq_req_addr[3:2]] <= 1'b0;
+                && (fbwq_req_addr[GPU_ADDR_W-1:ZW_LOW] == zw_base))
+                zw_valid[fbwq_req_addr[ZW_LOW-1:2]] <= 1'b0;
             // Blend-dst window snoop: identical contract, own pending bit.
             // Sweeps with the window when INCLUDE_DIRECT_COLOR is absent OR
             // the window is 1 word (cbw_valid is never set either way, so

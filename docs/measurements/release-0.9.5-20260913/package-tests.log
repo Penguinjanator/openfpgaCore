@@ -1,7 +1,0 @@
-PASS: pocket_layout
-PASS: pocket_upload
-PASS: pocket_stale_db
-PASS: sdk_upload
-PASS: mister_upload
-PASS: mister_collision
-PASS: mister_missing

@@ -244,8 +244,11 @@ function [4:0] fb_format_of;
     input [2:0] mode;
     begin
         case (mode)
-            MODE_RGB565: fb_format_of = 5'b00100;  // 16bpp 565
-            MODE_RGB555: fb_format_of = 5'b01100;  // 16bpp 1555 (x555)
+            // ascal's little-endian 16-bit unpacker initially puts the low
+            // five bits in red. Our framebuffers put red in the high bits,
+            // so request its R/B swap for both packed direct-color modes.
+            MODE_RGB565: fb_format_of = 5'b10100;  // RGB565, red in bits 15:11
+            MODE_RGB555: fb_format_of = 5'b11100;  // XRGB1555, red in bits 14:10
             default:     fb_format_of = 5'b00011;  // 8bpp palette
         endcase
     end

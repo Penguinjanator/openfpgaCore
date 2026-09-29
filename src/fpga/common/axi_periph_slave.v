@@ -1788,6 +1788,12 @@ always @(*) begin
             // DS_BRIDGE_WCNT (0x1C): F2i per-DS-command bridge word
             // counters + drop stickies (see port comment).  Read-only;
             // quasi-static after DS_STATUS DONE+WR_IDLE.
+`ifdef EXCLUDE_SYSREG_DIAG_READBACK
+            // Lean readback (os30): only the CRAM0-overrun sticky that
+            // file.c checks; the word counters and the write-only data-slot
+            // staging words (8-13, written by boot.c, never read) prune.
+            6'd7:  sysreg_rdata = {bridge_dbg_wcnt_s[31], 31'b0};
+`else
             6'd7:  sysreg_rdata = bridge_dbg_wcnt_s;
             6'd8:  sysreg_rdata = {16'b0, ds_slot_id_reg};
             6'd9:  sysreg_rdata = ds_slot_offset_reg;
@@ -1795,6 +1801,7 @@ always @(*) begin
             6'd11: sysreg_rdata = ds_length_reg;
             6'd12: sysreg_rdata = ds_param_addr_reg;
             6'd13: sysreg_rdata = ds_resp_addr_reg;
+`endif
             6'd15: sysreg_rdata = {24'b0, dataslot_irq_pending, bridge_wr_idle,
                                     ~target_ack_s, ds_err_latched,
                                     ds_done_latched, ds_ack_latched};
@@ -1807,13 +1814,18 @@ always @(*) begin
             6'd23, 6'd24, 6'd25:
                    sysreg_rdata = input_slot_rdata;
             6'd26: sysreg_rdata = app_id;
-            6'd27: sysreg_rdata = mouse_speed_pct;                 // MOUSE_SPEED_PCT (0x6C)
             6'd32: sysreg_rdata = analogizer_settings;             // ANALOGIZER_SETTINGS
+            6'd35: sysreg_rdata = HW_CONTRACT_REV;                 // HW_CONTRACT_REV
+`ifndef EXCLUDE_SYSREG_DIAG_READBACK
+            // Read 0 in lean builds: mouse speed and the Analogizer offsets
+            // have no reader without INCLUDE_ANALOGIZER, and video.c's
+            // write-refusal / short-fetch watchdog is inert at 0.
+            6'd27: sysreg_rdata = mouse_speed_pct;                 // MOUSE_SPEED_PCT (0x6C)
             6'd33: sysreg_rdata = analogizer_hoffset;              // ANALOGIZER_H_OFFSET
             6'd34: sysreg_rdata = analogizer_voffset;              // ANALOGIZER_V_OFFSET
-            6'd35: sysreg_rdata = HW_CONTRACT_REV;                 // HW_CONTRACT_REV
             6'd51: sysreg_rdata = sdram_wlast_err;                // SDRAM_WLAST_ERR (0xCC)
             6'd52: sysreg_rdata = scanout_fetch_diag;             // SCANOUT_FETCH_DIAG (0xD0)
+`endif
             6'd36: sysreg_rdata = {dt_query_valid, dt_query_data[30:0]};
             6'd37: sysreg_rdata = dt_query_data;                    // DT_QUERY_DATA full 32-bit result
             6'd38: sysreg_rdata = HW_FEATURES_RESOLVED;                     // HW_FEATURES
@@ -1825,10 +1837,12 @@ always @(*) begin
             6'd43: sysreg_rdata = {16'b0, snac_pin_dir, snac_pin_in_sync};
             // Shutdown handshake
             6'd44: sysreg_rdata = {31'b0, shutdown_pending};
-            // Hardware timer
+            // Hardware timer (period/counter are write-only to firmware)
+`ifndef EXCLUDE_SYSREG_DIAG_READBACK
             6'd45: sysreg_rdata = timer_period;
-            6'd46: sysreg_rdata = {30'b0, timer_irq_pending, timer_enable};
             6'd47: sysreg_rdata = timer_counter;
+`endif
+            6'd46: sysreg_rdata = {30'b0, timer_irq_pending, timer_enable};
             // Live swap state. Legacy event counters read as zero.
             6'd48: sysreg_rdata = {12'b0,
                                     term_fb_active,
@@ -1843,7 +1857,9 @@ always @(*) begin
             // quasi-static after rtc_valid rises, so sampling it raw behind
             // the synced valid is safe.
             6'd49: sysreg_rdata = rtc_valid_s ? rtc_epoch_seconds : 32'b0;
+`ifndef EXCLUDE_SYSREG_DIAG_READBACK
             6'd50: sysreg_rdata = {21'b0, save_dt_word_mode, save_dt_word};  // SAVE_DT_WORD + armed flag (diagnostic)
+`endif
             // Display timing live readback.
             6'd55: sysreg_rdata = {22'b0, vrr_v_total};
 `ifdef INCLUDE_CLK_AUTOTUNE
@@ -1861,9 +1877,11 @@ always @(*) begin
             6'd53: sysreg_rdata = CLK_HZ;
 `endif
             6'd56: sysreg_rdata = 32'b0;  // swap hold retired
+`ifndef EXCLUDE_SYSREG_DIAG_READBACK
             6'd57: sysreg_rdata = {6'b0, fb_height_reg, 6'b0, fb_width_reg};
             6'd58: sysreg_rdata = {16'b0, fb_stride_reg};
             6'd59: sysreg_rdata = {29'b0, video_scaler_slot_reg};
+`endif
             6'd63: sysreg_rdata = {26'b0, irq_mask};
             default: ;
         endcase

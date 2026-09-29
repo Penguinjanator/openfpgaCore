@@ -28,3 +28,32 @@ last enabled memory/PC value. The whole-CPU stress suite additionally exercises
 the transformed CPU with concurrent SDRAM scanout.
 `python3 tools/check_vexii_interrupts.py` repeats that workload with timer
 interrupts, checking interrupt acknowledgement and return under memory stalls.
+
+`0002-relaxed-learn-registered-predictor-update.patch` adds `--relaxed-learn`
+(`RELAXED_LEARN=1` in a config): the branch-predictor learn stream is
+registered even with a single learn source, taking the late trap/cancel cone
+off the BTB and GShare RAM write enables.  Training lands one cycle later;
+on os30 it measured +0.5% on the RTL display-list kernel, so no config
+enables it yet.
+
+`0003-pipelined-int-to-float-conversion.patch` adds `--fpu-i2f-pipelined`
+(`FPU_I2F_PIPELINED=1`): `fcvt.s.w[u]` computes the unpacker's leading-zero
+count and shift in the lane's own stages and reaches the packer three stages
+later from registers, instead of freezing the lane for the shared side
+pipeline.  Values are the same expressions; `src/fpga/test/cpu_i2f` checks
+30,000 conversions and hazard sequences.  The new code sits below the
+original so SpinalHDL's line-numbered signal names, and therefore every
+config without the option, stay byte-identical.
+
+
+`LSU_WRITE_REG=1` runs `../retime_dcache_writes.pl` on the generated netlist.
+Each data-cache bank's write port (per-byte enables, address, data) is
+registered, so the store hit/redo/trap cone ends at a flop instead of the
+depth-decoded write enables of every bank M10K (os30's worst CPU cluster,
+about 110 endpoints).  A read captured on the edge that commits the pending
+write overlays the pending bytes on the RAM's OLD_DATA mixed-port result,
+so every read, including writeback victim reads, returns the value the
+original memory returns.  The whole-CPU stress, scanout, IRQ and `cpu_i2f`
+runs are cycle-identical, and a shadow copy of each bank with the original
+write timing matched all ~4.9M read results in those runs; with the bypass
+disabled the shadow reports mismatches, so the bypass is exercised.

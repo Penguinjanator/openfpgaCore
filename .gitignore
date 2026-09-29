@@ -5,6 +5,9 @@ build/
 # Release bundles (make package/release TARGET=mister → core zip + Downloader DB)
 releases/
 
+# Local documentation and measurement archives
+/docs/
+
 # Quartus intermediate files
 db/
 incremental_db/

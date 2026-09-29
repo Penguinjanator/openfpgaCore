@@ -1205,14 +1205,44 @@ uint8_t *of_video_buffer_addr(int idx) {
     return (uint8_t *)fb_addr[idx];
 }
 
+/* Displayed vblanks a CMD_FLIP may take to retire before acquire treats it
+ * as wedged or never published.  A heavy frame retires within a few, and an
+ * open system menu freezes the vblank IRQ (video_frozen), so menu time does
+ * not count toward it. */
+#define FLIP_FENCE_TIMEOUT_VBLANKS 30u
+
+static int flip_fence_reached(uint32_t token) {
+    return (int32_t)(GPU_FENCE_REACHED_REG - token) >= 0;
+}
+
+static int wait_flip_fence(uint32_t token) {
+    uint32_t mstatus;
+    __asm__ volatile("csrr %0, mstatus" : "=r"(mstatus));
+    if (!(mstatus & 0x8u)) {
+        /* Interrupts off: vblanks cannot be counted, keep a short spin. */
+        uint32_t spins = 500000u;            /* ~5 ms @ 100 MHz */
+        while (!flip_fence_reached(token) && --spins)
+            ;
+        return flip_fence_reached(token);
+    }
+    uint32_t start = timing_vblank_count;
+    while (!flip_fence_reached(token)) {
+        if (timing_vblank_count - start >= FLIP_FENCE_TIMEOUT_VBLANKS)
+            return flip_fence_reached(token);
+    }
+    return 1;
+}
+
 int of_video_acquire_next(int just_flipped_idx, uint32_t fence_token) {
     /* CMD_FLIP path: gpu_core pulses gpu_swap_req after its m_wr drain,
-     * then publishes fence_reached.  This function does one bounded
-     * wait:
+     * then publishes fence_reached.  This function waits for:
      *
      *   1. fence_reached >= fence_token — proves the GPU finished
      *      its m_wr drain and the slave latched fb_swap_pending=1.
-     *      Bounded ~5 ms in case CMD_FLIP wedged.
+     *      A slow GPU takes as long as it takes, and CMD_FLIP holds while
+     *      a system menu keeps the previous swap pending; only a flip that
+     *      misses FLIP_FENCE_TIMEOUT_VBLANKS displayed vblanks counts as
+     *      wedged.
      *
      * It then returns the third buffer: not the current scanout buffer
      * and not the buffer queued for the next vsync.  Do not wait for
@@ -1226,14 +1256,7 @@ int of_video_acquire_next(int just_flipped_idx, uint32_t fence_token) {
         return buf_draw;
     }
 
-    int fence_ok = 0;
-    {
-        uint32_t spins = 500000u;            /* ~5 ms @ 100 MHz */
-        while ((int32_t)(GPU_FENCE_REACHED_REG - fence_token) < 0) {
-            if (--spins == 0) break;
-        }
-        fence_ok = ((int32_t)(GPU_FENCE_REACHED_REG - fence_token) >= 0);
-    }
+    int fence_ok = wait_flip_fence(fence_token);
 
     sync_swap_state();
 

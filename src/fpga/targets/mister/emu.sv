@@ -808,7 +808,13 @@ axi_periph_slave #(
 	.INCLUDE_PARAM_TRI_RECS(`ifdef INCLUDE_PARAM_TRI_RECS 1 `else 0 `endif),
 	.INCLUDE_COLUMN_LIST(`ifdef INCLUDE_COLUMN_LIST 1 `else 0 `endif),
 	.INCLUDE_COMPACT_SPAN(`ifdef INCLUDE_COMPACT_SPAN 1 `else 0 `endif),
-	.INCLUDE_TEX_MEM(`ifdef INCLUDE_TEX_MEM 1 `else 0 `endif)
+	.INCLUDE_TEX_MEM(`ifdef INCLUDE_TEX_MEM 1 `else 0 `endif),
+	// Match the GPU's feature gates so applications can select its 3D paths.
+	.INCLUDE_DIRECT_COLOR(`ifdef INCLUDE_DIRECT_COLOR 1 `elsif INCLUDE_COMBINE 1 `elsif INCLUDE_XFORM 1 `else 0 `endif),
+	.INCLUDE_XFORM_RGB(`ifdef INCLUDE_XFORM `ifdef EXCLUDE_GPU_XFORM_MAC 0 `else 1 `endif `else 0 `endif),
+	.INCLUDE_GPU_CLIP_LOAD(`ifdef INCLUDE_XFORM 1 `else 0 `endif),
+	.INCLUDE_GPU_LIGHT(`ifdef INCLUDE_XFORM `ifdef EXCLUDE_GPU_XFORM_MAC 0 `elsif EXCLUDE_GPU_LIGHT 0 `else 1 `endif `else 0 `endif),
+	.INCLUDE_COMBINE(`ifdef INCLUDE_COMBINE 1 `else 0 `endif)
 ) periph (
 	.clk(clk_cpu),
 	.reset_n(reset_n_cpu_core),
@@ -1592,6 +1598,13 @@ sram_bram gpu_lut_sram (
 );
 
 gpu_core #(
+	.INCLUDE_CPU_RING(1),
+	.GPU_Z_READ_WINDOW(16),
+	.GPU_WRITE_COMBINE_FAST_FLUSH(1),
+	.GPU_WRITE_COMBINE_Z(1),
+	.GPU_WRITE_GATHER(1),
+	.GPU_MASKED_WRITE_BURSTS(1),
+	.GPU_WRITE_COMBINE_BURST_HASH(1),
 	// MiSTer feature set: triangles + 2.5D fastpaths all IN; fast texture
 	// memory OUT (no CRAM1 chip).  Each INCLUDE_* echoes its build macro and
 	// MUST match the periph's same-named param above.
@@ -1601,6 +1614,14 @@ gpu_core #(
 	.INCLUDE_COMPACT_SPAN(`ifdef INCLUDE_COMPACT_SPAN 1 `else 0 `endif),
 	.INCLUDE_COLUMN_LIST(`ifdef INCLUDE_COLUMN_LIST 1 `else 0 `endif),
 	.INCLUDE_TEX_MEM(`ifdef INCLUDE_TEX_MEM 1 `else 0 `endif),
+	.INCLUDE_DIRECT_COLOR(`ifdef INCLUDE_DIRECT_COLOR 1 `elsif INCLUDE_COMBINE 1 `elsif INCLUDE_XFORM 1 `else 0 `endif),
+	.INCLUDE_XFORM_RGB(`ifdef INCLUDE_XFORM 1 `else 0 `endif),
+	.INCLUDE_VTX_CACHE(`ifdef INCLUDE_XFORM 1 `else 0 `endif),
+	.INCLUDE_CLIP_TRI(`ifdef INCLUDE_XFORM `ifdef EXCLUDE_CLIP_TRI 0 `else 1 `endif `else 0 `endif),
+	.INCLUDE_GPU_LIGHT(`ifdef INCLUDE_XFORM `ifdef EXCLUDE_GPU_LIGHT 0 `else 1 `endif `else 0 `endif),
+	// The legacy indexed-color 0x51 matrix path also uses this unit.
+	.INCLUDE_GPU_XFORM_MAC(`ifdef EXCLUDE_GPU_XFORM_MAC 0 `else 1 `endif),
+	.INCLUDE_COMBINE(`ifdef INCLUDE_COMBINE 1 `else 0 `endif),
 	// 32 KB tex/cmap cache (2048 sets x 16 B) vs the Pocket's 16 KB
 	// default: with no CRAM1 every texel + cmap read is SDRAM-backed
 	// through this cache.  Size-only knob — protocol and wiring unchanged.

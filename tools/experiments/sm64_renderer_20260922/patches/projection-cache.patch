@@ -1,0 +1,77 @@
+--- a/src/sm64/sm64/src/pc/gfx/gfx_gpu.c
++++ b/src/sm64/sm64/src/pc/gfx/gfx_gpu.c
+@@ -238,6 +238,34 @@
+ /* viewport (NDC -> screen), set by set_viewport — mirrors gfx_soft */
+ static float g_cx = SCR_W * 0.5f, g_cy = SCR_H * 0.5f;
+ static float g_hw = SCR_W * 0.5f, g_hh = SCR_H * 0.5f;
++
++/* Exact memo of the existing quantized GPU-compatible projection. */
++#define PROJECT_CACHE_BITS 7
++struct gpu_projection_entry {
++    uint32_t cx, cy, cw, generation;
++    int16_t x, y;
++};
++static struct gpu_projection_entry g_project_cache[1u << PROJECT_CACHE_BITS];
++static uint32_t g_project_generation = 1;
++static int32_t g_project_cx = SCR_W * 8, g_project_cy = SCR_H * 8;
++static int32_t g_project_hw = SCR_W / 2, g_project_hh = SCR_H * 8;
++
++static void gpu_project_viewport_changed(void) {
++    g_project_cx = (int32_t)lrintf(g_cx) * 16;
++    g_project_cy = (int32_t)lrintf(g_cy * 16.0f);
++    g_project_hw = (int32_t)lrintf(g_hw);
++    g_project_hh = (int32_t)lrintf(g_hh * 16.0f);
++    if (++g_project_generation == 0) {
++        memset(g_project_cache, 0, sizeof(g_project_cache));
++        g_project_generation = 1;
++    }
++}
++
++static uint32_t gpu_float_bits(float f) {
++    uint32_t bits;
++    memcpy(&bits, &f, sizeof(bits));
++    return bits;
++}
+ 
+ /* scissor / depth state */
+ static int16_t g_clip_x0, g_clip_y0, g_clip_x1 = SCR_W, g_clip_y1 = SCR_H;
+@@ -706,6 +734,7 @@
+     g_cx = (float)x + g_hw;
+     /* RenderingAPI uses bottom-left Y; the framebuffer uses top-left Y. */
+     g_cy = (float)(SCR_H - y - height) + g_hh;
++    gpu_project_viewport_changed();
+     gpu_material_changed();   /* also refreshes the sticky 0x50 (dedup'd below) */
+ }
+ 
+@@ -1232,6 +1261,13 @@
+ }
+ 
+ static void gpu_project_clip(float cx, float cy, float cw, int16_t *x, int16_t *y) {
++    uint32_t bx=gpu_float_bits(cx), by=gpu_float_bits(cy), bw=gpu_float_bits(cw);
++    unsigned h=((bx*0x9e3779b1u) ^ (by*0x85ebca6bu) ^ (bw>>7)) >> (32-PROJECT_CACHE_BITS);
++    struct gpu_projection_entry *e=&g_project_cache[h];
++    if (e->generation==g_project_generation && e->cx==bx && e->cy==by && e->cw==bw) {
++        *x=e->x; *y=e->y; return;
++    }
++
+     int32_t xq = (int32_t)lrintf(cx * (65536.0f * VC_W_PRESCALE));
+     int32_t yq = (int32_t)lrintf(cy * (65536.0f * VC_W_PRESCALE));
+     int32_t wq = (int32_t)lrintf(cw * (65536.0f * VC_W_PRESCALE));
+@@ -1239,12 +1275,13 @@
+     uint32_t recip = gpu_clip_reciprocal(den);
+     int32_t rx = (int32_t)(((int64_t)xq * recip) >> 16);
+     int32_t ry = (int32_t)(((int64_t)yq * recip) >> 16);
+-    int64_t sx = (int32_t)lrintf(g_cx) * 16LL
+-               + (((int64_t)(int32_t)lrintf(g_hw) * rx) >> 12);
+-    int64_t sy = (int32_t)lrintf(g_cy * 16.0f)
+-               - (((int64_t)(int32_t)lrintf(g_hh * 16.0f) * ry) >> 16);
++    int64_t sx = (int64_t)g_project_cx
++               + (((int64_t)g_project_hw * rx) >> 12);
++    int64_t sy = g_project_cy
++               - (((int64_t)g_project_hh * ry) >> 16);
+     *x = sx < -32768 ? -32768 : sx > 32767 ? 32767 : (int16_t)sx;
+     *y = sy < -32768 ? -32768 : sy > 32767 ? 32767 : (int16_t)sy;
++    e->cx=bx; e->cy=by; e->cw=bw; e->generation=g_project_generation; e->x=*x; e->y=*y;
+ }
+ 
+ static void gpu_draw_triangles(float buf_vbo[], size_t buf_vbo_len,

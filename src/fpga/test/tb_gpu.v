@@ -18,6 +18,13 @@
 `default_nettype none
 
 module tb_gpu #(
+    parameter INCLUDE_CPU_RING = 0,
+    parameter INCLUDE_COMMAND_DMA = 1,
+    parameter GPU_WRITE_COMBINE_FAST_FLUSH = 0,
+    parameter GPU_WRITE_COMBINE_Z = 0,
+    parameter GPU_WRITE_GATHER = 0,
+    parameter GPU_MASKED_WRITE_BURSTS = 0,
+    parameter GPU_WRITE_COMBINE_BURST_HASH = 0,
     // Forwarded verbatim to gpu_core so per-variant configs can be built
     // straight from the command line with Verilator -G overrides, e.g.
     //   verilator ... -GINCLUDE_PARAM_TRI_RECS=0 -GGPU_Z_READ_WINDOW=1
@@ -255,6 +262,13 @@ generate if (GPU_STREAM_PIPE) begin : stream_checks
 end endgenerate
 
 gpu_core #(
+    .INCLUDE_CPU_RING(INCLUDE_CPU_RING),
+    .INCLUDE_COMMAND_DMA(INCLUDE_COMMAND_DMA),
+    .GPU_WRITE_COMBINE_FAST_FLUSH(GPU_WRITE_COMBINE_FAST_FLUSH),
+    .GPU_WRITE_COMBINE_Z(GPU_WRITE_COMBINE_Z),
+    .GPU_WRITE_GATHER(GPU_WRITE_GATHER),
+    .GPU_MASKED_WRITE_BURSTS(GPU_MASKED_WRITE_BURSTS),
+    .GPU_WRITE_COMBINE_BURST_HASH(GPU_WRITE_COMBINE_BURST_HASH),
     .INCLUDE_PARAM_TRI(INCLUDE_PARAM_TRI),
     .INCLUDE_VERT_TRI(INCLUDE_VERT_TRI),
     .INCLUDE_PARAM_TRI_RECS(INCLUDE_PARAM_TRI_RECS),
@@ -291,6 +305,27 @@ gpu_core #(
     .gpu_tex_mem_rdata(32'b0),
     .gpu_tex_mem_rlast(1'b0),
     .gpu_tex_mem_up_busy(1'b0),
+`ifdef INCLUDE_GPU_RENDER_CACHE
+    // AXI4 read
+    .m_rd_arvalid(gpu_s_rd_arvalid),
+    .m_rd_arready(gpu_s_rd_arready),
+    .m_rd_araddr(gpu_s_rd_araddr),
+    .m_rd_arlen(gpu_s_rd_arlen),
+    .m_rd_rvalid(gpu_s_rd_rvalid),
+    .m_rd_rdata(gpu_s_rd_rdata),
+    .m_rd_rlast(gpu_s_rd_rlast),
+    // AXI4 write
+    .m_wr_awvalid(gpu_s_wr_awvalid),
+    .m_wr_awready(gpu_s_wr_awready),
+    .m_wr_awaddr(gpu_s_wr_awaddr),
+    .m_wr_awlen(gpu_s_wr_awlen),
+    .m_wr_wvalid(gpu_s_wr_wvalid),
+    .m_wr_wready(gpu_s_wr_wready),
+    .m_wr_wdata(gpu_s_wr_wdata),
+    .m_wr_wstrb(gpu_s_wr_wstrb),
+    .m_wr_wlast(gpu_s_wr_wlast),
+    .m_wr_bvalid(gpu_s_wr_bvalid),
+`else
     // AXI4 read
     .m_rd_arvalid(gpu_rd_arvalid),
     .m_rd_arready(gpu_rd_arready),
@@ -310,6 +345,7 @@ gpu_core #(
     .m_wr_wstrb(gpu_wr_wstrb),
     .m_wr_wlast(gpu_wr_wlast),
     .m_wr_bvalid(gpu_wr_bvalid),
+`endif
     // SRAM scratch
     .sram_rd(gpu_sram_rd),
     .sram_wr(gpu_sram_wr),
@@ -327,19 +363,94 @@ gpu_core #(
     // External backpressure input (only the drain test drives it from
     // the C++ harness).
     .slave_swap_pending(slave_swap_pending),
+`ifdef INCLUDE_GPU_RENDER_CACHE
+    .memory_barrier_done(gpu_cache_barrier_done),
+    .memory_barrier_req(gpu_cache_barrier_req),
+    .cache_clear_bypass(gpu_cache_clear_bypass),
+    .cache_soft_reset(gpu_cache_soft_reset),
+    .cache_tex_flush(gpu_cache_tex_flush),
+`endif
     // MMIO
     .reg_wr(reg_wr),
     .reg_addr(reg_addr),
     .reg_wdata(reg_wdata),
+`ifdef INCLUDE_GPU_RENDER_CACHE
+    .reg_rdata(gpu_reg_rdata_core),
+    .busy(gpu_busy_core),
+`else
     .reg_rdata(reg_rdata),
     // Status
     .busy(busy),
+`endif
     .fence_reached(fence_reached),
     .dbg_state(),
     .dbg_setup_step(),
     .dbg_aux(),
     .dbg_frag()
 );
+
+// Render cache (INCLUDE_GPU_RENDER_CACHE): same wiring as core_top.v, so the
+// acceptance suite (and its slow-write runs) exercises GPU + cache together.
+`ifdef INCLUDE_GPU_RENDER_CACHE
+wire        gpu_s_rd_arvalid, gpu_s_rd_arready, gpu_s_rd_rvalid, gpu_s_rd_rlast;
+wire [31:0] gpu_s_rd_araddr, gpu_s_rd_rdata;
+wire [7:0]  gpu_s_rd_arlen;
+wire        gpu_s_wr_awvalid, gpu_s_wr_awready, gpu_s_wr_wvalid, gpu_s_wr_wready;
+wire        gpu_s_wr_wlast, gpu_s_wr_bvalid;
+wire [31:0] gpu_s_wr_awaddr, gpu_s_wr_wdata;
+wire [7:0]  gpu_s_wr_awlen;
+wire [3:0]  gpu_s_wr_wstrb;
+wire        gpu_busy_core;
+wire [31:0] gpu_reg_rdata_core;
+wire        gpu_cache_barrier_done, gpu_cache_barrier_req, gpu_cache_clear_bypass;
+wire        gpu_cache_soft_reset, gpu_cache_tex_flush;
+wire        gpu_cache_busy, gpu_cache_has_lines, gpu_cache_flush_done, gpu_cache_protocol_error;
+wire [25:0] gpu_cache_m_araddr, gpu_cache_m_awaddr;
+reg         gpu_cache_idle_flush;
+reg         gpu_cache_tex_flush_pending;
+always @(posedge clk) begin
+    if (!reset_n || gpu_cache_soft_reset) begin
+        gpu_cache_idle_flush <= 1'b0;
+        gpu_cache_tex_flush_pending <= 1'b0;
+    end else begin
+        if (gpu_cache_flush_done) gpu_cache_idle_flush <= 1'b0;
+        else if (!gpu_busy_core && gpu_cache_has_lines) gpu_cache_idle_flush <= 1'b1;
+        if (gpu_cache_flush_done) gpu_cache_tex_flush_pending <= 1'b0;
+        else if (gpu_cache_tex_flush && gpu_cache_has_lines) gpu_cache_tex_flush_pending <= 1'b1;
+    end
+end
+assign gpu_cache_barrier_done = gpu_cache_flush_done || (!gpu_cache_has_lines && !gpu_cache_busy);
+assign busy = gpu_busy_core || gpu_cache_busy || gpu_cache_has_lines || gpu_cache_idle_flush;
+assign reg_rdata = gpu_reg_rdata_core | ((reg_addr == 4'd5 && busy) ? 32'd1 : 32'd0);
+assign gpu_rd_araddr = {6'd0, gpu_cache_m_araddr};
+assign gpu_wr_awaddr = {6'd0, gpu_cache_m_awaddr};
+gpu_color_depth_cache #(
+    .ADDR_W(26), .CACHE_ALL(1), .WAYS(2), .SET_BITS(6), .WORD_BITS(4)
+) gpu_render_cache (
+    .clk(clk), .reset_n(reset_n && !gpu_cache_soft_reset), .bus_reset_n(reset_n),
+    .range0_lo(26'd0), .range0_hi(26'd0), .range1_lo(26'd0), .range1_hi(26'd0),
+    .write_no_allocate(gpu_cache_clear_bypass),
+    .flush_req((gpu_cache_barrier_req && gpu_cache_has_lines) || gpu_cache_idle_flush
+               || gpu_cache_tex_flush_pending),
+    .flush_done(gpu_cache_flush_done), .busy(gpu_cache_busy), .has_lines(gpu_cache_has_lines),
+    .s_arvalid(gpu_s_rd_arvalid), .s_arready(gpu_s_rd_arready), .s_araddr(gpu_s_rd_araddr[25:0]),
+    .s_arlen(gpu_s_rd_arlen), .s_rvalid(gpu_s_rd_rvalid), .s_rdata(gpu_s_rd_rdata), .s_rlast(gpu_s_rd_rlast),
+    .s_awvalid(gpu_s_wr_awvalid), .s_awready(gpu_s_wr_awready), .s_awaddr(gpu_s_wr_awaddr[25:0]),
+    .s_awlen(gpu_s_wr_awlen), .s_wvalid(gpu_s_wr_wvalid), .s_wready(gpu_s_wr_wready),
+    .s_wdata(gpu_s_wr_wdata), .s_wstrb(gpu_s_wr_wstrb), .s_wlast(gpu_s_wr_wlast), .s_bvalid(gpu_s_wr_bvalid),
+    .m_arvalid(gpu_rd_arvalid), .m_arready(gpu_rd_arready), .m_araddr(gpu_cache_m_araddr),
+    .m_arlen(gpu_rd_arlen), .m_rvalid(gpu_rd_rvalid), .m_rdata(gpu_rd_rdata), .m_rlast(gpu_rd_rlast),
+    .m_awvalid(gpu_wr_awvalid), .m_awready(gpu_wr_awready), .m_awaddr(gpu_cache_m_awaddr),
+    .m_awlen(gpu_wr_awlen), .m_wvalid(gpu_wr_wvalid), .m_wready(gpu_wr_wready),
+    .m_wdata(gpu_wr_wdata), .m_wstrb(gpu_wr_wstrb), .m_wlast(gpu_wr_wlast), .m_bvalid(gpu_wr_bvalid),
+    .hits(), .misses(), .writebacks(), .protocol_error(gpu_cache_protocol_error)
+);
+always @(posedge clk)
+    if (reset_n && gpu_cache_protocol_error) begin
+        $display("FAIL render cache protocol error");
+        $fatal(1, "render cache protocol error");
+    end
+`endif
 
 // Production debug outputs are tied off to save resources. Observe the actual
 // state in the testbench so timeout diagnostics can identify a stalled stage.

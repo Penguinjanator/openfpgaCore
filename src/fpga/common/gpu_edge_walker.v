@@ -12,12 +12,13 @@
 // param-span header words; this module only generates the per-scanline
 // records the CPU used to compute.
 //
-// Vertex format: x signed Q12.4 subpixel, y signed integer scanline.
-// Fill convention: ceil on both edges, left-closed right-open, clipped to
+// Vertex format: x signed Q12.4, y integer or Q12.4 (subpix_y).
+// Q12.4 triangles sample pixel centers; legacy integer-Y commands sample
+// corners. Both use left-closed right-open coverage, clipped to
 // [clip_x0, clip_x1) x [clip_y0, clip_y1).
 //
 // Datapath: y-sort, winding cross product (pipelined 27x16 DSP shared with
-// the clip presteps), per-edge Q16.16 slope dividers (28-beat serial
+// the clip presteps), per-edge Q16.16 slope dividers (28/32-beat serial
 // restoring — see EW_PARALLEL_DIVS below for the one-vs-three layout),
 // two-half DDA with a registered emit cone and a valid/ready record
 // handshake.
@@ -148,12 +149,13 @@ function signed [26:0] slope_sat27;
 endfunction
 
 // ----------------------------------------------------------------
-// Slope dividers: slope Q16.16 = (|dx_q12.4| << 12) / |dy| — 28-bit
-// dividend, 13-bit divisor, 28 quotient beats.  Each divider's dividend
-// and quotient share one 28-bit shift register (div_dq*): the dividend
-// drains MSB-first (div_dq*[27] feeds the try compare) while the
-// quotient fills LSB-first, so after the 28 beats the register holds
-// exactly the quotient.
+// Slope dividers retain all 16 fractional bits. Integer Y uses dxQ4<<12
+// divided by dy in 28 beats; subpixel Y uses dxQ4<<16 divided by dyQ4
+// in 32 beats. Both start with dxQ4<<16 in a 32-bit dividend/quotient
+// shift register. The 28-beat path consumes the high 28 dividend bits;
+// its four unconsumed low bits are zero, preserving the legacy quotient.
+// The subpixel path consumes all 32 bits, avoiding the previous loss of
+// four quotient bits before edge accumulation.
 //
 // EW_PARALLEL_DIVS == 1: three dividers, one per edge (0 = long (02),
 // 1 = top (01), 2 = bot (12)), operands loaded in S_DIV_INIT, three
@@ -170,22 +172,22 @@ endfunction
 // the other is swept at synthesis.
 // ----------------------------------------------------------------
 // Parallel-divider set (EW_PARALLEL_DIVS == 1)
-reg  [27:0] div_dq0,       div_dq1,       div_dq2;  // fused dividend/quotient
+reg  [31:0] div_dq0,       div_dq1,       div_dq2;  // fused dividend/quotient
 reg  [12:0] div_divisor0,  div_divisor1,  div_divisor2;
 reg  [13:0] div_rem0,      div_rem1,      div_rem2;
-reg  [4:0]  div_cnt;
+reg  [5:0]  div_cnt;
 reg         div_neg0,      div_neg1,      div_neg2;
 reg         div_skip0,     div_skip1,     div_skip2;
 
-wire [13:0] div_try0  = {div_rem0[12:0], div_dq0[27]};
+wire [13:0] div_try0  = {div_rem0[12:0], div_dq0[31]};
 wire        div_ge0   = div_try0 >= {1'b0, div_divisor0};
 wire [13:0] div_next0 = div_ge0 ? (div_try0 - {1'b0, div_divisor0}) : div_try0;
 
-wire [13:0] div_try1  = {div_rem1[12:0], div_dq1[27]};
+wire [13:0] div_try1  = {div_rem1[12:0], div_dq1[31]};
 wire        div_ge1   = div_try1 >= {1'b0, div_divisor1};
 wire [13:0] div_next1 = div_ge1 ? (div_try1 - {1'b0, div_divisor1}) : div_try1;
 
-wire [13:0] div_try2  = {div_rem2[12:0], div_dq2[27]};
+wire [13:0] div_try2  = {div_rem2[12:0], div_dq2[31]};
 wire        div_ge2   = div_try2 >= {1'b0, div_divisor2};
 wire [13:0] div_next2 = div_ge2 ? (div_try2 - {1'b0, div_divisor2}) : div_try2;
 
@@ -218,23 +220,23 @@ wire               eop_skip   = (eop_dy == 17'sd0);
 // identical value the old single-cycle commit produced, i cycles
 // later; the first slope consumer is S_PRESTEP_LL, entered only after
 // slot 2.
-wire        [27:0] fix_dq   = (edge_sel == 2'd0) ? div_dq0
+wire        [31:0] fix_dq   = (edge_sel == 2'd0) ? div_dq0
                             : (edge_sel == 2'd1) ? div_dq1   : div_dq2;
 wire               fix_skip = (edge_sel == 2'd0) ? div_skip0
                             : (edge_sel == 2'd1) ? div_skip1 : div_skip2;
 wire               fix_neg  = (edge_sel == 2'd0) ? div_neg0
                             : (edge_sel == 2'd1) ? div_neg1  : div_neg2;
-wire        [31:0] fix_scaled = subpix_y ? {fix_dq, 4'd0} : {4'b0, fix_dq};
+wire        [31:0] fix_scaled = fix_dq;
 wire        [31:0] fix_slope  = fix_skip ? 32'd0
                               : fix_neg  ? -fix_scaled : fix_scaled;
 
 // Shared-divider set (EW_PARALLEL_DIVS == 0)
-reg  [27:0] div_dq;              // fused dividend/quotient
+reg  [31:0] div_dq;              // fused dividend/quotient
 reg  [12:0] div_divisor;
 reg  [13:0] div_rem;
 reg         div_neg;
 
-wire [13:0] div_try  = {div_rem[12:0], div_dq[27]};
+wire [13:0] div_try  = {div_rem[12:0], div_dq[31]};
 wire        div_ge   = div_try >= {1'b0, div_divisor};
 wire [13:0] div_next = div_ge ? (div_try - {1'b0, div_divisor}) : div_try;
 
@@ -262,9 +264,11 @@ reg               in_bottom_half;
 wire signed [31:0] x0_q16 = {{4{x0[15]}}, x0, 12'd0};
 wire signed [31:0] x1_q16 = {{4{x1[15]}}, x1, 12'd0};
 
-// ceil(Q16.16): top half of the +0xFFFF sum.
-wire signed [31:0] ceil_sum_l = xl + 32'sh0000FFFF;
-wire signed [31:0] ceil_sum_r = xr + 32'sh0000FFFF;
+// Subpixel triangles sample pixel centers: ceil(edge_x - 0.5). Legacy
+// integer-Y commands retain their original corner-sampled coverage.
+wire signed [31:0] ceil_bias = subpix_y ? 32'sh00007FFF : 32'sh0000FFFF;
+wire signed [31:0] ceil_sum_l = xl + ceil_bias;
+wire signed [31:0] ceil_sum_r = xr + ceil_bias;
 wire signed [15:0] ceil_xl = ceil_sum_l[31:16];
 wire signed [15:0] ceil_xr = ceil_sum_r[31:16];
 wire signed [15:0] span_u0 = (ceil_xl < clip_x0) ? clip_x0 : ceil_xl;
@@ -278,23 +282,24 @@ wire signed [16:0] span_w = {span_u1_r[15], span_u1_r}
 
 // Integer scanline of each sorted vertex.  subpix_y=0: y* are already integer
 // scanlines (identity).  subpix_y=1: y* are Q12.4, and the top-left fill rule
-// covers scanlines [ceil(y_top), ceil(y_bot)) — ceil(yQ12.4) = (y+15)>>4 (y>=0).
-wire signed [15:0] y0_scan = subpix_y ? (($signed(y0) + 16'sd15) >>> 4) : y0;
-wire signed [15:0] y1_scan = subpix_y ? (($signed(y1) + 16'sd15) >>> 4) : y1;
-wire signed [15:0] y2_scan = subpix_y ? (($signed(y2) + 16'sd15) >>> 4) : y2;
+// covers centers in [y_top,y_bot): ceil(y - 0.5) = (yQ12.4+7)>>4.
+// Extend before adding so vertices at the signed Q12.4 limits do not wrap.
+wire signed [15:0] y0_scan = subpix_y ? (($signed({y0[15],y0}) + 17'sd7) >>> 4) : y0;
+wire signed [15:0] y1_scan = subpix_y ? (($signed({y1[15],y1}) + 17'sd7) >>> 4) : y1;
+wire signed [15:0] y2_scan = subpix_y ? (($signed({y2[15],y2}) + 17'sd7) >>> 4) : y2;
 
 // Prestep distance from the vertex to the first walked scanline.
 // subpix_y=0: integer line count (y_start - y_vertex), exactly as before.
-// subpix_y=1: Q12.4 distance (y_start<<4 - y_vertexQ12.4); the prestep multiply
+// subpix_y=1: Q12.4 distance ((y_start<<4)+8 - y_vertexQ12.4); the prestep multiply
 // product is then >>4 back to a Q16.16 x offset (see S_PRESTEP_LC capture).
-wire signed [15:0] dy_clip_long = subpix_y ? (($signed(y_start) <<< 4) - y0)
+wire signed [15:0] dy_clip_long = subpix_y ? (($signed(y_start) <<< 4) + 16'sd8 - y0)
                                            : (y_start - y0);
-wire signed [15:0] dy_clip_bot  = subpix_y ? (($signed(y_start) <<< 4) - y1)
+wire signed [15:0] dy_clip_bot  = subpix_y ? (($signed(y_start) <<< 4) + 16'sd8 - y1)
                                            : (y_start - y1);
 // subpix: Q12.4 distance from the bottom-edge start vertex v1 to scanline y_mid,
 // used to prestep the bottom edge when it is re-seeded at the mid-vertex swap.
 // Only consumed in the subpix && !in_bottom_half branch (y1 is Q12.4 there).
-wire signed [15:0] dy_clip_mid  = ($signed(y_mid) <<< 4) - y1;
+wire signed [15:0] dy_clip_mid  = ($signed(y_mid) <<< 4) + 16'sd8 - y1;
 
 // ----------------------------------------------------------------
 // Shared DDA accumulator adders: xl and xr each get exactly ONE
@@ -305,7 +310,20 @@ wire signed [15:0] dy_clip_mid  = ($signed(y_mid) <<< 4) - y1;
 // replaces — pure structural sharing; the operand mux now sits ahead
 // of each adder (reg -> mux -> add -> reg).
 // ----------------------------------------------------------------
+`ifdef INCLUDE_EW_STEP_PREDECODE
+// EMIT_A and EMIT_B separate every y_cur update from S_STEP, including
+// zero-width rows. Compute the next-row decisions during those existing
+// cycles so the 16-bit compare does not precede the 32-bit DDA adders.
+reg step_swap_r, step_end_r;
+always @(posedge clk) begin
+    step_swap_r <= !in_bottom_half && (y_cur + 16'sd1 >= y_mid);
+    step_end_r <= (y_cur + 16'sd1 >= y_end);
+end
+wire step_swap = step_swap_r;
+wire step_end = step_end_r;
+`else
 wire step_swap = !in_bottom_half && (y_cur + 16'sd1 >= y_mid);
+`endif
 
 // ONE shared slope_sat27 cone for the three S_PRESTEP_* DSP launches.  The
 // launches sit in mutually exclusive states and all write the SAME mul_a
@@ -436,21 +454,21 @@ always @(posedge clk) begin
                 case (edge_sel)
                     2'd0: begin
                         div_skip0    <= eop_skip;
-                        div_dq0      <= {eop_abs_dx, 12'd0};
+                        div_dq0      <= {eop_abs_dx, 16'd0};
                         div_divisor0 <= eop_abs_dy;
                         div_neg0     <= eop_neg;
                         div_rem0     <= 14'd0;
                     end
                     2'd1: begin
                         div_skip1    <= eop_skip;
-                        div_dq1      <= {eop_abs_dx, 12'd0};
+                        div_dq1      <= {eop_abs_dx, 16'd0};
                         div_divisor1 <= eop_abs_dy;
                         div_neg1     <= eop_neg;
                         div_rem1     <= 14'd0;
                     end
                     default: begin
                         div_skip2    <= eop_skip;
-                        div_dq2      <= {eop_abs_dx, 12'd0};
+                        div_dq2      <= {eop_abs_dx, 16'd0};
                         div_divisor2 <= eop_abs_dy;
                         div_neg2     <= eop_neg;
                         div_rem2     <= 14'd0;
@@ -458,7 +476,7 @@ always @(posedge clk) begin
                 endcase
                 if (edge_sel == 2'd2) begin
                     edge_sel <= 2'd0;    // re-arm for the S_DIV_DONE slots
-                    div_cnt  <= 5'd28;   // 28..1 iterate
+                    div_cnt  <= subpix_y ? 6'd32 : 6'd28;   // 28..1 iterate
                     state    <= S_DIV_RUN;
                 end else begin
                     edge_sel <= edge_sel + 2'd1;
@@ -480,7 +498,7 @@ always @(posedge clk) begin
                     end
                 endcase
                 state <= S_DIV_RUN;
-                div_cnt <= 5'd29;   // beat 29 loads operands, 28..1 iterate
+                div_cnt <= subpix_y ? 6'd33 : 6'd29;   // beat 29 loads operands, 28..1 iterate
                 div_dq  <= 28'd0;
                 div_rem <= 14'd0;
                 div_divisor <= 13'd0;
@@ -489,17 +507,17 @@ always @(posedge clk) begin
 
             S_DIV_RUN: if (EW_PARALLEL_DIVS != 0) begin
                 div_rem0 <= div_next0;
-                div_dq0  <= {div_dq0[26:0], div_ge0};
+                div_dq0  <= {div_dq0[30:0], div_ge0};
                 div_rem1 <= div_next1;
-                div_dq1  <= {div_dq1[26:0], div_ge1};
+                div_dq1  <= {div_dq1[30:0], div_ge1};
                 div_rem2 <= div_next2;
-                div_dq2  <= {div_dq2[26:0], div_ge2};
+                div_dq2  <= {div_dq2[30:0], div_ge2};
                 if (div_cnt == 5'd1)
                     state <= S_DIV_DONE;
                 else
                     div_cnt <= div_cnt - 5'd1;
             end else begin
-                if (div_cnt == 5'd29) begin
+                if (div_cnt == (subpix_y ? 6'd33 : 6'd29)) begin
                     // First beat: load abs operands. dy==0 → degenerate
                     // edge; slope forced to 0 and divide skipped.
                     if (edge_dy == 17'sd0) begin
@@ -507,8 +525,8 @@ always @(posedge clk) begin
                         state  <= S_DIV_DONE;
                     end else begin
                         div_dq      <= edge_dx[16]
-                                     ? {-edge_dx[15:0], 12'd0}
-                                     : { edge_dx[15:0], 12'd0};
+                                     ? {-edge_dx[15:0], 16'd0}
+                                     : { edge_dx[15:0], 16'd0};
                         div_divisor <= edge_dy[16]
                                      ? -edge_dy[12:0]
                                      :  edge_dy[12:0];
@@ -518,7 +536,7 @@ always @(posedge clk) begin
                     end
                 end else begin
                     div_rem <= div_next;
-                    div_dq  <= {div_dq[26:0], div_ge};
+                    div_dq  <= {div_dq[30:0], div_ge};
                     if (div_cnt == 5'd1)
                         state <= S_DIV_DONE;
                     else
@@ -527,10 +545,9 @@ always @(posedge clk) begin
             end
 
             S_DIV_DONE: if (EW_PARALLEL_DIVS != 0) begin
-                // subpix_y=1: dy is Q12.4, so the divider produced a Q20.12
-                // quotient (dividend dx<<12 / divisor dyQ12.4); <<4 recovers the
-                // Q16.16 slope (12 real fractional bits — sub-0.1px over a full
-                // screen).  subpix_y=0: dy integer, quotient already Q16.16.
+                // The completed quotient is Q16.16 for both Y formats.
+                // Subpixel triangles use four extra divide beats to retain
+                // the low slope bits that matter near shared pixel centers.
                 // ONE EDGE PER CYCLE through the shared fix_* negate/scale
                 // cone (edge_sel was re-armed to 0 on S_DIV_RUN entry);
                 // slopes are first read in S_PRESTEP_LL, entered only
@@ -551,12 +568,12 @@ always @(posedge clk) begin
                 end
             end else begin
                 case (edge_sel)
-                    2'd0: slope_long <= div_neg ? -(subpix_y ? {div_dq, 4'd0} : {4'b0, div_dq})
-                                                :  (subpix_y ? {div_dq, 4'd0} : {4'b0, div_dq});
-                    2'd1: slope_top  <= div_neg ? -(subpix_y ? {div_dq, 4'd0} : {4'b0, div_dq})
-                                                :  (subpix_y ? {div_dq, 4'd0} : {4'b0, div_dq});
-                    default: slope_bot <= div_neg ? -(subpix_y ? {div_dq, 4'd0} : {4'b0, div_dq})
-                                                  :  (subpix_y ? {div_dq, 4'd0} : {4'b0, div_dq});
+                    2'd0: slope_long <= div_neg ? -div_dq
+                                                :  div_dq;
+                    2'd1: slope_top  <= div_neg ? -div_dq
+                                                :  div_dq;
+                    default: slope_bot <= div_neg ? -div_dq
+                                                  :  div_dq;
                 endcase
                 if (edge_sel == 2'd2) begin
                     // Clip the walk range before prestep (scanline bounds).
@@ -612,7 +629,7 @@ always @(posedge clk) begin
             end
             S_PRESTEP_MIDW: state <= S_PRESTEP_MIDC;
             S_PRESTEP_MIDC: begin
-                bot_mid_off <= mul_p_pipe >>> 4;   // slope_bot*(y_mid<<4 - y1) >> 4
+                bot_mid_off <= mul_p_pipe >>> 4;   // slope_bot*((y_mid<<4)+8 - y1) >> 4
                 state <= S_PRESTEP_CM;
             end
             S_PRESTEP_CM: begin
@@ -658,7 +675,11 @@ always @(posedge clk) begin
             end
 
             S_STEP: begin
+`ifdef INCLUDE_EW_STEP_PREDECODE
+                if (step_end) begin
+`else
                 if (y_cur + 16'sd1 >= y_end) begin
+`endif
                     state <= S_DONE;
                 end else begin
                     y_cur <= y_cur + 16'sd1;

@@ -30,7 +30,19 @@
 
 DEFS := INCLUDE_ANALOGIZER INCLUDE_HW_MIXER INCLUDE_TRANSLUC \
         INCLUDE_PALETTE INCLUDE_COLUMN_LIST INCLUDE_COMPACT_SPAN \
-        INCLUDE_PARAM_SPAN_Q29 INCLUDE_4PLAYER INCLUDE_BANK_ROW_TRACK
+        INCLUDE_PARAM_SPAN_Q29 INCLUDE_4PLAYER INCLUDE_BANK_ROW_TRACK \
+        INCLUDE_CPU_RING INCLUDE_GPU_WRITE_BURSTS EXCLUDE_GPU_COMMAND_DMA \
+        INCLUDE_SPAN_DEDICATED_MULT
+
+# Separate span products from the shared perspective DSP operand mux.
+# Bit-exact and cycle-identical in Quake/Doom replays; paired seeds 15/20
+# improve setup slack without additional M10K use. Seed 20 remains the best
+# of this comparison at -0.513 ns (100 MHz still does not close timing).
+
+# CPU uploads reuse the existing GPU command ring and avoid SDRAM DMA reads.
+# Gather masked framebuffer writes into SDRAM bursts; no triangle/depth
+# combining logic or additional texture storage is required.
+# Command-DMA removal requires the SDK's automatic CPU-ring selection.
 
 # CPU, textures, mixer samples and scanout can occupy different SDRAM banks.
 # Preserve each bank's open row across master switches to avoid unnecessary

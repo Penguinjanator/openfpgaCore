@@ -45,12 +45,9 @@
 # src/fpga/vendor/vexriscv/configs/os30.cfg; its committed fitter seed in
 # seeds/os30.seed.
 
-# INCLUDE_CLK90: os30 runs the os20-proven 90 MHz clock.
-# HW reported glitches on the 100 MHz wave-2 build (WNS -1.385 / TNS -609,
-# spread across hundreds of CPU decode->regfile/predictor-M10K endpoints —
-# a plateau no single-cone fix lifts; knob survey receipts in memory).
-# The runtime CLK_FREQ_HZ sysreg (0xD4) means the shared os.bin adapts;
-# cost ~4% CPU/SDRAM. Remove this line to return to 100 MHz.
+# CPU/SDRAM runs at 100 MHz without INCLUDE_CLK90 or INCLUDE_CLK96.
+# This clock setting is experimental and has not passed timing.
+# The shared os.bin adapts through the runtime CLK_FREQ_HZ sysreg (0xD4).
 # INCLUDE_CB_WINDOW2 (2026-07-26): the truecolor-blend dst read window at
 # 2 words instead of 4.  A/B/C fits at the stored seed: W=4 17,899 ALM
 # (97%) WNS -1.513; W=2 17,098 (93%) -1.120; W=1 (window OFF) 17,861 (97%)
@@ -64,13 +61,18 @@
 # draw-many) plus the new 0x56 LOAD_VERT_CLIP (clip-space cache load for the
 # CPU-geometry path).  Made affordable by moving vc_mem MLAB->M10K (9 LABs
 # back) — measured A/B: full XFORM = 1,857/1,848 LABs (DOES NOT FIT); this
-# config fitted at 1,846/1,848 when it landed, but os30 NO LONGER FITS at all
-# (1864 LABs needed, 1848 available — Error 170012).  The lighting cone (0x55/0x57)
+# config fitted at 1,846/1,848 when it landed. Later additions exceeded
+# capacity; CPU command uploads and explicit disabled-feature guards restore
+# space without removing rendering capabilities. The lighting cone (0x55/0x57)
 # and 0x4F draw-clip-tri are excluded; caps bits are honest about it:
 # bit 26 = matrix front-end (0x50/52/53/54), bit 29 = 0x56 clip load,
-# bit 30 = lighting (clear here).  The MAC must stay: 0x53 transforms
-# through the sticky 0x50 matrix with NO bypass — a MAC-less 0x53 collapses
-# every vert to the viewport center (2026-08-04 review, CONFIRMED).
+# bit 30 = lighting (clear here).
+# EXCLUDE_GPU_XFORM_MAC (2026-09-23): neither shipping os30 title uses the
+# GPU matrix — SM64 and Quake2 gl1 both transform on the CPU and load
+# clip-space verts through 0x56/0x54 (bit 29).  The MAC-less decode drains
+# 0x51/0x52/0x53 as no-ops (so a MAC-less 0x53 can no longer collapse verts)
+# and bit 26 is cleared to match.  Fit A/B at seed 31: -353 FFs, -1 M10K,
+# -4 LABs.
 # INCLUDE_VI_FILTER (2026-07-26): N64 VI-style output softening — 2-tap
 # horizontal average on the LCD stream, direct-color modes only (terminal
 # stays crisp).  Chosen over per-texel bilinear as the fix for the sampling
@@ -78,6 +80,65 @@
 # the real N64 hid the same aliasing behind its VI resampler.  ~30 ALMs in
 # the slack-rich clk_analog domain.
 DEFS := INCLUDE_VERT_TRI INCLUDE_DIRECT_COLOR INCLUDE_COMBINE INCLUDE_Z_BURST \
-        VEXII_CPU_OS30 INCLUDE_HW_MIXER INCLUDE_TEX_MEM INCLUDE_CLK90 \
+        VEXII_CPU_OS30 INCLUDE_HW_MIXER INCLUDE_TEX_MEM \
         INCLUDE_CB_WINDOW2 INCLUDE_VI_FILTER \
-        INCLUDE_XFORM EXCLUDE_GPU_LIGHT EXCLUDE_CLIP_TRI
+        INCLUDE_XFORM EXCLUDE_GPU_LIGHT EXCLUDE_CLIP_TRI EXCLUDE_GPU_XFORM_MAC \
+        INCLUDE_CPU_RING EXCLUDE_GPU_COMMAND_DMA \
+        INCLUDE_XFORM_VERTEX_RAM INCLUDE_XFORM_RATIO_PIPE \
+        INCLUDE_GPU_CLAMP_PIPE INCLUDE_Z_COMPARE_PARALLEL \
+        INCLUDE_CB_SPLIT_MULT INCLUDE_PSS_SPECULATIVE_STEP \
+        INCLUDE_SPAN_DEDICATED_MULT INCLUDE_TEX_QUEUE_RAM INCLUDE_TEX_QUEUE_MLAB \
+        INCLUDE_EW_STEP_PREDECODE INCLUDE_EARLY_Z_CAPTURE \
+        EXCLUDE_SYSREG_DIAG_READBACK INCLUDE_Z_WINDOW8 \
+        INCLUDE_GPU_RENDER_CACHE
+
+# Experimental 100 MHz candidate measured with seed 31. These options retain
+# rendering features and arithmetic while moving work off critical paths.
+
+# CPU uploads reuse the command ring and avoid its SDRAM DMA reader.
+# Applications must use the SDK with automatic CPU-ring selection; older
+# DMA-only binaries need rebuilding. Texture, framebuffer and mixer transfers
+# retain their existing hardware paths. See docs/OS30_REPAIR_20260915.md.
+
+# Coordinate block RAM uses the matrix read-address cycle; clip-fed vertices
+# need one address cycle. Projection ratios reuse the expired translation
+# register to break DSP feedback, adding two cycles per transformed vertex.
+
+# EXCLUDE_SYSREG_DIAG_READBACK (2026-09-23): sysreg words no firmware reads
+# (data-slot staging 8-13, mouse speed, Analogizer offsets, timer period/
+# counter, SAVE_DT_WORD, FB geometry, the SDRAM/scanout diagnostic counters)
+# read 0, so their sources and CDC syncs prune.  The DS_BRIDGE_WCNT CRAM0
+# overrun sticky (bit 31) stays; video.c's diagnostic watchdog is inert at 0.
+
+# INCLUDE_Z_WINDOW8 (2026-09-23): depth-line fills fetch 8 words instead of 4.
+# INCLUDE_GPU_SELECTIVE_READ_WAIT (window fills wait only for writes to the
+# same 64-byte line instead of a full drain) was adopted with it and dropped
+# again once the render cache landed; see below.  Measured together in the
+# live SM64 model (tools/experiments/sm64_srw_20260923): castle 21.18 -> 22.50 FPS, castle
+# under CPU memory traffic 12.82 -> 15.41, Bowser 18.46 -> 18.88, every frame
+# byte-identical.  Cost vs the 90 MHz reference fit: +434 ALUTs.  A 16-word
+# window (+cb4) is faster under contention but costs ~+300 more ALUTs.
+
+# INCLUDE_GPU_RENDER_CACHE (2026-09-24): 8 KiB, 2-way, 64-byte-line write-back
+# cache for all GPU SDRAM traffic (common/gpu_color_depth_cache.sv, wired in
+# core_top.v); replaces the GPU write combiner.  Live SM64 model on top of the
+# selective waits, 8-word window and SM64's clear removal: castle +2%, Bowser
+# +9%, castle under CPU memory traffic +17% FPS, frames byte-identical
+# (tools/experiments/sm64_cache_20260924).  Its 10 M10Ks come from the write
+# combiner (2) and the texture request/result/metadata queues (5), which keep
+# the metadata-FIFO form but live in MLAB (INCLUDE_TEX_QUEUE_MLAB).
+#
+# Timing round with the cache (2026-09-25, 40-seed sweeps at 100 MHz): the
+# cache fills the device, so the selective read waits came out: -361 ALUTs,
+# median WNS -1.708 -> -1.463, median TNS -817 -> -479, for castle -1.3% FPS
+# (Bowser unchanged).  The write queue's skid swap is gated off under the
+# cache (no SM64 timestamp changes; its link compare fed the pixel-pipeline
+# stall), and the CPU registers its D$ bank writes (LSU_WRITE_REG in
+# configs/os30.cfg).  Burst linking stays: without it SM64 loses 10-26%.
+#
+# Posted writebacks (2026-09-29): the render cache refills while a dirty
+# victim's B is still pending (a fill of that line waits).  Live model of the
+# current SM64 binary (tools/experiments/sm64_bottleneck_20260929): castle
+# 24.0 -> 27.3 FPS, castle under CPU traffic 18.7 -> 23.3, Bowser 22.4 -> 24.4,
+# matching frames byte-identical.  40-seed sweep: best WNS -0.791 -> -0.693,
+# median -1.388 -> -1.295; +16 ALUT, +112 FF.

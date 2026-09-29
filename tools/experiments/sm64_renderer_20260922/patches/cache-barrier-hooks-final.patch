@@ -1,0 +1,48 @@
+--- a/gpu_core.v
++++ b/gpu_core.v
+@@ -324,6 +324,8 @@
+     output reg         gpu_swap_req,
+     output reg  [1:0]  gpu_swap_idx,
+ 
++    input wire memory_barrier_done,
++    output wire memory_barrier_req,
+     input  wire        slave_swap_pending,    // CMD_FLIP backpressure from display slave
+ 
+     // ================================================================
+@@ -486,6 +488,9 @@
+ wire [15:0] ring_rdptr_bytes = {2'b0, ring_rdptr, 2'b0};
+ wire transluc_upload_busy;
+ 
++assign memory_barrier_req = state==S_EXECUTE
++    && (cmd_class==CMDCLS_FENCE || cmd_class==CMDCLS_FLIP || cmd_class==CMDCLS_CLEAR_RECT)
++    && fb_write_drain_complete;
+ assign busy = dma_busy || transluc_upload_busy || !ring_empty || (state != S_IDLE)
+             || (GPU_WRITE_COMBINE && !fb_write_drain_complete);
+ 
+@@ -7060,7 +7065,7 @@
+             CMDCLS_FENCE: begin
+                 // Stall until all outstanding m_wr_* writes commit; then
+                 // publish the fence token and retire to S_IDLE.
+-                if (fb_write_drain_complete) begin
++                if (fb_write_drain_complete && memory_barrier_done) begin
+                     fence_reached <= pending_fence_token;
+                     state         <= S_IDLE;
+                 end
+@@ -7073,7 +7078,7 @@
+                 // if we pulse while it is already full, the ready index is
+                 // overwritten.  Hold the command here until vsync consumes the
+                 // previous request, then publish fence with the swap pulse.
+-                if (fb_write_drain_complete && !slave_swap_pending) begin
++                if (fb_write_drain_complete && memory_barrier_done && !slave_swap_pending) begin
+                     gpu_swap_req  <= 1'b1;
+                     gpu_swap_idx  <= pending_swap_idx;
+                     fence_reached <= pending_fence_token;
+@@ -7084,7 +7089,7 @@
+                 state <= S_IDLE;
+             end
+             CMDCLS_CLEAR_RECT: begin
+-                state <= S_CLEAR_RECT;
++                if (fb_write_drain_complete && memory_barrier_done) state <= S_CLEAR_RECT;
+             end
+             CMDCLS_SPAN_COL: begin
+                 // Shared spanprod bring-up.  The 0x4C column list lands its

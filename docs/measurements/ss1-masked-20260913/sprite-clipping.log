@@ -1,3 +1,0 @@
-before PASS 24000 sprite walks; 120742 masked range draws; 243119 side tests
-after PASS 24000 sprite walks; 120742 masked range draws; 243119 side tests
-PASS identical sprite clipping and masked range order 23a1718281ca806296bc3363ca9156d8af03a619e196b738698f609141f21d76

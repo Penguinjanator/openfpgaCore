@@ -1,0 +1,452 @@
+--- a/src/sm64/sm64/src/pc/gfx/gfx_gpu.h
++++ b/src/sm64/sm64/src/pc/gfx/gfx_gpu.h
+@@ -80,4 +80,18 @@
+ void gpu_vc_prof_get(unsigned *words, unsigned *ctris, unsigned *ltris,
+                      unsigned *loads);
+ 
++/* Immediate truecolor fallback. The backend owns SDK state and resolves the
++ * material once; the frontend supplies only the inputs that material reads. */
++struct gfx_direct_plan {
++    unsigned rgb_mask;
++    int textured, alpha_input;
++};
++struct gfx_direct_vertex {
++    float cx, cy, cw, w_inv, u, v;
++    uint8_t rgb[4][3];
++};
++const struct gfx_direct_plan *gfx_gpu_direct_begin(void);
++void gfx_gpu_direct_triangle(const struct gfx_direct_vertex v[3], uint8_t alpha);
++void gfx_gpu_direct_flush(void);
++
+ #endif /* GFX_GPU_H */
+--- a/src/sm64/sm64/src/pc/gfx/gfx_gpu.c
++++ b/src/sm64/sm64/src/pc/gfx/gfx_gpu.c
+@@ -239,6 +239,34 @@
+ static float g_cx = SCR_W * 0.5f, g_cy = SCR_H * 0.5f;
+ static float g_hw = SCR_W * 0.5f, g_hh = SCR_H * 0.5f;
+ 
++/* Exact memo of the existing quantized GPU-compatible projection. */
++#define PROJECT_CACHE_BITS 7
++struct gpu_projection_entry {
++    uint32_t cx, cy, cw, generation;
++    int16_t x, y;
++};
++static struct gpu_projection_entry g_project_cache[1u << PROJECT_CACHE_BITS];
++static uint32_t g_project_generation = 1;
++static int32_t g_project_cx = SCR_W * 8, g_project_cy = SCR_H * 8;
++static int32_t g_project_hw = SCR_W / 2, g_project_hh = SCR_H * 8;
++
++static void gpu_project_viewport_changed(void) {
++    g_project_cx = (int32_t)lrintf(g_cx) * 16;
++    g_project_cy = (int32_t)lrintf(g_cy * 16.0f);
++    g_project_hw = (int32_t)lrintf(g_hw);
++    g_project_hh = (int32_t)lrintf(g_hh * 16.0f);
++    if (++g_project_generation == 0) {
++        memset(g_project_cache, 0, sizeof(g_project_cache));
++        g_project_generation = 1;
++    }
++}
++
++static uint32_t gpu_float_bits(float f) {
++    uint32_t bits;
++    memcpy(&bits, &f, sizeof(bits));
++    return bits;
++}
++
+ /* scissor / depth state */
+ static int16_t g_clip_x0, g_clip_y0, g_clip_x1 = SCR_W, g_clip_y1 = SCR_H;
+ static int g_z_test, g_z_write;
+@@ -254,7 +282,9 @@
+ /* Every material setter invalidates both eligibility and the shared state
+  * memo. Dynamic per-draw fields are checked in emit_tri_state itself, so
+  * cached triangles, clipped fallbacks and rectangles can safely alternate. */
++static int g_direct_dirty = 1;
+ static void gpu_material_changed(void) {
++    g_direct_dirty = 1;
+     g_vc_state_dirty = 1;
+     g_tri_state_dirty = 1;
+ }
+@@ -706,6 +736,7 @@
+     g_cx = (float)x + g_hw;
+     /* RenderingAPI uses bottom-left Y; the framebuffer uses top-left Y. */
+     g_cy = (float)(SCR_H - y - height) + g_hh;
++    gpu_project_viewport_changed();
+     gpu_material_changed();   /* also refreshes the sticky 0x50 (dedup'd below) */
+ }
+ 
+@@ -1232,6 +1263,13 @@
+ }
+ 
+ static void gpu_project_clip(float cx, float cy, float cw, int16_t *x, int16_t *y) {
++    uint32_t bx=gpu_float_bits(cx), by=gpu_float_bits(cy), bw=gpu_float_bits(cw);
++    unsigned h=((bx*0x9e3779b1u) ^ (by*0x85ebca6bu) ^ (bw>>7)) >> (32-PROJECT_CACHE_BITS);
++    struct gpu_projection_entry *e=&g_project_cache[h];
++    if (e->generation==g_project_generation && e->cx==bx && e->cy==by && e->cw==bw) {
++        *x=e->x; *y=e->y; return;
++    }
++
+     int32_t xq = (int32_t)lrintf(cx * (65536.0f * VC_W_PRESCALE));
+     int32_t yq = (int32_t)lrintf(cy * (65536.0f * VC_W_PRESCALE));
+     int32_t wq = (int32_t)lrintf(cw * (65536.0f * VC_W_PRESCALE));
+@@ -1239,12 +1277,13 @@
+     uint32_t recip = gpu_clip_reciprocal(den);
+     int32_t rx = (int32_t)(((int64_t)xq * recip) >> 16);
+     int32_t ry = (int32_t)(((int64_t)yq * recip) >> 16);
+-    int64_t sx = (int32_t)lrintf(g_cx) * 16LL
+-               + (((int64_t)(int32_t)lrintf(g_hw) * rx) >> 12);
+-    int64_t sy = (int32_t)lrintf(g_cy * 16.0f)
+-               - (((int64_t)(int32_t)lrintf(g_hh * 16.0f) * ry) >> 16);
++    int64_t sx = (int64_t)g_project_cx
++               + (((int64_t)g_project_hw * rx) >> 12);
++    int64_t sy = g_project_cy
++               - (((int64_t)g_project_hh * ry) >> 16);
+     *x = sx < -32768 ? -32768 : sx > 32767 ? 32767 : (int16_t)sx;
+     *y = sy < -32768 ? -32768 : sy > 32767 ? 32767 : (int16_t)sy;
++    e->cx=bx; e->cy=by; e->cw=bw; e->generation=g_project_generation; e->x=*x; e->y=*y;
+ }
+ 
+ static void gpu_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
+@@ -1508,6 +1547,244 @@
+     g_vc_tris_legacy += (uint32_t)buf_vbo_num_tris;
+     /* Publish this batch so the GPU rasterizes it while the CPU builds the next. */
+     of_gpu_kick();
++}
++
++
++struct gpu_direct_material {
++    struct gfx_direct_plan api;
++    int has_color, rgb_input, rgb_has_input, blend_texel_alpha, shade_mask;
++    int cd_a, cd_b, cd_d, cd_on;
++};
++static struct gpu_direct_material g_direct;
++const struct gfx_direct_plan *gfx_gpu_direct_begin(void) {
++    if (!g_has_gpu || !g_truecolor || !g_clip_load || !g_cur_shader) return NULL;
++    if (!g_direct_dirty) return &g_direct.api;
++    const struct CCFeatures *cc = &g_cur_shader->cc;
++    struct gpu_direct_material *p = &g_direct;
++    p->api.textured = cc->used_textures[0] && g_cur_tex[0] && g_cur_tex[0]->ci8;
++    p->has_color = cc->num_inputs > 0;
++    p->rgb_input = cc_cycle_input(cc, 0);
++    if (p->rgb_input < 0) p->rgb_input = 0;
++    p->api.alpha_input = cc->opt_alpha ? cc_cycle_input(cc, 1) : -1;
++    p->rgb_has_input = cc_rgb_has_input(cc);
++    p->blend_texel_alpha = cc_blend_texel_alpha(cc);
++    p->shade_mask = p->api.textured && p->blend_texel_alpha
++        && (!cc->opt_alpha || (cc->do_single[1] && p->api.alpha_input >= 0))
++        && gpu_tex_alpha_mask(g_cur_tex[0]);
++    p->cd_a = p->cd_b = p->cd_d = -1;
++    p->cd_on = (g_combine && p->api.textured)
++        ? classify_combine_cd(cc, &p->cd_a, &p->cd_b, &p->cd_d) : 0;
++    p->api.rgb_mask = p->has_color ? 1u << p->rgb_input : 0;
++    if (p->cd_on) {
++        if (p->cd_a >= 0) p->api.rgb_mask |= 1u << p->cd_a;
++        if (p->cd_b >= 0) p->api.rgb_mask |= 1u << p->cd_b;
++        if (p->cd_d >= 0) p->api.rgb_mask |= 1u << p->cd_d;
++    }
++    g_direct_dirty = 0;
++    return &p->api;
++}
++static void gpu_direct_color(const struct gfx_direct_vertex *v, int idx, float out[3]) {
++    if (idx < 0) { out[0] = out[1] = out[2] = 0.0f; return; }
++    out[0] = v->rgb[idx][0] * (1.0f / 255.0f);
++    out[1] = v->rgb[idx][1] * (1.0f / 255.0f);
++    out[2] = v->rgb[idx][2] * (1.0f / 255.0f);
++}
++void gfx_gpu_direct_flush(void) { of_gpu_kick(); }
++/* Exact byte-domain C/D encodings. Exhaustively checked against float32. */
++static const uint16_t gpu_direct_c[511] = {
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,32,32,33,33,65,65,65,65,97,97,98,98,130,130,
++    130,130,162,162,163,163,195,195,195,195,227,227,228,228,260,260,
++    260,260,292,292,293,293,325,325,325,325,357,357,358,358,390,390,
++    390,390,422,422,423,423,455,455,455,455,487,487,488,488,520,520,
++    520,520,552,552,553,553,585,585,585,585,617,617,618,618,650,650,
++    650,650,682,682,683,683,715,715,715,715,747,747,748,748,780,780,
++    780,780,812,812,813,813,845,845,845,845,877,877,878,878,910,910,
++    910,910,942,942,943,943,975,975,975,975,1007,1007,1008,1008,1040,1040,
++    1040,1072,1072,1073,1073,1105,1105,1105,1105,1137,1137,1138,1138,1170,1170,1170,
++    1170,1202,1202,1203,1203,1235,1235,1235,1235,1267,1267,1268,1268,1300,1300,1300,
++    1300,1332,1332,1333,1333,1365,1365,1365,1365,1397,1397,1398,1398,1430,1430,1430,
++    1430,1462,1462,1463,1463,1495,1495,1495,1495,1527,1527,1528,1528,1560,1560,1560,
++    1560,1592,1592,1593,1593,1625,1625,1625,1625,1657,1657,1658,1658,1690,1690,1690,
++    1690,1722,1722,1723,1723,1755,1755,1755,1755,1787,1787,1788,1788,1820,1820,1820,
++    1820,1852,1852,1853,1853,1885,1885,1885,1885,1917,1917,1918,1918,1950,1950,1950,
++    1950,1982,1982,1983,1983,2015,2015,2015,2015,2047,2047,2047,2047,2047,2047,2047,
++    2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,
++    2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,
++    2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,
++    2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,
++    2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,
++    2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,
++    2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,
++    2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,2047,
++};
++static const uint16_t gpu_direct_d[256] = {
++    0,0,0,32,32,33,33,65,65,65,65,97,97,98,98,130,
++    130,130,130,162,162,163,163,195,195,195,195,227,227,228,228,260,
++    260,260,260,292,292,292,293,325,325,325,325,357,357,357,358,390,
++    390,390,390,422,422,422,423,455,455,455,455,487,487,487,488,520,
++    520,520,520,552,552,552,553,585,585,585,585,617,617,617,617,650,
++    650,650,650,682,682,682,682,683,715,715,715,715,747,747,747,748,
++    780,780,780,780,812,812,812,813,845,845,845,845,877,877,877,877,
++    910,910,910,910,942,942,942,942,975,975,975,975,1007,1007,1007,1007,
++    1040,1040,1040,1040,1072,1072,1072,1072,1105,1105,1105,1105,1137,1137,1137,1137,
++    1170,1170,1170,1170,1202,1202,1202,1202,1234,1235,1235,1235,1267,1267,1267,1267,
++    1299,1300,1300,1300,1332,1332,1332,1332,1364,1365,1365,1365,1365,1397,1397,1397,
++    1397,1430,1430,1430,1430,1462,1462,1462,1462,1494,1495,1495,1495,1527,1527,1527,
++    1527,1559,1560,1560,1560,1592,1592,1592,1592,1624,1625,1625,1625,1657,1657,1657,
++    1657,1689,1690,1690,1690,1722,1722,1722,1722,1754,1755,1755,1755,1787,1787,1787,
++    1787,1819,1819,1820,1820,1852,1852,1852,1852,1884,1884,1885,1885,1917,1917,1917,
++    1917,1949,1949,1950,1950,1982,1982,1982,1982,2014,2014,2015,2015,2047,2047,2047,
++};
++void gfx_gpu_direct_triangle(const struct gfx_direct_vertex v[3], uint8_t alpha) {
++    const struct gpu_direct_material *p = &g_direct;
++    const int textured=p->api.textured, has_color=p->has_color;
++    const int rgb_has_input=p->rgb_has_input, blend_texel_alpha=p->blend_texel_alpha;
++    const int shade_mask=p->shade_mask, cd_on=p->cd_on;
++    const int cd_a=p->cd_a, cd_b=p->cd_b, cd_d=p->cd_d;
++    const float tw_q=65536.0f, th_q=65536.0f;
++    g_cd_active=cd_on;
++    g_subpix_tri=1;
++    int16_t x[3], y[3];
++    int32_t s[3], t[3], zi[3];
++    uint8_t light[3];
++    uint16_t rgb[3];
++    uint16_t shade_rgb[3];
++    uint16_t rgb_d[3];      
++    int32_t depth[3];
++
++    g_surf_alpha = alpha;
++    emit_tri_state(textured);
++
++    
++    float zscale = (float)ZI_SCALE;
++    if (textured) {
++        float m = 0.0f;
++        for (int k = 0; k < 3; k++) {
++            const struct gfx_direct_vertex *f = &v[k];
++            
++            float a3 = fabsf(f->w_inv);            
++            float a4 = fabsf(f->u * f->w_inv);     
++            float a5 = fabsf(f->v * f->w_inv);     
++            if (a3 > m) m = a3;
++            if (a4 > m) m = a4;
++            if (a5 > m) m = a5;
++        }
++        if (m > 0.0f) zscale = ZI_DERIVE_TARGET / m;
++        if (zscale < 1.0f) zscale = 1.0f;      
++    }
++
++    for (int k = 0; k < 3; k++) {
++        const struct gfx_direct_vertex *f = &v[k];
++        float wi = f->w_inv;                       
++        
++
++        gpu_project_clip(f->cx, f->cy, f->cw, &x[k], &y[k]);
++
++        int z = (int)lrintf(wi * (65536.0f * zscale));  
++        if (z < 1) z = 1;
++        zi[k] = z;
++
++        
++        float df = wi * 1073741824.0f;      
++        
++        if (g_decal) df *= DECAL_Z_BIAS;
++        if (df < 1.0f) df = 1.0f;
++        else if (df > 2147483520.0f) df = 2147483520.0f;
++        depth[k] = (int32_t)lrintf(df);
++
++        float cr = 255.0f, cg = 255.0f, cb = 255.0f;
++        if (has_color) {
++            cr = f->rgb[p->rgb_input][0];
++            cg = f->rgb[p->rgb_input][1];
++            cb = f->rgb[p->rgb_input][2];
++        }
++
++        if (textured) {
++            s[k] = (int32_t)lrintf(f->u * tw_q);       
++            t[k] = (int32_t)lrintf(f->v * th_q);
++        } else if (1) {
++            s[k] = 0;
++            t[k] = 0;
++        } else {
++            s[k] = (int32_t)rgb332((int)cr, (int)cg, (int)cb) << 16;
++            t[k] = 0;
++        }
++
++        shade_rgb[k] = rgba_to_565((int)cr, (int)cg, (int)cb);
++        if (1) {
++            if (cd_on) {
++                
++                static const uint8_t zero[3]={0,0,0};
++                const uint8_t *a=cd_a<0 ? zero : f->rgb[cd_a];
++                const uint8_t *b=cd_b<0 ? zero : f->rgb[cd_b];
++                const uint8_t *d=cd_d<0 ? zero : f->rgb[cd_d];
++                rgb[k] = ((gpu_direct_c[255+a[0]-b[0]] & 31u) << 11)
++                       |  (gpu_direct_c[255+a[1]-b[1]] & 2016u)
++                       |  (gpu_direct_c[255+a[2]-b[2]] & 31u);
++                rgb_d[k] = ((gpu_direct_d[d[0]] & 31u) << 11)
++                         |  (gpu_direct_d[d[1]] & 2016u)
++                         |  (gpu_direct_d[d[2]] & 31u);
++            } else {
++                rgb[k]   = (rgb_has_input && !blend_texel_alpha)
++                         ? rgba_to_565((int)cr, (int)cg, (int)cb) : 0xFFFF;
++                rgb_d[k] = 0;
++            }
++        } else {
++            light[k] = (textured && has_color) ? shade_row(cr, cg, cb) : 0;
++        }
++    }
++
++    
++    if (g_decal) {
++        float p0x = x[0] * (1.0f / 16.0f);     
++        float p1x = x[1] * (1.0f / 16.0f);
++        float p2x = x[2] * (1.0f / 16.0f);
++        float e1x = p1x - p0x, e1y = (float)(y[1] - y[0]), e1z = (float)(depth[1] - depth[0]);
++        float e2x = p2x - p0x, e2y = (float)(y[2] - y[0]), e2z = (float)(depth[2] - depth[0]);
++        if (g_subpix_tri) { e1y *= 1.0f / 16.0f; e2y *= 1.0f / 16.0f; }
++        float area = e1x * e2y - e2x * e1y;
++        if (fabsf(area) > 0.5f) {              
++            float inv  = 1.0f / area;
++            float dzdx = (e1z * e2y - e2z * e1y) * inv;
++            float dzdy = (e1x * e2z - e2x * e1z) * inv;
++            float slope = fabsf(dzdx);
++            float ady   = fabsf(dzdy);
++            if (ady > slope) slope = ady;
++            float bias = DECAL_SLOPE_PIXELS * slope;
++            for (int k = 0; k < 3; k++) {
++                float d = (float)depth[k] + bias;
++                if (d > 2147483520.0f) d = 2147483520.0f;
++                depth[k] = (int32_t)d;
++            }
++        }
++    }
++
++    if (1) {
++        if (shade_mask) {
++            g_alpha_mask = 1;
++            emit_tri_state(textured);
++            of_gpu_draw_vert_tri_rgb(x, y, s, t, zi, shade_rgb,
++                                     gpu_q29_word(zi), depth, NULL);
++            g_vc_words += 18u;
++            g_alpha_mask = 0;
++            emit_tri_state(textured);
++        }
++        of_gpu_draw_vert_tri_rgb(x, y, s, t, zi, rgb, gpu_q29_word(zi), depth,
++                                 cd_on ? rgb_d : NULL);
++        g_vc_words += cd_on ? 20u : 18u;
++    } else {
++        of_gpu_draw_vert_tri(x, y, s, t, zi, light);
++        g_vc_words += 15u;
++    }
++    g_vc_tris_legacy++;
+ }
+ 
+ /* ================================================================
+--- a/src/sm64/sm64/src/pc/gfx/gfx_pc.c
++++ b/src/sm64/sm64/src/pc/gfx/gfx_pc.c
+@@ -324,6 +324,9 @@
+ static float buf_vbo[MAX_BUFFERED * (26 * 3)]; // 3 vertices in a triangle and 26 values per vtx
+ static size_t buf_vbo_len;
+ static size_t buf_vbo_num_tris;
++#ifdef TARGET_OPENFPGA
++static unsigned direct_pending;
++#endif
+ 
+ #ifdef TARGET_OPENFPGA
+ /* GPU vertex-cache slot map: 1:1 rsp.loaded_vertices[i] <-> GPU slot i for
+@@ -371,6 +374,12 @@
+ static struct GfxRenderingAPI *gfx_rapi;
+ 
+ static void gfx_flush(void) {
++#ifdef TARGET_OPENFPGA
++    if (direct_pending) {
++        gfx_gpu_direct_flush();
++        direct_pending = 0;
++    }
++#endif
+ #ifdef TARGET_POCKET
+     g_flush_n++;
+ #endif
+@@ -1199,7 +1208,7 @@
+ static int gfx_vc_try_push(const struct LoadedVertex *v1,
+                            const struct LoadedVertex *v2,
+                            const struct LoadedVertex *v3,
+-                           const struct ColorCombiner *comb, bool use_fog) {
++                           const struct ColorCombiner *comb, bool use_fog, bool preserve_clip) {
+     int rgb_in, alpha_in;
+     const int elig = gfx_gpu_vtx_cache_begin(&rgb_in, &alpha_in);
+     const struct LoadedVertex *v_arr[3] = {v1, v2, v3};
+@@ -1334,7 +1343,7 @@
+     /* Ring draw order: buffered 0x4E triangles must land before this one
+      * (rare — only when clipped-fan fallbacks interleave with cached tris
+      * inside one material batch). */
+-    if (buf_vbo_len > 0)
++    if (buf_vbo_len > 0 || direct_pending)
+         gfx_flush();
+ 
+     gfx_gpu_vtx_cache_tri(vc, slot, dirty);
+@@ -1345,7 +1354,7 @@
+ 
+ per_tri_fallback:
+     /* Preserve original coordinates even when a whole material falls back. */
+-    if (buf_vbo_num_tris < GFX_VC_MAX_BUFFERED) {
++    if (preserve_clip && buf_vbo_num_tris < GFX_VC_MAX_BUFFERED) {
+         struct gfx_vc_true_xyw *tv = &gfx_vc_true[buf_vbo_num_tris];
+         for (int i = 0; i < 3; i++) {
+             tv->x[i] = RSPV_TO_FLOAT(v_arr[i]->x);
+@@ -1447,8 +1456,45 @@
+     /* GPU vertex-cache fast path: G_VTX-resident verts upload once (0x56),
+      * the triangle goes out as a 1-word 0x54.  Falls through to the flattened
+      * buf_vbo/0x4E path when the material or the verts are ineligible. */
+-    if (gfx_vc_try_push(v1, v2, v3, comb, use_fog))
++    const struct gfx_direct_plan *direct = gfx_rapi == &gfx_gpu_api
++                                        ? gfx_gpu_direct_begin() : NULL;
++    if (gfx_vc_try_push(v1, v2, v3, comb, use_fog, direct == NULL))
+         return;
++    if (direct) {
++        struct gfx_direct_vertex v[3];
++        uint8_t alpha = 255;
++        if (direct->alpha_input >= 0) {
++            struct RGBA tmp;
++            const struct RGBA *c = gfx_vc_resolve(
++                comb->shader_input_mapping[1][direct->alpha_input], v1, v1, &tmp);
++            alpha = (use_fog && c == &v1->color) ? 255 : c->a;
++        }
++        for (int i = 0; i < 3; i++) {
++            const struct LoadedVertex *src = v_arr[i];
++            v[i].cx = src->x; v[i].cy = src->y; v[i].cw = src->w;
++            v[i].w_inv = src->w_inv;
++            if (direct->textured) {
++                float u = (src->u - rdp.texture_tile.uls * 8) / 32.0f;
++                float t = (src->v - rdp.texture_tile.ult * 8) / 32.0f;
++                if ((rdp.other_mode_h & (3U << G_MDSFT_TEXTFILT)) != G_TF_POINT) {
++                    u += 0.5f; t += 0.5f;
++                }
++                v[i].u = u; v[i].v = t;
++            } else {
++                v[i].u = v[i].v = 0.0f;
++            }
++            for (unsigned j = 0; j < num_inputs; j++) if (direct->rgb_mask & (1u << j)) {
++                struct RGBA tmp;
++                const struct RGBA *c = gfx_vc_resolve(
++                    comb->shader_input_mapping[0][j], src, v1, &tmp);
++                v[i].rgb[j][0] = c->r; v[i].rgb[j][1] = c->g; v[i].rgb[j][2] = c->b;
++            }
++        }
++        gfx_gpu_direct_triangle(v, alpha);
++        if (++direct_pending == MAX_BUFFERED) gfx_flush();
++        return;
++    }
++
+ #else
+     /* Tile-rect dims used to NORMALIZE texels to [0,1] for the desktop softras.
+      * The GPU path (TARGET_OPENFPGA) emits RAW texels instead — see below. */

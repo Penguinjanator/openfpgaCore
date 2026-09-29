@@ -136,6 +136,30 @@ static void replay_world(const char *path) {
     // copying commercial assets into the RTL test or its output.
     for (unsigned i = 0; i < 256u * 1024u; ++i)
         sdram_write_byte(TEX_BASE_BYTE + i, (uint8_t)((i * 17u) ^ (i >> 7)));
+    if (const char *textures = getenv("GPU_TEXTURE_DATA")) {
+        FILE *data = fopen(textures, "rb");
+        if (!data) { perror(textures); exit(1); }
+        while (true) {
+            unsigned char header[8];
+            size_t n = fread(header, 1, sizeof header, data);
+            if (!n && feof(data)) break;
+            if (n != sizeof header) { fprintf(stderr, "Truncated texture header\n"); exit(1); }
+            auto le32 = [](const unsigned char *p) {
+                return uint32_t(p[0]) | uint32_t(p[1]) << 8 |
+                       uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24;
+            };
+            uint32_t addr = le32(header), size = le32(header + 4);
+            if (addr < 0x180000u || addr >= 0x380000u || !size || size > 0x380000u - addr) {
+                fprintf(stderr, "Texture outside replay arena\n"); exit(1);
+            }
+            for (uint32_t i = 0; i < size; ++i) {
+                int b = fgetc(data);
+                if (b == EOF) { fprintf(stderr, "Truncated texture\n"); exit(1); }
+                sdram_write_byte(addr + i, uint8_t(b));
+            }
+        }
+        if (ferror(data) || fclose(data)) exit(1);
+    }
     bool frame_open = false;
     unsigned frame = 0;
     uint64_t start = 0;
@@ -148,6 +172,9 @@ static void replay_world(const char *path) {
             tb->dbg_rd_busy_cycles, tb->dbg_rw_overlap_cycles};
     };
     MemoryCounters first{};
+#ifdef GPU_TEST_CACHE_PROFILE
+    std::array<uint32_t, 11> cache_first{};
+#endif
     auto finish_frame = [&]() {
         finish("world", frame, start);
         auto last = memory();
@@ -155,6 +182,12 @@ static void replay_world(const char *path) {
             last.aw - first.aw, last.bursts - first.bursts,
             last.beats - first.beats, last.write_busy - first.write_busy,
             last.read_busy - first.read_busy, last.overlap - first.overlap);
+#ifdef GPU_TEST_CACHE_PROFILE
+        printf("CACHE %u", frame);
+        for (unsigned i = 0; i < cache_first.size(); ++i)
+            printf(" %u", tb->dbg_cache[i] - cache_first[i]);
+        printf("\n");
+#endif
     };
     while (true) {
         int c = fgetc(input);
@@ -175,6 +208,10 @@ static void replay_world(const char *path) {
             frame_open = true;
             start = sim_time / 2;
             first = memory();
+#ifdef GPU_TEST_CACHE_PROFILE
+            for (unsigned i = 0; i < cache_first.size(); ++i)
+                cache_first[i] = tb->dbg_cache[i];
+#endif
         } else {
             if (!frame_open || words < 34 || words > 1024) {
                 fprintf(stderr, "Invalid capture command length\n"); exit(1);

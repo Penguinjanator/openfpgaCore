@@ -1,2 +1,0 @@
-81bbaddca8678a32fec52747cffc8ce33d634692a0b07c1f46425e220c9e9ffe  /media/fat/.openfpgaOS-profile-20260913/profile.elf
-b066853ef62bf227c60c6d1fba3333eb1e1fb397b4d1907955991b77ca4e063f  /media/fat/.openfpgaOS-profile-20260913/latest.rbf

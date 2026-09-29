@@ -46,9 +46,13 @@ for my $bank (0, 1) {
     move_read_enable("${stem}_mem_spinal_port1", "${stem}_read_cmd_valid",
         "${stem}_mem[${stem}_read_cmd_payload]", 64);
 }
-move_read_enable("PrefetcherNextLinePlugin_logic_unbuffered_rData_pc",
-    "PrefetcherNextLinePlugin_logic_unbuffered_ready",
-    "PrefetcherNextLinePlugin_logic_unbuffered_payload_pc", 32);
+# The next-line prefetcher (and its PC buffer) only exists with
+# --fetch-l1-hardware-prefetch=nl; when present it must be transformed.
+if ($source =~ /PrefetcherNextLinePlugin_/) {
+    move_read_enable("PrefetcherNextLinePlugin_logic_unbuffered_rData_pc",
+        "PrefetcherNextLinePlugin_logic_unbuffered_ready",
+        "PrefetcherNextLinePlugin_logic_unbuffered_payload_pc", 32);
+}
 
 # Write only after every expected read has been found and transformed.
 if ($source ne $original) {

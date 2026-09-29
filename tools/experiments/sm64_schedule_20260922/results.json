@@ -1,0 +1,632 @@
+{
+  "cpu_rendering_frames": 21000,
+  "matched_candidate_frames": 15000,
+  "limitations": [
+    "Fixed-work clock, not coupled CPU/GPU wall time",
+    "Delayed fence polls are ownership stress, not memory-controller timing",
+    "Audio disabled in qsim; host audio callback is a stub",
+    "RTL images use eager forced preparation, flat memory, 12 checkpoints",
+    "100 MHz CPU cycle estimates exclude audio and actual GPU waits"
+  ],
+  "runs": [
+    {
+      "name": "control-intro-eager-0-1200",
+      "frames": 1200,
+      "probes": {},
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "eb8ce9169557db8a3c4590407a44569da6994c2b34cb1fb1987144ab059c0828",
+      "summary_sha256": "177df8fc3b294f473d8f13e1872a493c2ec95b5a51c9b583bd7fcaf3dc0b9882",
+      "run_inputs_sha256": "7b871f5afc9398b2c8a20d22cf77327125c9b9a0a50b82d56f02649f2fe472b2",
+      "patch_sha256": "959c72abe6206803e2829af75d5212b323c624a8563048f6dfd472fea895f378"
+    },
+    {
+      "name": "control-attract-eager-0-1800",
+      "frames": 1800,
+      "probes": {},
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "36b4fe75512553860e81842853cdd6e3ee9211317e9c65e4a41cb872bc88f388",
+      "summary_sha256": "eb3fb75f957bae0e8a15c2a1d7464d778a158fc235cfab385fd8a34837c7f17e",
+      "run_inputs_sha256": "6b4c111e25ad94e9f0d2e96f81367715bcd0f66af695414a437140297bb88071",
+      "patch_sha256": "959c72abe6206803e2829af75d5212b323c624a8563048f6dfd472fea895f378"
+    },
+    {
+      "name": "prepare-intro-eager-0-1200",
+      "frames": 1200,
+      "probes": {
+        "sm64_prepare_words_0": 0,
+        "sm64_prepare_peak_0": 0,
+        "sm64_prepare_frames_0": 0,
+        "sm64_prepare_capacity_flushes_0": 0,
+        "sm64_prepare_texture_waits_0": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "fe79040935d1dd96ca0cef21155d4b96cc0f8ec127f17bee188910862b1e72f3",
+      "summary_sha256": "6f6aac105a76f7d59a5d47a759fac8600357cb56e7a5ffb21945290152a1c69b",
+      "run_inputs_sha256": "86c026c727285c26a0c867fa4e010a4aca3d0b0341c8a0bc0c561955114eb42e",
+      "patch_sha256": "b5c90ed92419c7891a5214b516be1eb057b70caa1a7c33768c1a8b60f20a8ded"
+    },
+    {
+      "name": "prepare-attract-eager-0-1800",
+      "frames": 1800,
+      "probes": {
+        "sm64_prepare_words_0": 0,
+        "sm64_prepare_peak_0": 0,
+        "sm64_prepare_frames_0": 0,
+        "sm64_prepare_capacity_flushes_0": 0,
+        "sm64_prepare_texture_waits_0": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "769bf28512bf69d4168403782359cdfa3596a4ba700dc1cf52c597024a14bf25",
+      "summary_sha256": "80508d67a0c609651bfc59d9d91f7cd91832b47bbf16b8e60648d00eb61ef5e6",
+      "run_inputs_sha256": "37227241c575cc6aea70de45924877134227a6ed2cf75c8f2c8f747ccd3eabfe",
+      "patch_sha256": "b5c90ed92419c7891a5214b516be1eb057b70caa1a7c33768c1a8b60f20a8ded"
+    },
+    {
+      "name": "control-intro-lazy-16-1200",
+      "frames": 1200,
+      "probes": {},
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "65e254118d66eca8674fc5a6e478a5105f968130b224e4b667f9fb869d4b3dd6",
+      "summary_sha256": "d8dff7ad02a7ad752565e05c7656ea85f59796a26f357a8c9cd09cb3c59f819e",
+      "run_inputs_sha256": "69621a99140505a506d04cf1cd4aeab45757129c71d8a33f41e34c71ddb251b9",
+      "patch_sha256": "959c72abe6206803e2829af75d5212b323c624a8563048f6dfd472fea895f378"
+    },
+    {
+      "name": "control-attract-lazy-16-1800",
+      "frames": 1800,
+      "probes": {},
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "5cce14ed8b5a617aba8502dba1a6491d8354d003cb33a636a2041831192355d8",
+      "summary_sha256": "16556255cec14143048df20118b38f8dc22209caf1562d41be250b378746ea78",
+      "run_inputs_sha256": "91df1a8c3bd4c91caa5456a574456401b792f9e349b073784f964b90c30cf9e3",
+      "patch_sha256": "959c72abe6206803e2829af75d5212b323c624a8563048f6dfd472fea895f378"
+    },
+    {
+      "name": "prepare-intro-lazy-16-1200",
+      "frames": 1200,
+      "probes": {
+        "sm64_prepare_words_0": 4037209,
+        "sm64_prepare_peak_0": 10144,
+        "sm64_prepare_frames_0": 1200,
+        "sm64_prepare_capacity_flushes_0": 0,
+        "sm64_prepare_texture_waits_0": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "af757d02da289b352ec9c66c56a5845c0f7f4f313bd91e2c8b0f9a1a94158617",
+      "summary_sha256": "993a620cd173fdad1c0c4e3a761e592320c73395e650981c459691e665eb0fa7",
+      "run_inputs_sha256": "8e461bdba90dec14affbd9525fc2a6f5b63ce268a63875cbf853ebc33315e5f4",
+      "patch_sha256": "b5c90ed92419c7891a5214b516be1eb057b70caa1a7c33768c1a8b60f20a8ded"
+    },
+    {
+      "name": "prepare-attract-lazy-16-1800",
+      "frames": 1800,
+      "probes": {
+        "sm64_prepare_words_0": 6521414,
+        "sm64_prepare_peak_0": 10144,
+        "sm64_prepare_frames_0": 1800,
+        "sm64_prepare_capacity_flushes_0": 0,
+        "sm64_prepare_texture_waits_0": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "992733b8264c5542e21d5d04205bef51a02ac16e69e295564ad917bbef214bab",
+      "summary_sha256": "a39a821ccf66b8e8c3e8bcf8fa1d9986c593ac40933814a898ded2cc4c8f697d",
+      "run_inputs_sha256": "83fa484e32dc1e1d9c5d6d60cc4c1f4de4c2a3a98a8062d519ff399b8f7f5a0c",
+      "patch_sha256": "b5c90ed92419c7891a5214b516be1eb057b70caa1a7c33768c1a8b60f20a8ded"
+    },
+    {
+      "name": "prepare_small-intro-lazy-64-1200",
+      "frames": 1200,
+      "probes": {
+        "sm64_prepare_words_0": 608852,
+        "sm64_prepare_peak_0": 512,
+        "sm64_prepare_frames_0": 1200,
+        "sm64_prepare_capacity_flushes_0": 1191,
+        "sm64_prepare_texture_waits_0": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "5e054cf4a880ab83ceafecb784146a37b96e01e86aef62a62219cc4a69002ece",
+      "summary_sha256": "d2e65055973a77c86015a9fec0dfa46816c33732ec9660fc4ebbc275580d0ff2",
+      "run_inputs_sha256": "18cd5a3c769fe82d24a9cf0a4326a45307bb44daedcdfde28eab3fad11f16e69",
+      "patch_sha256": "a39af9616e52ca03c280b70ab0964125f7302606a285893a6973a93d4a40b446"
+    },
+    {
+      "name": "prepare_small-attract-lazy-64-1800",
+      "frames": 1800,
+      "probes": {
+        "sm64_prepare_words_0": 912056,
+        "sm64_prepare_peak_0": 512,
+        "sm64_prepare_frames_0": 1800,
+        "sm64_prepare_capacity_flushes_0": 1788,
+        "sm64_prepare_texture_waits_0": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "80c1d92a10beeb707f5970e314740b0d1c8c823bdc5dc1c68df14e16c6369acc",
+      "summary_sha256": "e210bd67be067d508f7159d151d135bbdc2b29582a6abb485c1aba6497960e84",
+      "run_inputs_sha256": "801e23931dd6f02a5f23211f430bc2fa18bd27371fb3020afe350b118f0cced0",
+      "patch_sha256": "a39af9616e52ca03c280b70ab0964125f7302606a285893a6973a93d4a40b446"
+    },
+    {
+      "name": "prepare_capture-intro-eager-0-1200",
+      "frames": 1200,
+      "probes": {
+        "sm64_prepare_words_0": 8592942,
+        "sm64_prepare_peak_0": 17152,
+        "sm64_prepare_frames_0": 1199,
+        "sm64_prepare_capacity_flushes_0": 0,
+        "sm64_prepare_texture_waits_0": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "6d7e9d3807e9e1863f2e4c854b9d2893570473208b261252dcfda7cadec71d94",
+      "summary_sha256": "9d60bbcb37725b15fbb4b9ef88b9b6fc17915fc2ab9ce12910a5bcf606704d1a",
+      "run_inputs_sha256": "fc2ad6914e622c98179870fe4acfcdaa13caf32fc3fe869ef084f20acc3d1e5e",
+      "patch_sha256": "3e2e8d230a294e6133d53e92c9f74e14928cd77000c3fe8318ed5c0f50960d71"
+    },
+    {
+      "name": "prepare_capture-attract-eager-0-1800",
+      "frames": 1800,
+      "probes": {
+        "sm64_prepare_words_0": 31968512,
+        "sm64_prepare_peak_0": 24542,
+        "sm64_prepare_frames_0": 1799,
+        "sm64_prepare_capacity_flushes_0": 0,
+        "sm64_prepare_texture_waits_0": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "710c54fd576131e1520f7d227035969ebaeaf70a6926815d9c97aaf23e4bb8c1",
+      "summary_sha256": "ec840c68151634c5a1e9d294e2c3faaeb543f40669e4df6cd3a52cb3f4eeafff",
+      "run_inputs_sha256": "1f4f97a9c11edca278e9f7d9ab7bddd40146ae646c1ba9bc3c927c6fc346b617",
+      "patch_sha256": "3e2e8d230a294e6133d53e92c9f74e14928cd77000c3fe8318ed5c0f50960d71"
+    },
+    {
+      "name": "combined-intro-lazy-64-1200",
+      "frames": 1200,
+      "probes": {
+        "sm64_prepare_words_0": 7895854,
+        "sm64_prepare_peak_0": 17152,
+        "sm64_prepare_frames_0": 1200,
+        "sm64_prepare_capacity_flushes_0": 0,
+        "sm64_prepare_texture_waits_0": 0,
+        "sm64_audio_deadlines_0": 0,
+        "sm64_audio_deadlines_1": 0,
+        "sm64_audio_deadlines_2": 0,
+        "sm64_audio_deadlines_3": 0,
+        "sm64_audio_deadlines_4": 0,
+        "sm64_audio_deadlines_5": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "35e4d4a50bb158cd0ebf6d7aaa7c43a35bb174f32f907a3dee381606407880e6",
+      "summary_sha256": "f36f6a5513d71555f4a21479554e5bd8b51df5e419fa2b3579bdf94bb7b293fe",
+      "run_inputs_sha256": "5a1c1ae039d1c15c66f1586782cccc92c6470f03aade2e814045793a191e772f",
+      "patch_sha256": "0ba47bde00cf0f01c08471145a71ca97a0f96f1dc1e9ba28bcfb3f9fd722d944"
+    },
+    {
+      "name": "combined-attract-lazy-64-1800",
+      "frames": 1800,
+      "probes": {
+        "sm64_prepare_words_0": 29090114,
+        "sm64_prepare_peak_0": 24380,
+        "sm64_prepare_frames_0": 1800,
+        "sm64_prepare_capacity_flushes_0": 0,
+        "sm64_prepare_texture_waits_0": 0,
+        "sm64_audio_deadlines_0": 0,
+        "sm64_audio_deadlines_1": 0,
+        "sm64_audio_deadlines_2": 0,
+        "sm64_audio_deadlines_3": 0,
+        "sm64_audio_deadlines_4": 0,
+        "sm64_audio_deadlines_5": 0
+      },
+      "ring_overflows": 0,
+      "unmapped_mmio": 0,
+      "frames_sha256": "cf7f83e8e9837baa29a07e8d5aedeb98eb840a6c25ab65eca27102230b2301d4",
+      "summary_sha256": "6517b71f3dfc160e07979d48da6bb1a086164c3ba4b4d55b868af39cee490201",
+      "run_inputs_sha256": "a514071bbca0b72a7b8589e8814aed44448132211383dd80605f1e5202ba36a5",
+      "patch_sha256": "0ba47bde00cf0f01c08471145a71ca97a0f96f1dc1e9ba28bcfb3f9fd722d944"
+    }
+  ],
+  "comparisons": [
+    {
+      "candidate": "prepare-intro-eager-0-1200",
+      "control": "control-intro-eager-0-1200",
+      "frames": 1200,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    },
+    {
+      "candidate": "prepare-attract-eager-0-1800",
+      "control": "control-attract-eager-0-1800",
+      "frames": 1800,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    },
+    {
+      "candidate": "prepare-intro-lazy-16-1200",
+      "control": "control-intro-lazy-16-1200",
+      "frames": 1200,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    },
+    {
+      "candidate": "prepare-attract-lazy-16-1800",
+      "control": "control-attract-lazy-16-1800",
+      "frames": 1800,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    },
+    {
+      "candidate": "prepare_small-intro-lazy-64-1200",
+      "control": "control-intro-lazy-16-1200",
+      "frames": 1200,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    },
+    {
+      "candidate": "prepare_small-attract-lazy-64-1800",
+      "control": "control-attract-lazy-16-1800",
+      "frames": 1800,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    },
+    {
+      "candidate": "prepare_capture-intro-eager-0-1200",
+      "control": "control-intro-eager-0-1200",
+      "frames": 1200,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    },
+    {
+      "candidate": "prepare_capture-attract-eager-0-1800",
+      "control": "control-attract-eager-0-1800",
+      "frames": 1800,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    },
+    {
+      "candidate": "combined-intro-lazy-64-1200",
+      "control": "control-intro-lazy-16-1200",
+      "frames": 1200,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    },
+    {
+      "candidate": "combined-attract-lazy-64-1800",
+      "control": "control-attract-lazy-16-1800",
+      "frames": 1800,
+      "matched_fields": [
+        "frame",
+        "host_framecount",
+        "buffer",
+        "gpu_cmd_words",
+        "hash_cmd",
+        "scene_level",
+        "scene_area"
+      ]
+    }
+  ],
+  "cpu_only_estimates": [
+    {
+      "scene": "Mario head",
+      "frame_window": [
+        180,
+        780
+      ],
+      "estimates_ms_at_100mhz": {
+        "control": 54.270098616666665,
+        "prepare": 53.917284233333326
+      }
+    },
+    {
+      "scene": "Bowser",
+      "frame_window": [
+        960,
+        1440
+      ],
+      "estimates_ms_at_100mhz": {
+        "control": 34.606724354166666,
+        "prepare": 34.61882410416667
+      }
+    },
+    {
+      "scene": "Peach",
+      "frame_window": [
+        300,
+        540
+      ],
+      "estimates_ms_at_100mhz": {
+        "control": 25.81882691666667,
+        "prepare": 25.586198083333333
+      }
+    },
+    {
+      "scene": "Lakitu",
+      "frame_window": [
+        660,
+        900
+      ],
+      "estimates_ms_at_100mhz": {
+        "control": 14.055845208333333,
+        "prepare": 14.065379541666665
+      }
+    },
+    {
+      "scene": "Castle",
+      "frame_window": [
+        960,
+        1140
+      ],
+      "estimates_ms_at_100mhz": {
+        "control": 24.34695711111111,
+        "prepare": 24.38836677777778
+      }
+    }
+  ],
+  "rtl_replays": [
+    {
+      "scene": "intro",
+      "frame": 360,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 0,
+      "framebuffer_sha256": "512aba4ee69e043bfae9b8fe227193a5dce8ba9070e1ad4f934cdbe7544c56c7"
+    },
+    {
+      "scene": "intro",
+      "frame": 720,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 0,
+      "framebuffer_sha256": "07e4fc1253ea6fa0abdbd87224c7f3a767d64eb9eeb9eea58b66cd13de5ddb09"
+    },
+    {
+      "scene": "intro",
+      "frame": 840,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 0,
+      "framebuffer_sha256": "c39d0e8479895c2b2f036f8fb402f054bab81f5e2012680228cbafc5fc52ce6f"
+    },
+    {
+      "scene": "intro",
+      "frame": 960,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 1,
+      "framebuffer_sha256": "d0b33b35b88f7be99ffa70cface00c6e28e027b018d9b7cddf076e87c5d0bd8a"
+    },
+    {
+      "scene": "intro",
+      "frame": 1080,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 7,
+      "framebuffer_sha256": "fd7d133308c09b2f13e357739f77f164089ac5b204db40a91456bd72e43b0051"
+    },
+    {
+      "scene": "attract",
+      "frame": 180,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 0,
+      "framebuffer_sha256": "047b5ea84390b6817b6ca6c5d88e00b42c7c6a9041a7f8ee9627596fec51a4b6"
+    },
+    {
+      "scene": "attract",
+      "frame": 360,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 0,
+      "framebuffer_sha256": "22ea10264bca4f1955ff0872035ba41b34d946b18e442a437edf15ce98367ad9"
+    },
+    {
+      "scene": "attract",
+      "frame": 540,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 0,
+      "framebuffer_sha256": "cc58013e92602c3341c2f30b7aa96e48f0e352a591892e45ca9178e2edf83d5a"
+    },
+    {
+      "scene": "attract",
+      "frame": 840,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 0,
+      "framebuffer_sha256": "f0a454d015cc2dd267258ad1132631058a0d9625d6276a1a73e28b10aaca2d20"
+    },
+    {
+      "scene": "attract",
+      "frame": 1140,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 6,
+      "framebuffer_sha256": "5d1e069d0b42789ceae4aa3e16e1b7510654499435f91c60de124f896e88d9f3"
+    },
+    {
+      "scene": "attract",
+      "frame": 1500,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 2,
+      "framebuffer_sha256": "d7398bfe2363d6386972593e6e6d50a8e14b67086f8bec4f9a19341435cc1699"
+    },
+    {
+      "scene": "attract",
+      "frame": 1740,
+      "changed_pixels": 0,
+      "fence_matches": true,
+      "control_vs_legacy_changed_pixels": 0,
+      "framebuffer_sha256": "73ae0ed5e84ee13b552bd81b325d6c7eb87712e369d468872d412e1248493bc7"
+    }
+  ],
+  "host_tests": [
+    {
+      "test": "test_audio",
+      "passed": true,
+      "compiler_command": [
+        "gcc",
+        "-O2",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-I/home/alberto/Repos/openfpgaCore/build/sm64-schedule-20260922/host",
+        "-I/home/alberto/Repos/openfpgaCore/tools/experiments/sm64_schedule_20260922",
+        "-I/home/alberto/Repos/SM64/src/sm64/sm64/src",
+        "/home/alberto/Repos/openfpgaCore/tools/experiments/sm64_schedule_20260922/test_audio.c",
+        "/home/alberto/Repos/openfpgaCore/tools/experiments/sm64_schedule_20260922/audio_service.c",
+        "-o",
+        "/home/alberto/Repos/openfpgaCore/build/sm64-schedule-20260922/host/test_audio"
+      ],
+      "output": "1ms service: ticks=216000 max_gap_us=17000 max_lateness_us=667\naudio clock/service: PASS (cadence, drift, wrap, pause, disable, reentry, bounded catch-up, sample clamp)\n"
+    },
+    {
+      "test": "test_prepare",
+      "passed": true,
+      "compiler_command": [
+        "gcc",
+        "-O2",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-I/home/alberto/Repos/openfpgaCore/build/sm64-schedule-20260922/host",
+        "-I/home/alberto/Repos/openfpgaCore/tools/experiments/sm64_schedule_20260922",
+        "-I/home/alberto/Repos/SM64/src/sm64/sm64/src",
+        "/home/alberto/Repos/openfpgaCore/tools/experiments/sm64_schedule_20260922/test_prepare.c",
+        "-o",
+        "/home/alberto/Repos/openfpgaCore/build/sm64-schedule-20260922/host/test_prepare"
+      ],
+      "output": "frame preparation: PASS (ownership, relocation, partial clears, overflow continuation, shared depth, ring wrap, packet boundaries, texture reuse, DMA fallback)\n"
+    }
+  ],
+  "provenance_sha256": {
+    "/home/alberto/Repos/SM64/.obj/sm64/app.elf": "e7ac36bd22c7f7ef5ff8f7d5cc5b58591ea560c48186a35dbf55f3d7a06b1c64",
+    "/home/alberto/Repos/SM64/src/sm64/pocket/audio_pocket.c": "76888a239e2aa8e7da09a77ea0c443510899e667e1a8ae2e0ea25fd38a6e3f55",
+    "/home/alberto/Repos/SM64/src/sm64/pocket/wm_pocket.c": "cdbeaa237af45fa4d887ac8950a92aa95ec263de487cbb93ee5eed197c0480ee",
+    "/home/alberto/Repos/SM64/src/sm64/sm64/src/audio/synthesis.c": "0d0b7cdb5130a548a2ea6a4e2855ea127d6cabe434e7b9e52d1820ff933f0359",
+    "/home/alberto/Repos/SM64/src/sm64/sm64/src/pc/gfx/gfx_gpu.c": "e0cf4e83e2ea98b61084fb911ac629b4dcf68415f619b77881d0628e23f1c7a3",
+    "/home/alberto/Repos/SM64/src/sm64/sm64/src/pc/gfx/gfx_pc.c": "73c7b128f731db5726ead6d224c3b9e25dc82a54b3b2faa8e439e6557e00c0bc",
+    "/home/alberto/Repos/SM64/src/sm64/sm64/src/pc/of_voice.c": "c19cf91f79990fc6e6c5412b265a0e461b72e62b235750b7242b7b8676f4209c",
+    "/home/alberto/Repos/SM64/src/sm64/sm64/src/pc/pc_main.c": "c3cbf750250754b4f14279c5e289a2134ad201d70a19f5ab6c409117270f94a6",
+    "build/sm64-estimates-20260922/sm64.app": "81d2eb630305e19e946ff067c13f57e7e40b4cd7225d347b8f5c32665ea27fc8",
+    "build/sm64-qsim-20260921/rtl/obj/Vtb_gpu": "4ecb56e2e30aa7f3677cf1e5a87f7dcaf8ecdc34ead59148a52caacc592c19dc",
+    "build/sm64-schedule-20260922/qsim/Makefile": "22f944ace797e5ae2c3405980eeb1dc75f054ec2632f3a9b56d50458e8472da4",
+    "build/sm64-schedule-20260922/qsim/app.c": "cae7c4701b4725f1a21ce1ecc5d0d964dc21c201efd58c28c666b74543f717d1",
+    "build/sm64-schedule-20260922/qsim/app.h": "d444dbf3d087815cc7d34d4a4c1a9917faf812b2f775c87d1e986911e278d69e",
+    "build/sm64-schedule-20260922/qsim/cache.c": "c4d42d7ea45d89857fdb6ced14bdafa7f5e3966679babe89a1be6ea6bde60bd1",
+    "build/sm64-schedule-20260922/qsim/cache.h": "206412ae3cd9f48d859247f9c0255a36e544223adfbbb93ee6ee67bb93380c81",
+    "build/sm64-schedule-20260922/qsim/cpu.c": "9b5bf6362ffa349046e6ff851324d4bd507331df35699cfc895021fbf873fd7b",
+    "build/sm64-schedule-20260922/qsim/cpu.h": "186722f002e5c4a29e2cc122f9a165833dc7b102cfe3175269fa98538bea0815",
+    "build/sm64-schedule-20260922/qsim/cpu_exec.h": "84f9ec054ba8d722b6a5f58ac6bf8df7832ccd92f282447b3be1383c8ff1e478",
+    "build/sm64-schedule-20260922/qsim/cpu_ops.h": "4c8ffb042a49ce624320989ba4636770996426aecbf814fe003a07bbc6d2502f",
+    "build/sm64-schedule-20260922/qsim/env.c": "42452ba3bd56d44e0c64e1a9666387550285524544918e867208f4329d80e319",
+    "build/sm64-schedule-20260922/qsim/env.h": "c07f808649682bb48ab01fd5fa7a2f92e989ab7d44acbe12c1850ae4319dffe6",
+    "build/sm64-schedule-20260922/qsim/fpu.c": "34a01ce31d3ce85e4ad1924e0fc96ae8a01342f72827b943e70146aca4900fc0",
+    "build/sm64-schedule-20260922/qsim/fpu.h": "d202379c50462fad82d458cde5853f55a67b8caf1216a4f30cd6543c5f357ba3",
+    "build/sm64-schedule-20260922/qsim/fpu_fast.h": "07937e87d7d05c0209d80ffe37a436e58344676f1a6dd9825021f038c76281c9",
+    "build/sm64-schedule-20260922/qsim/gpu.c": "86fe99d293312ed4c740710525921eb1a92a901732afd2b782fc9539da5b1597",
+    "build/sm64-schedule-20260922/qsim/gpu.h": "b4a3bb640a9c5851220c399a63569f277c73583abfade7f4008fbdd215bf7782",
+    "build/sm64-schedule-20260922/qsim/gputest.c": "56b70f017f0b14ebece84660df07542d49564b2042e595f410cdbfa506d2a426",
+    "build/sm64-schedule-20260922/qsim/gpuvec.h": "e7e831555b366ff5852c13f6356f7344558232a318e2e3249629599765aa1b5f",
+    "build/sm64-schedule-20260922/qsim/lint.c": "c7bcba4b41ebcac1a80914d340c72e0e5ee19ef23266ccc925dfa6afa45b801c",
+    "build/sm64-schedule-20260922/qsim/lint.h": "357e975cc5507df08f5791b27a2071383ed78dc87eac57970cbdfd11edac9cf7",
+    "build/sm64-schedule-20260922/qsim/main.c": "f0f4c73e8654427c3f4e6a449fc3093a1ce8304c9f0b34a0f63eb9adfa0f40e3",
+    "build/sm64-schedule-20260922/qsim/prof.c": "ade62acb8a0b997b319b96d8436eb5b0f045ff42b573e99fc9b9f1fd2b602271",
+    "build/sm64-schedule-20260922/qsim/prof.h": "7f3f0d7bf81efe6c5544c38ab042bb54c906df3afc4648a495aeeefbeb03a946",
+    "build/sm64-schedule-20260922/qsim/qelf.c": "9bb376ef503527aed0aaa93c6dccff7fa01d00dd513f28a8ac478b9c66f3f35f",
+    "build/sm64-schedule-20260922/qsim/qelf.h": "4e6b6e08715c550e9f27778b1716752a8ed210ba72959a3ed2b77c3942666669",
+    "build/sm64-schedule-20260922/qsim/qsim": "7b472c926ce4a8c478c33228cc3b66e8eeeba21fd6a2c5cd1581c75f15cdad70",
+    "src/firmware/api/of_gpu.h": "c7309a6e45e2b8baccad7e23bcd30e35fdfa0817a77bcc2de0c23bed1eda3e63",
+    "tools/experiments/sm64_renderer_20260922/build_overlay.py": "f93232d28d91bf546a029ee426bfb820954ddc2294b4a1ff912311977b6ee15f",
+    "tools/experiments/sm64_schedule_20260922/analyze.py": "c45ec3b31b7751babccff848030133228abcbfeb6fdd6c2127f75b39563b96d7",
+    "tools/experiments/sm64_schedule_20260922/audio_clock.h": "c485e3fa67e859272505c01c75c04f127716e62489301083fb85d6d0ab5260c7",
+    "tools/experiments/sm64_schedule_20260922/audio_service.c": "a156c3ec1ce7edd7124ac3c094fc6451d5653c39f617b9a26a5dd612dcb73cec",
+    "tools/experiments/sm64_schedule_20260922/build.py": "b6549f08b1fb501f4a4aa07572c91ac50764c438d87fc1e5034903e373fdabb0",
+    "tools/experiments/sm64_schedule_20260922/prepare.inc": "827ea90e4ee3fea6f00dce80cb5c0a7b762cf108ad82bbc2187961a577458b7d",
+    "tools/experiments/sm64_schedule_20260922/prepare_simulator.py": "2772bbabb51390851860bbeec7c67518a81857001d07e22e3e930f6832a18f11",
+    "tools/experiments/sm64_schedule_20260922/replay.py": "a6fae4a89abc3d48f90a4a31b6106c635e4d4b47d494ffb54a6e4de7cb0aea41",
+    "tools/experiments/sm64_schedule_20260922/reproduce.py": "55a6f11f770756acb43fe1db6932e698640c627fae727681d3af4dffa37cd770",
+    "tools/experiments/sm64_schedule_20260922/run.py": "0fe8e6374d11d7f37dc6b87ce60d002ba6650de1be516f0074e357bc73989ab6",
+    "tools/experiments/sm64_schedule_20260922/test_audio.c": "54f156330809e9285cf60dbe911c747171b91e55ad133dd690a8a38aa0c4b3d2",
+    "tools/experiments/sm64_schedule_20260922/test_prepare.c": "7694965789e06b2dedc8378ae6dbd44c39989389d46279bab34c515fb266c730"
+  }
+}

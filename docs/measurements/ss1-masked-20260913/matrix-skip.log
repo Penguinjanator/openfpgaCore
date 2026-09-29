@@ -1,7 +1,0 @@
-skip-sigil1 1194 frames; mean frame 25.124 ms; BSP 0.000 ms; planes 0.000 ms; masked 0.000 ms; GPU wait 0.000 ms; DMA waits 0.000 ms
-skip-sigil2 1009 frames; mean frame 29.809 ms; BSP 0.000 ms; planes 0.000 ms; masked 0.000 ms; GPU wait 0.000 ms; DMA waits 0.000 ms
-skip-coarse-sigil2 934 frames; mean frame 32.315 ms; BSP 15.777 ms; planes 3.330 ms; masked 4.212 ms; GPU wait 0.458 ms; DMA waits 0.204 ms
-skip-repeat-sigil1 1194 frames; mean frame 25.122 ms; BSP 0.000 ms; planes 0.000 ms; masked 0.000 ms; GPU wait 0.000 ms; DMA waits 0.000 ms
-skip-repeat-sigil2 1009 frames; mean frame 29.848 ms; BSP 0.000 ms; planes 0.000 ms; masked 0.000 ms; GPU wait 0.000 ms; DMA waits 0.000 ms
-before-repeat-sigil1 1193 frames; mean frame 25.165 ms; BSP 0.000 ms; planes 0.000 ms; masked 0.000 ms; GPU wait 0.000 ms; DMA waits 0.000 ms
-before-repeat-sigil2 1004 frames; mean frame 30.002 ms; BSP 0.000 ms; planes 0.000 ms; masked 0.000 ms; GPU wait 0.000 ms; DMA waits 0.000 ms

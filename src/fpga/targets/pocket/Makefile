@@ -165,8 +165,15 @@ FW_MAKE = bash $(ROOT_DIR)/tools/firmware-container.sh
 else
 FW_MAKE = $(MAKE) -C $(FW_DIR)
 endif
-$(VEXII_OUT): | $(VEXII_DIR)/build.sbt $(VEXII_DIR)/ext/SpinalHDL/build.sbt
-	@printf "$(C_HEAD)[cpu]$(C_RESET) Generating VexiiRiscv ($(VARIANT), file missing)...\n"
+$(VEXII_OUT): $(VEXII_DIR)/../generate_vexii.sh \
+              $(VEXII_DIR)/../retime_fetch_reads.pl \
+              $(VEXII_DIR)/../retime_aligner_pc.pl \
+              $(VEXII_DIR)/../factor_fetch_ready.pl \
+              $(VEXII_DIR)/../retime_dcache_writes.pl \
+              $(VEXII_DIR)/../configs/$(VARIANT).cfg \
+              $(wildcard $(VEXII_DIR)/../patches/*.patch) \
+              | $(VEXII_DIR)/build.sbt $(VEXII_DIR)/ext/SpinalHDL/build.sbt
+	@printf "$(C_HEAD)[cpu]$(C_RESET) Generating VexiiRiscv ($(VARIANT))...\n"
 ifeq ($(USE_VEXII_CONTAINER),1)
 	@bash $(ROOT_DIR)/tools/vexii-container.sh $(VARIANT)
 else
@@ -226,8 +233,8 @@ vexii-image:
 quartus-image:
 	@bash $(ROOT_DIR)/tools/build-quartus-image.sh
 
-# Phony alias to force regeneration: rm $(VEXII_OUT) then `make cpu`,
-# or just `make cpu` after deleting the file. Keeps muscle memory alive.
+# Regenerate when the configuration or generator changes. Removing the
+# generated netlist also forces a rebuild.
 cpu: $(VEXII_OUT)
 
 # ── Build artifact installers ───────────────────────────────────────
@@ -443,9 +450,9 @@ QPROCS ?= 4
 # (the sbt generator can't run concurrently); logs go to bld/<v>-build.log.
 .PHONY: build-all
 build-all:
-	@for v in $(VARIANTS); do $(MAKE) --no-print-directory cpu VARIANT=$$v; done
+	@for v in $(VARIANTS); do $(MAKE) --no-print-directory cpu VARIANT=$$v || exit $$?; done
 	@$(MAKE) --no-print-directory bootloader
-	@for v in $(VARIANTS); do $(MAKE) --no-print-directory bld/$$v/ap_core.qsf VARIANT=$$v; done
+	@for v in $(VARIANTS); do $(MAKE) --no-print-directory bld/$$v/ap_core.qsf VARIANT=$$v || exit $$?; done
 	@printf "$(C_HEAD)[fpga]$(C_RESET) Parallel container build: $(VARIANTS) ($(MAXJOBS)-wide)...\n"
 	@rm -f bld/.build-all-fail
 	@printf "%s\n" $(VARIANTS) | xargs -P $(MAXJOBS) -I{} sh -c \
@@ -455,13 +462,15 @@ build-all:
 	  then printf "  $(C_ERR)%s FAILED$(C_RESET) (bld/%s-build.log)\n" "$$v" "$$v"; \
 	  else printf "  $(C_OK)%s rc=0$(C_RESET) (bld/%s-build.log)\n" "$$v" "$$v"; fi; done
 	@if [ -s bld/.build-all-fail ]; then exit 1; fi
-	@for v in $(VARIANTS); do $(MAKE) --no-print-directory install-bitstream VARIANT=$$v; done
+	@for v in $(VARIANTS); do $(MAKE) --no-print-directory install-bitstream VARIANT=$$v || exit $$?; done
 	@printf "$(C_OK)[fpga] Built all variants: $(VARIANTS)$(C_RESET)\n"
 
 # ── Seed-sweep ALL variants (sequential; each sweep is itself MAXJOBS-wide) ──
 .PHONY: sweep-all
 sweep-all:
-	@for v in $(VARIANTS); do $(MAKE) --no-print-directory sweep VARIANT=$$v; done
+	@failed=0; for v in $(VARIANTS); do \
+		$(MAKE) --no-print-directory sweep VARIANT=$$v || failed=1; \
+	done; exit $$failed
 
 # ── Test ─────────────────────────────────────────────────────────────
 test:

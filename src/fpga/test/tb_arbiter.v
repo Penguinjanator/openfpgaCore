@@ -21,7 +21,7 @@
 
 `default_nettype none
 
-module tb_arbiter (
+module tb_arbiter #(parameter WRITE_RESP_DELAY = 0) (
     input  wire        clk,
     input  wire        reset_n,
 
@@ -278,13 +278,17 @@ end
 
 reg [2:0] sl_wr_state;
 reg [7:0] sl_wr_remaining;
+integer sl_wr_delay;
 
 localparam SL_WR_IDLE = 3'd0;
 localparam SL_WR_DATA = 3'd1;
 localparam SL_WR_RESP = 3'd2;
+localparam SL_WR_WAIT = 3'd3;
 
 assign s_awready = (sl_wr_state == SL_WR_IDLE);
-assign s_wready  = (sl_wr_state == SL_WR_DATA);
+// Keep WREADY high after the final beat to expose a master that repeats it
+// while waiting for the SDRAM write-completion response.
+assign s_wready  = (sl_wr_state == SL_WR_DATA) || (sl_wr_state == SL_WR_WAIT);
 assign s_bvalid  = (sl_wr_state == SL_WR_RESP);
 assign s_bresp   = 2'b00;
 
@@ -292,6 +296,7 @@ always @(posedge clk or negedge reset_n) begin
     if (!reset_n) begin
         sl_wr_state     <= SL_WR_IDLE;
         sl_wr_remaining <= 8'd0;
+        sl_wr_delay <= 0;
     end else begin
         case (sl_wr_state)
         SL_WR_IDLE: if (s_awvalid && s_awready) begin
@@ -300,10 +305,15 @@ always @(posedge clk or negedge reset_n) begin
         end
         SL_WR_DATA: if (s_wvalid && s_wready) begin
             if (sl_wr_remaining == 8'd0) begin
-                sl_wr_state <= SL_WR_RESP;
+                sl_wr_state <= WRITE_RESP_DELAY == 0 ? SL_WR_RESP : SL_WR_WAIT;
+                sl_wr_delay <= WRITE_RESP_DELAY;
             end else begin
                 sl_wr_remaining <= sl_wr_remaining - 8'd1;
             end
+        end
+        SL_WR_WAIT: begin
+            if (sl_wr_delay == 0) sl_wr_state <= SL_WR_RESP;
+            else sl_wr_delay <= sl_wr_delay - 1;
         end
         SL_WR_RESP: begin
             // The arbiter has no bready — bvalid is consumed on the

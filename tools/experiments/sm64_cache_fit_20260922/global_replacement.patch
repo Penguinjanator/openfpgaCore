@@ -1,0 +1,60 @@
+--- a/gpu_color_depth_cache.sv
++++ b/gpu_color_depth_cache.sv
+@@ -13,6 +13,9 @@
+     // For a dedicated GPU physical-address bus, omit range decode and the
+     // uncached-read path. Flush/idle still govern CPU ownership transfers.
+     parameter CACHE_ALL = 0,
++    // Area alternative: share round-robin state across sets. This affects
++    // replacement quality only; retained as a separately measured option.
++    parameter GLOBAL_REPLACEMENT = 0,
+     parameter MAX_WRITE_WORDS = 8
+ ) (
+     input wire clk, reset_n,
+@@ -86,6 +89,7 @@
+ reg [ADDR_W-LINE_BITS-1:0] hot0_line, hot1_line;
+ reg [INDEX_BITS-1:0] hot0_slot, hot1_slot;
+ reg [WAY_BITS-1:0] victim [0:SETS-1];
++reg [WAY_BITS-1:0] global_victim;
+ wire [SET_BITS-1:0] set_index=addr[LINE_BITS+:SET_BITS];
+ wire [WORD_BITS-1:0] word_index=addr[2+:WORD_BITS];
+ wire [TAG_BITS-1:0] tag=addr[LINE_BITS+SET_BITS+:TAG_BITS];
+@@ -145,10 +149,11 @@
+ reg hit, empty;
+ reg [INDEX_BITS-1:0] selected;
+ reg [META_BITS-1:0] selected_meta;
++wire [WAY_BITS-1:0] replace_way=GLOBAL_REPLACEMENT ? global_victim : victim[set_index];
+ always @* begin
+     hit=0; empty=0;
+-    selected={set_index,victim[set_index]};
+-    selected_meta=meta_q[victim[set_index]*META_BITS+:META_BITS];
++    selected={set_index,replace_way};
++    selected_meta=meta_q[replace_way*META_BITS+:META_BITS];
+     for(integer i=0;i<WAYS;i=i+1) begin
+         if(!meta_q[i*META_BITS] && !empty) begin
+             empty=1;
+@@ -271,13 +276,14 @@
+         wb_pos<=0; wb_last<=0; victim_tag<=0;
+         bounds_fresh<=1; current_first<=0; current_last<=0;
+         hot0_valid<=0; hot1_valid<=0; hot0_line<=0; hot1_line<=0; hot0_slot<=0; hot1_slot<=0;
++        global_victim<=0;
+         s_rvalid<=0; s_rdata<=0; s_rlast<=0; s_bvalid<=0;
+         hits<=0; misses<=0; writebacks<=0; protocol_error<=0;
+     end else begin
+         s_rvalid<=0; s_rlast<=0; s_bvalid<=0;
+         case(state)
+             INIT: begin
+-                if(walk[WAY_BITS-1:0]==0) victim[walk[INDEX_BITS-1:WAY_BITS]]<=0;
++                if(!GLOBAL_REPLACEMENT && walk[WAY_BITS-1:0]==0) victim[walk[INDEX_BITS-1:WAY_BITS]]<=0;
+                 if(walk==INDEX_BITS'(LINES-1)) state<=IDLE;
+                 else walk<=walk+1'b1;
+             end
+@@ -333,7 +339,8 @@
+             end
+             ALLOC: begin
+                 if(!replacing_valid) live_lines<=live_lines+1;
+-                victim[set_index]<=slot[WAY_BITS-1:0]+1'b1;
++                if(GLOBAL_REPLACEMENT) global_victim<=global_victim+1'b1;
++                else victim[set_index]<=slot[WAY_BITS-1:0]+1'b1;
+                 hot1_valid<=hot0_valid && hot0_slot!=slot;
+                 hot1_line<=hot0_line; hot1_slot<=hot0_slot;
+                 hot0_valid<=1; hot0_line<=addr[ADDR_W-1:LINE_BITS]; hot0_slot<=slot;

@@ -1,0 +1,54 @@
+diff --git a/src/main/scala/vexiiriscv/Param.scala b/src/main/scala/vexiiriscv/Param.scala
+index 9feeb43..32eb57a 100644
+--- a/src/main/scala/vexiiriscv/Param.scala
++++ b/src/main/scala/vexiiriscv/Param.scala
+@@ -138,6 +138,7 @@ class ParamSimple() {
+   var relaxedShift = false
+   var relaxedSrc = true
+   var relaxedBtb = false
++  var relaxedLearn = false
+   var relaxedBtbHit = false
+   var relaxedDiv = false
+   var relaxedMulInputs = false
+@@ -616,6 +617,7 @@ class ParamSimple() {
+     opt[Unit]("relaxed-shift") action { (v, c) => relaxedShift = true }
+     opt[Unit]("relaxed-src") action { (v, c) => relaxedSrc = true }
+     opt[Unit]("relaxed-btb") action { (v, c) => relaxedBtb = true }
++    opt[Unit]("relaxed-learn") action { (v, c) => relaxedLearn = true }
+     opt[Unit]("relaxed-btb-hit") action { (v, c) => relaxedBtbHit = true }
+     opt[Unit]("stressed-btb") action { (v, c) => relaxedBtb = false }
+     opt[Unit]("stressed-div") action { (v, c) => relaxedDiv = false }
+@@ -821,7 +823,7 @@ class ParamSimple() {
+     plugins += new schedule.ReschedulePlugin()
+ 
+     // Branch prediction
+-    plugins += new LearnPlugin()
++    plugins += new LearnPlugin(forceRegistered = relaxedLearn)
+     if(withRas) assert(withBtb)
+     if(withGShare) assert(withBtb)
+     if(withBtb) {
+diff --git a/src/main/scala/vexiiriscv/prediction/LearnPlugin.scala b/src/main/scala/vexiiriscv/prediction/LearnPlugin.scala
+index ac9af8e..da79b10 100644
+--- a/src/main/scala/vexiiriscv/prediction/LearnPlugin.scala
++++ b/src/main/scala/vexiiriscv/prediction/LearnPlugin.scala
+@@ -17,7 +17,10 @@ trait ForgetSource{
+ }
+ 
+ // Aggregate all of LearnSource's ports into a single one for the BTB to use.
+-class LearnPlugin extends FiberPlugin with LearnService {
++// forceRegistered: register the learn stream even with a single source, so
++// the late branch/trap cancel reaches one valid flop instead of the BTB and
++// GShare RAM write enables.  Predictor updates land one cycle later.
++class LearnPlugin(forceRegistered : Boolean = false) extends FiberPlugin with LearnService {
+   override def getLearnPort(): Flow[LearnCmd] = logic.learn
+ 
+   val logic = during build new Area {
+@@ -26,7 +29,7 @@ class LearnPlugin extends FiberPlugin with LearnService {
+ 
+     val ups = host.list[LearnSource].flatMap(_.getLearnPort())
+     val learn = Flow(LearnCmd(learnCtxElements.toSeq))
+-    val buffered = ups.map(_.pipelined(m2s = ups.size > 1)) // As we may have multiple learning sources and we can only learn 1 per cycle, let's add some buffer
++    val buffered = ups.map(_.pipelined(m2s = ups.size > 1 || forceRegistered)) // As we may have multiple learning sources and we can only learn 1 per cycle, let's add some buffer
+     val arbitrated = StreamArbiterFactory().noLock.roundRobin.on(buffered)
+     learn << arbitrated.toFlow
+   }

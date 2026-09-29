@@ -8,6 +8,7 @@ import argparse
 from pathlib import Path
 import re
 import subprocess
+from check_pocket_memory_contention import pocket_sdram_twin
 
 
 def replace_once(text, old, new):
@@ -28,6 +29,7 @@ def main():
     parser.add_argument("--netlist", type=Path, default=root /
                         "src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_mister.v")
     parser.add_argument("--output", type=Path, default=root / "build/vexii-interrupts")
+    parser.add_argument("--profile", choices=("mister", "pocket"), default="mister")
     args = parser.parse_args()
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -76,11 +78,21 @@ sync_trap:""")
                       "cpu_system cpu_sys (", "wire test_timer_irq;\ncpu_system cpu_sys (")
     tb = replace_once(tb, ".int_m_timer   (1'b0)", ".int_m_timer   (test_timer_irq)")
     tb = replace_once(tb, ".timer_irq  ()", ".timer_irq  (test_timer_irq)")
+    if args.profile == "pocket":
+        tb, count = re.subn(r'io_sdram\s+(\w+)\s*\(',
+                           r"assign phy_ncs = 1'b0;\nio_sdram #(.BANK_ROW_TRACK(1)) \1 (", tb)
+        if count != 1:
+            raise RuntimeError("SDRAM controller instance changed")
+        tb = replace_once(tb, "    .phy_ncs(phy_ncs),", "")
     fixture = out / "tb_system_irq.v"
     fixture.write_text(tb)
     makefile = out / "test.mk"
     makefile.write_text(f"include {test}/Makefile\n"
                         f"SYSTEM_SDRAM_SRCS := $(subst tb_system_sdram.v,{fixture},$(SYSTEM_SDRAM_SRCS))\n")
+    if args.profile == "pocket":
+        twin = pocket_sdram_twin(root, out)
+        with makefile.open("a") as f:
+            f.write(f"SYSTEM_SDRAM_SRCS := $(subst io_sdram_mister_test.v,{twin},$(SYSTEM_SDRAM_SRCS))\n")
     bench = out / "bench"
     run(["make", "-f", str(makefile), str(bench / "Vtb_system"),
          f"SYSTEM_SDRAM_DIR={bench}", f"VEXII_MISTER={args.netlist.resolve()}",

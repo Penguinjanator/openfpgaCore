@@ -24,6 +24,8 @@ def main():
     parser.add_argument('--output', type=Path, default=root / 'build/pocket-renderer-replay')
     parser.add_argument('--bank-row-track', type=int, choices=[0, 1], default=0)
     parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument('--cpu', type=Path,
+                        help='Generated CPU netlist to compare against the current os25 CPU')
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
@@ -32,7 +34,7 @@ def main():
     test = root / 'src/fpga/test'
     target = root / 'src/fpga/targets/pocket'
     common = root / 'src/fpga/common'
-    cpu = root / 'src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_os25.v'
+    cpu = (args.cpu or root / 'src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_os25.v').resolve()
     if not cpu.is_file():
         parser.error('Generate the Pocket CPU first: make -C src/fpga/targets/pocket cpu VARIANT=os25')
     twin = pocket_sdram_twin(root, output)

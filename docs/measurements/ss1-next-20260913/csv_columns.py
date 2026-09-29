@@ -1,5 +1,0 @@
-columns = ['timestamp_us','queue_interval_us','frame_active_us','gametic','view_x_fixed','view_y_fixed','view_angle','vblank_count','present_count','last_presented_us',
-           'display_us','view_us','bsp_us','planes_us','masked_us','present_us','gpu_wait_us','vsync_wait_us','flip_us','cache_us','blit_us',
-           'gpu_columns','gpu_column_pixels','gpu_spans','gpu_span_pixels','dma_wait_calls','dma_spins','ring_wait_calls','ring_spins','min_ring_free',
-           'dma_poll_us','ring_poll_us','gpu_status','ring_read_pointer','gpu_clock','gpu_busy','gpu_read_beats','gpu_write_beats','gpu_read_address_stall','gpu_write_address_stall','gpu_write_data_stall','gpu_texture_requests','gpu_texture_fills','gpu_texture_request_stall','gpu_combiner_stall','gpu_fragment_stall','gpu_fragment_cycles','gpu_dma_busy','gpu_writes_outstanding','gpu_counter_magic',
-           'view_width','view_height','episode','map','cpu_hz','coarse_probes_enabled','health','direct_frame_count','prepare_us','pacing_wait_us','music_stopped','midi_pump_us','midi_pump_calls','midi_envelope_budget_overruns']

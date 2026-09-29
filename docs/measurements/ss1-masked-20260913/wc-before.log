@@ -1,9 +1,0 @@
-STREAM same-entry: 1024 writes in 2047 cycles
-STREAM aliases: 1024 writes in 2047 cycles
-PASS seed 1: 503875 accepted, 434751 emitted, 8281541 cycles; byte oracle, stalls, reset and flush
-STREAM same-entry: 1024 writes in 2047 cycles
-STREAM aliases: 1024 writes in 2047 cycles
-PASS seed 2: 503875 accepted, 435520 emitted, 8251341 cycles; byte oracle, stalls, reset and flush
-STREAM same-entry: 1024 writes in 2047 cycles
-STREAM aliases: 1024 writes in 2047 cycles
-PASS seed 3: 503875 accepted, 435895 emitted, 8252967 cycles; byte oracle, stalls, reset and flush

@@ -259,11 +259,28 @@ static void ring_cmd(uint8_t cmd, uint32_t payload_words) {
     ring_write(((uint32_t)cmd << 24) | (payload_words & 0x00FFFFFFu));
 }
 
+#ifdef GPU_TEST_NO_COMMAND_DMA
+static bool cpu_transport = true;
+#else
+static bool cpu_transport;
+#endif
 static void gpu_kick() {
     if (pending_stream.empty())
         return;
     wait_for_dma_idle();
 
+    if (cpu_transport) {
+        for (uint32_t word : pending_stream)
+            mmio_write(REG_RING_WRPTR, word);
+        if ((mmio_read(REG_STATUS) & 0x300) != 0x100) {
+            std::fprintf(stderr, "CPU ring mode lost or overflowed\n");
+            std::abort();
+        }
+        ring_wrptr = (ring_wrptr + pending_stream.size() * 4u) & ring_mask;
+        mmio_write(REG_CTRL, 8);
+        pending_stream.clear();
+        return;
+    }
     uint32_t addr_word = BATCH_BUF_BYTE >> 2;
     for (uint32_t x : pending_stream)
         sdram_write(addr_word++, x);
@@ -285,6 +302,7 @@ static void gpu_init() {
     mmio_write(REG_CTRL, 4);              // ring_reset
     mmio_write(REG_PALOOKUP_BASE, PALOOKUP_BASE_BYTE);
     mmio_write(REG_RING_WRPTR, 0);
+    if (cpu_transport) mmio_write(REG_CTRL, 16);
 }
 
 /* Pulse GPU_CTRL bit1 = soft_reset.  Returns the FSM to idle and clears the
@@ -530,6 +548,13 @@ static void emit_batch_dma(const std::vector<SpanWire> &spans) {
     stream.reserve(spans.size() * 29u);
     for (const auto &s : spans) {
         append_command(stream, encode_span_wire(s));
+    }
+
+    if (cpu_transport) {
+        if (!pending_stream.empty()) gpu_kick();
+        pending_stream = stream;
+        gpu_kick();
+        return;
     }
 
     if (!pending_stream.empty())
@@ -1255,6 +1280,12 @@ static bool compare_quake_persp_group_to_oracles(const char *name,
  * ring BRAM and publishes wrptr only after the final word lands, with no
  * enclosing batch command. */
 static void emit_command_stream_dma(const std::vector<uint32_t> &stream) {
+    if (cpu_transport) {
+        if (!pending_stream.empty()) gpu_kick();
+        pending_stream = stream;
+        gpu_kick();
+        return;
+    }
     if (!pending_stream.empty())
         gpu_kick();
     wait_for_dma_idle();
@@ -5930,15 +5961,14 @@ static void ref_tri_records(const int16_t vx[3], const int16_t vy[3],
 
     auto slope = [&](int dx, int dy) -> long long {
         if (dy == 0) return 0;
-        long long q = ((long long)llabs(dx) << 12) / llabs(dy);
-        if (subpix) q <<= 4;        // Q20.12 quotient -> Q16.16 slope
+        long long q = ((long long)llabs(dx) << (subpix ? 16 : 12)) / llabs(dy);
         return ((dx < 0) ^ (dy < 0)) ? -q : q;
     };
     long long sl = slope(x[2] - x[0], y[2] - y[0]);
     long long st = slope(x[1] - x[0], y[1] - y[0]);
     long long sb = slope(x[2] - x[1], y[2] - y[1]);
 
-    auto yscan = [&](int yy) -> int { return subpix ? ((yy + 15) >> 4) : yy; };
+    auto yscan = [&](int yy) -> int { return subpix ? ((yy + 7) >> 4) : yy; };
     int y0s = yscan(y[0]), y1s = yscan(y[1]), y2s = yscan(y[2]);
     int ystart = (y0s < cy0) ? cy0 : y0s;
     int yend   = (y2s > cy1) ? cy1 : y2s;
@@ -5948,7 +5978,7 @@ static void ref_tri_records(const int16_t vx[3], const int16_t vy[3],
     // Prestep offset (Q16.16): for subpix the dy_clip is Q12.4 and the product
     // is >>4 back to a Q16.16 x offset; for integer Y it is the plain product.
     auto preoff = [&](long long sp, int yvert) -> long long {
-        long long dyc = subpix ? (((long long)ystart << 4) - yvert) : (ystart - yvert);
+        long long dyc = subpix ? (((long long)ystart << 4) + 8 - yvert) : (ystart - yvert);
         long long p = sp * dyc;
         return subpix ? (p >> 4) : p;
     };
@@ -5963,11 +5993,11 @@ static void ref_tri_records(const int16_t vx[3], const int16_t vy[3],
     // Mid-vertex bottom-edge prestep to scanline ymid (subpix; 0 otherwise).
     long long bot_mid_off = 0;
     if (subpix && !bottom)
-        bot_mid_off = (sb * (((long long)ymid << 4) - y[1])) >> 4;
+        bot_mid_off = (sb * (((long long)ymid << 4) + 8 - y[1])) >> 4;
 
     for (int yy = ystart; yy < yend; yy++) {
-        int ul = (int)((xl + 0xFFFF) >> 16);
-        int ur = (int)((xr + 0xFFFF) >> 16);
+        int ul = (int)((xl + (subpix ? 0x7FFF : 0xFFFF)) >> 16);
+        int ur = (int)((xr + (subpix ? 0x7FFF : 0xFFFF)) >> 16);
         int u0 = (ul < cx0) ? cx0 : ul;
         int u1 = (ur > cx1) ? cx1 : ur;
         if (u1 - u0 > 0)
@@ -6278,17 +6308,17 @@ static int32_t deriv_sat32_ref(int64_t v) {
 }
 
 // rounded reciprocal: round(2^44/|det|), capped at 2^31-1 (sliver saturation).
-static uint64_t deriv_rdet_ref(uint64_t detabs) {
+static uint64_t deriv_rdet_ref(uint64_t detabs, int n = DERIV_N_REF) {
     if (detabs == 0) detabs = 1;                  // collinear -> det floored to 1
-    uint64_t r = (((unsigned __int128)1 << DERIV_N_REF) + (detabs >> 1)) / detabs;
+    uint64_t r = (((unsigned __int128)1 << n) + (detabs >> 1)) / detabs;
     if (r > 0x7FFFFFFFull) r = 0x7FFFFFFFull;
     return r;
 }
 
 // du/dv = sat32( ((num * rdet) >>> N) * sign )
-static int32_t deriv_scale_ref(int64_t num, uint64_t rdet, int sign) {
+static int32_t deriv_scale_ref(int64_t num, uint64_t rdet, int sign, int n = DERIV_N_REF) {
     __int128 p = (__int128)num * (__int128)rdet;  // exact == RTL two-pass split
-    int64_t q = (int64_t)(p >> DERIV_N_REF);      // arithmetic shift, trunc -inf
+    int64_t q = (int64_t)(p >> n);      // arithmetic shift, trunc -inf
     return deriv_sat32_ref((int64_t)q * sign);
 }
 
@@ -6346,11 +6376,11 @@ static DerivedTriPlanes derive_tri_planes_ref(const int16_t vx[3],
     int64_t det = d1x * d2y - d2x * d1y;  // Q12.4-scaled
     uint64_t detabs = (det < 0) ? (uint64_t)(-det) : (uint64_t)det;
     int sign = (det < 0) ? -1 : 1;
-    uint64_t rdet = deriv_rdet_ref(detabs);
+    const int recip_n = subpix && detabs <= 8192 ? 31 : DERIV_N_REF;
+    uint64_t rdet = deriv_rdet_ref(detabs, recip_n);
 
-    int64_t x0px = (int64_t)(x[0] >> 4);  // floor toward -inf (Q12.4 >> 4)
-    // subpix: y is Q12.4 here too, so floor y0 to a scanline (like x0px).
-    int64_t y0 = subpix ? (int64_t)(y[0] >> 4) : (int64_t)y[0];
+    int64_t x0 = x[0];  // Q12.4; retain fraction until after multiplication
+    int64_t y0 = y[0];
 
     DerivedTriPlanes pl {};
     int64_t a0arr[4] = {szi[0], tzi[0], Z[0], L[0]};
@@ -6365,14 +6395,15 @@ static DerivedTriPlanes derive_tri_planes_ref(const int16_t vx[3],
         // num_dv gets the x16 too under subpix (Q12.4 y scales det an extra 16x).
         int64_t num_dv = subpix ? 16 * (da2 * d1x - da1 * d2x)
                                 :      (da2 * d1x - da1 * d2x);
-        int32_t du = deriv_scale_ref(num_du, rdet, sign);
-        int32_t dv = deriv_scale_ref(num_dv, rdet, sign);
-        // origin = a0 - du*x0px - dv*y0 + 0.5*du + 0.5*dv (mod 2^32)
+        int32_t du = deriv_scale_ref(num_du, rdet, sign, recip_n);
+        int32_t dv = deriv_scale_ref(num_dv, rdet, sign, recip_n);
+        // Multiply by the full anchor before removing its fractional bits.
         // The +0.5*du/+0.5*dv is the pixel-CENTER half-pixel bias mirroring the RTL
         // DRV_ORG_FORM fix (gpu_core.v): the plane samples (x+0.5, y+0.5). du/dv are
         // int32_t so >>1 is arithmetic, matching the RTL >>>1.
         int32_t org = (int32_t)(uint32_t)(a0arr[a]
-                    - (int64_t)du * x0px - (int64_t)dv * y0
+                    - (((int64_t)du * x0) >> 4)
+                    - (((int64_t)dv * y0) >> (subpix ? 4 : 0))
                     + (du >> 1) + (dv >> 1));
         if (a < 3) {
             pl.attr_origin[a] = org;
@@ -10262,6 +10293,70 @@ static uint16_t tc_blend_one(uint16_t dst565, uint16_t texel565, uint8_t alpha) 
     return sdram_read_u16_le(FB_BASE_BYTE + 20u * 640u + 20u * 2u);
 }
 
+// Clamp and mirror together, with command-to-command changes while the texture
+// queues drain.  Constant vertex coordinates give an independent pixel oracle:
+// signed Q16.16 clamp, integer extraction, then the documented mirror period.
+// Includes fractional limits, negative coordinates and non-power-of-two masks.
+static void test_truecolor_clamp_mirror() {
+    printf("TEST truecolor_clamp_mirror\n");
+    gpu_init(); preload_with_sentinel();
+    for (unsigned y = 0; y < 32; ++y) for (unsigned x = 0; x < 32; ++x)
+        sdram_write_u16_le(TEX_BASE_BYTE + 2u * (y * 32u + x),
+                           (uint16_t)(0x4000u | (y << 5) | x));
+    const int32_t q = 65536;
+    const int32_t raw[] = {-32768*q, -45*q, -7*q, -6*q-32768, -1, 0,
+                          3*q+32768, 6*q+16384, 7*q-1, 32*q, 32767*q};
+    const uint16_t masks[] = {3, 7, 15, 31, 21};
+    int bad = 0, checked = 0; char first[160] = {};
+    for (unsigned c = 0; c < sizeof(raw)/sizeof(raw[0]); ++c)
+        for (unsigned clamps = 0; clamps < 4; ++clamps) {
+            uint16_t expected[4];
+            for (unsigned mirrors = 0; mirrors < 4; ++mirrors) {
+                auto p = make_vert_tri_surface();
+                p.flags = SPAN_PERSP | (1u << 7); p.z_mode = 0;
+                p.fb_major_step = 640; p.fb_minor_step = 2;
+                p.tex_width = 32;
+                p.tex_w_mask = masks[c % 5]; p.tex_h_mask = masks[(c+2) % 5];
+                p.mirror_s = mirrors & 1u; p.mirror_t = (mirrors >> 1) & 1u;
+                int32_t coord[2] = {raw[c], raw[(c+3) % (sizeof(raw)/sizeof(raw[0]))]};
+                uint16_t idx[2];
+                for (unsigned axis = 0; axis < 2; ++axis) {
+                    const bool clamp = (clamps >> axis) & 1u;
+                    p.clamp_min[axis] = clamp ? -6*q-49152 : 0;
+                    p.clamp_max[axis] = clamp ? 6*q+16384 : 0;
+                    int32_t v = coord[axis];
+                    if (clamp) v = std::max(p.clamp_min[axis], std::min(v, p.clamp_max[axis]));
+                    uint16_t integer = (uint32_t)v >> 16;
+                    uint16_t mask = axis ? p.tex_h_mask : p.tex_w_mask;
+                    idx[axis] = integer & mask;
+                    if (((mirrors >> axis) & 1u) && (integer & (uint16_t)(mask+1)))
+                        idx[axis] = mask - idx[axis];
+                }
+                expected[mirrors] = 0x4000u | (idx[1] << 5) | idx[0];
+                int x = 8 + 16 * mirrors;
+                int16_t vx[3] = {(int16_t)(x*16), (int16_t)((x+12)*16), (int16_t)(x*16)};
+                int16_t vy[3] = {8, 8, 20};
+                int32_t ss[3] = {coord[0],coord[0],coord[0]};
+                int32_t tt[3] = {coord[1],coord[1],coord[1]}, zi[3] = {q,q,q};
+                uint8_t light[3] = {63,63,63};
+                emit_set_tri_state_raw(p,0,320,0,200);
+                emit_draw_vert_tri_raw(vx,vy,ss,tt,zi,light);
+            }
+            if (!submit_and_wait()) { check_fail("truecolor_clamp_mirror","timeout"); return; }
+            for (unsigned mirrors = 0; mirrors < 4; ++mirrors)
+                for (int y = 9; y < 12; ++y) for (int dx = 1; dx < 5; ++dx) {
+                    uint16_t got = sdram_read_u16_le(FB_BASE_BYTE + y*640u + (8+16*mirrors+dx)*2u);
+                    ++checked;
+                    if (got != expected[mirrors] && bad++ == 0)
+                        snprintf(first,sizeof first,"case=%u clamp=%u mirror=%u got=%04x expected=%04x",
+                                 c,clamps,mirrors,got,expected[mirrors]);
+                }
+        }
+    if (!bad) check_pass("truecolor_clamp_mirror");
+    else { char msg[224]; snprintf(msg,sizeof msg,"%d/%d wrong: %s",bad,checked,first);
+           check_fail("truecolor_clamp_mirror",msg); }
+}
+
 // ---- 0x4E shrunk-command byte-exact test (RGB pack + depth renumber) --------
 // z_compress mirror of gpu_core.v z_compress(): 16-bit float {e[4:0], mant[10:0]}.
 static uint16_t z_compress_ref(uint32_t v) {
@@ -10312,6 +10407,38 @@ static void emit_draw_vert_tri_rgb_raw(const int16_t vx[3], const int16_t vy[3],
     ring_cmd(0x4E, (uint32_t)w.size());
     for (uint32_t x : w) ring_write(x);
 }
+// Independent affine-color oracle: vertex colors lie on R=x+2*y-24.
+// Fractional vertex coordinates must remain in the plane anchor. Snapping
+// the anchor to a pixel changes the color plane differently in each triangle.
+static void test_vert_tri_fractional_plane_anchor() {
+    gpu_init(); preload_with_sentinel();
+    sdram_write_u16_le(TEX_BASE_BYTE, 0xFFFF);
+    ParamSpanListWire p = make_vert_tri_surface();
+    p.fb_base=FB_BASE_BYTE; p.fb_major_step=640; p.fb_minor_step=2;
+    p.tex_addr=TEX_BASE_BYTE; p.tex_width=1; p.tex_w_mask=p.tex_h_mask=0;
+    p.flags=SPAN_PERSP|(1u<<7); p.subpix_y=1; p.z_mode=0;
+    emit_set_tri_state_raw(p,0,320,0,240);
+    const int16_t xy[4][2]={{136,140},{256,136},{264,268},{128,264}};
+    const uint16_t c[4]={(2<<11)|(31<<5)|5,(9<<11)|(31<<5)|5,
+                         (26<<11)|(31<<5)|5,(17<<11)|(31<<5)|5};
+    const int idx[2][3]={{0,1,2},{0,2,3}};
+    for(const auto &tri:idx){
+        int16_t x[3],y[3];uint16_t rgb[3];
+        int32_t st[3]={0,0,0},zi[3]={65536,65536,65536};
+        for(int k=0;k<3;k++){x[k]=xy[tri[k]][0];y[k]=xy[tri[k]][1];rgb[k]=c[tri[k]];}
+        emit_draw_vert_tri_rgb_raw(x,y,st,st,zi,rgb,zi);
+    }
+    if(!submit_and_wait()){check_fail("vert_tri_fractional_plane_anchor","timeout");return;}
+    int bad=0;
+    for(int y=10;y<15;y++) for(int x=10;x<15;x++) {
+        const int r=x+2*y-23; // floor((x+0.5)+2*(y+0.5)-24)
+        const uint16_t want=(r<<11)|(31<<5)|5;
+        if(sdram_read_u16_le(FB_BASE_BYTE+y*640+x*2)!=want)bad++;
+    }
+    if(bad){char msg[80];snprintf(msg,sizeof(msg),"%d pixels differ from analytic affine color",bad);check_fail("vert_tri_fractional_plane_anchor",msg);}
+    else check_pass("vert_tri_fractional_plane_anchor");
+}
+
 // Renders ONE 0x4E truecolor triangle with three DISTINCT per-vertex RGB565
 // colours (exercises the rgb0/rgb1/rgb2 PACK at w12-13) and three DISTINCT
 // per-vertex depths with z-write (exercises the depth RENUMBER to w14-16).
@@ -10462,6 +10589,51 @@ static void test_vert_tri_rgb_pack_depth_subpix_y() {
     else { char m[256]; snprintf(m,sizeof m,"unwritten=%d fb_diffs=%d z_diffs=%d covered=%d first %s",unwritten,fb_diffs,z_diffs,covered,first); check_fail("vert_tri_rgb_pack_depth_subpix_y", m); }
 }
 
+// A known affine depth field must survive subdivision into tiny triangles.
+// Expected depths come directly from z(x,y), independent of the GPU reciprocal.
+static void test_small_triangle_depth_plane() {
+    printf("TEST small_triangle_depth_plane\n");
+    int bad = 0, checked = 0; char first[160] = {};
+    const uint32_t zb = 0x00200000u;
+    for (int side : {1, 2, 4, 8}) for (int order = 0; order < 2; ++order) {
+        gpu_init(); preload_with_sentinel();
+        sdram_write_u16_le(TEX_BASE_BYTE, 0xFFFF);
+        sdram_fill(zb, 320u * 80u * 2u, 0);
+        ParamSpanListWire p = make_vert_tri_surface();
+        p.fb_major_step = 640; p.fb_minor_step = 2;
+        p.tex_addr = TEX_BASE_BYTE; p.tex_width = 1;
+        p.tex_w_mask = p.tex_h_mask = 0;
+        p.flags = SPAN_PERSP | (1u << 7); p.attr_mode = 1;
+        p.z_mode = 1; p.z_base = zb; p.z_major_step = 640; p.z_minor_step = 2;
+        p.subpix_y = 1;
+        emit_set_tri_state_raw(p, 0, 320, 0, 80);
+        const int xy[4][2] = {{20,20},{20+side,20},{20+side,20+side},{20,20+side}};
+        const int index[2][3] = {{0,1,2},{0,2,3}};
+        for (int tr = 0; tr < 2; ++tr) {
+            int16_t x[3], y[3]; int32_t z[3];
+            int32_t st[3] = {}, zi[3] = {65536,65536,65536};
+            uint16_t rgb[3] = {0xffff,0xffff,0xffff};
+            for (int k = 0; k < 3; ++k) {
+                int i = index[tr][order ? 2-k : k];
+                x[k] = xy[i][0] * 16; y[k] = xy[i][1] * 16;
+                z[k] = (1<<24) + (xy[i][0]-20)*(1<<18) - (xy[i][1]-20)*(1<<17);
+            }
+            emit_draw_vert_tri_rgb_raw(x,y,st,st,zi,rgb,z);
+        }
+        if (!submit_and_wait()) { check_fail("small_triangle_depth_plane", "timeout"); return; }
+        for (int y = 20; y < 20+side; ++y) for (int x = 20; x < 20+side; ++x) {
+            uint32_t depth = (1<<24) + (2*(x-20)+1)*(1<<17) - (2*(y-20)+1)*(1<<16);
+            uint16_t want = z_compress_ref(depth);
+            uint16_t got = sdram_read_u16_le(zb + y*640u + x*2u);
+            ++checked;
+            if (got != want && bad++ == 0)
+                snprintf(first,sizeof first,"side=%d order=%d (%d,%d) depth=%04x expected=%04x",side,order,x,y,got,want);
+        }
+    }
+    if (!bad) check_pass("small_triangle_depth_plane");
+    else { char msg[224]; snprintf(msg,sizeof msg,"%d/%d wrong; %s",bad,checked,first); check_fail("small_triangle_depth_plane",msg); }
+}
+
 static void test_truecolor_blend() {
     printf("TEST truecolor_blend\n");
     // dst = red 0xF800, src = blue 0x001F.  a=255 -> src, a=0 -> dst,
@@ -10484,6 +10656,59 @@ static void test_truecolor_blend() {
                  a255, a0, a128, a128_adj);
         check_fail("truecolor_blend", m);
     }
+}
+
+// Collapse each scanline onto one framebuffer halfword.  Consecutive source
+// fragments then overdraw the same pixel while earlier blend results remain
+// in flight, forcing the stale-destination refresh.  The sibling halfword
+// must remain intact.  An opaque pass supplies only the raster coverage count.
+static void test_truecolor_blend_same_pixel() {
+    printf("TEST truecolor_blend_same_pixel\n");
+    gpu_init(); preload_with_sentinel();
+    const uint16_t src = 0xE73C, dst = 0x1823, sibling = 0xB54A;
+    sdram_write_u16_le(TEX_BASE_BYTE, src);
+    auto p = make_vert_tri_surface();
+    p.flags = SPAN_PERSP | (1u << 7); p.z_mode = 0;
+    p.fb_major_step = 640; p.fb_minor_step = 2;
+    p.tex_width = 1; p.tex_w_mask = p.tex_h_mask = 0;
+    const int16_t vx[3] = {0,32*16,0}, vy[3] = {0,0,8};
+    const int32_t st[3] = {}, zi[3] = {65536,65536,65536};
+    const uint8_t light[3] = {63,63,63};
+    p.fb_base = FB_ALT_BASE_BYTE;
+    emit_set_tri_state_raw(p,0,320,0,200);
+    emit_draw_vert_tri_raw(vx,vy,st,st,zi,light);
+    if (!submit_and_wait()) { check_fail("truecolor_blend_same_pixel","coverage timeout"); return; }
+    int counts[8] = {}, total = 0;
+    for (int y = 0; y < 8; ++y) for (int x = 0; x < 32; ++x)
+        if (sdram_read_u16_le(FB_ALT_BASE_BYTE+y*640u+x*2u) == src) { ++counts[y]; ++total; }
+    for (int half = 0; half < 2; ++half) {
+        p.fb_base = FB_BASE_BYTE + half*2u;
+        p.fb_minor_step = 0;
+        p.flags |= 1u << 1; p.const_alpha = 28;
+        for (int y = 0; y < 8; ++y) {
+            sdram_write_u16_le(p.fb_base+y*640u, dst);
+            sdram_write_u16_le(FB_BASE_BYTE+y*640u+(1-half)*2u, sibling);
+        }
+        emit_set_tri_state_raw(p,0,320,0,200);
+        emit_draw_vert_tri_raw(vx,vy,st,st,zi,light);
+        uint64_t start = sim_time;
+        if (!submit_and_wait()) { check_fail("truecolor_blend_same_pixel","blend timeout"); return; }
+        printf("  half=%d fragments=%d cycles=%llu\n",half,total,(unsigned long long)((sim_time-start)/2));
+        for (int y = 0; y < 8; ++y) {
+            uint32_t addr = p.fb_base+y*640u;
+            uint16_t want = dst;
+            for (int n = 0; n < counts[y]; ++n) want = blend565_ref(src,want,7,addr);
+            uint16_t got = sdram_read_u16_le(addr);
+            uint16_t other = sdram_read_u16_le(FB_BASE_BYTE+y*640u+(1-half)*2u);
+            if (got != want || other != sibling) {
+                char msg[160]; snprintf(msg,sizeof msg,"half=%d row=%d count=%d got=%04x expected=%04x sibling=%04x",
+                                       half,y,counts[y],got,want,other);
+                check_fail("truecolor_blend_same_pixel",msg); return;
+            }
+        }
+    }
+    if (total < 100) check_fail("truecolor_blend_same_pixel","insufficient overdraw");
+    else check_pass("truecolor_blend_same_pixel");
 }
 
 // Full-region truecolor blend (the CB path under a REAL workload shape).
@@ -11157,14 +11382,23 @@ static const uint16_t XFT_RGB[3] = {0xF800, 0x07E0, 0x001F};
 
 // One-command oracle draw of CLIP verts: 0x4F where CLIP_TRI is in the
 // config; on the no-clip fold (os30-exact) the byte-identical identity-matrix
-// 0x52 twin (see emit_identity_object_state).  nomac keeps CLIP_TRI=1 so no
-// config is oracle-less.  Assumes emit_identity_object_state(0,0,0) is armed.
+// 0x52 twin (see emit_identity_object_state).  With BOTH folded (os30 since
+// EXCLUDE_GPU_XFORM_MAC) no single-command twin exists, so the oracle is a
+// fresh 0x56 load into slots 20-22 (unused by every caller) + 0x54: it still
+// proves drained commands paint nothing and a wrapped reload equals a fresh
+// one; 0x56 == 0x4F/0x52 stays proven on the configs that have them.
+// Assumes emit_identity_object_state(0,0,0) is armed.
 static void emit_clip_oracle_tri(const int32_t v[9], const int32_t s[3],
                                  const int32_t t[3], const uint16_t rgb[3]) {
 #ifndef GPU_TEST_NO_CLIP_TRI
     emit_xform_rgb_tri_raw(0x4F, v, s, t, rgb);
-#else
+#elif !defined(GPU_TEST_NO_MAC)
     emit_xform_rgb_tri_raw(0x52, v, s, t, rgb);
+#else
+    for (int k = 0; k < 3; k++)
+        emit_load_vert_clip_raw(20u + (uint32_t)k, v[k*3], v[k*3+1], v[k*3+2],
+                                s[k], t[k], rgb[k], xft_divider_zi(v[k*3+2]));
+    emit_draw_indexed_tri_raw(20u | (21u << 5) | (22u << 10));
 #endif
 }
 
@@ -11388,6 +11622,62 @@ static void test_load_vert_clip_wrong_size_drains() {
 // rejected everywhere (z_compress(0x20000)=0x8800 < z_compress(0x40000000)=
 // 0xF000).  FB_BASE = A then B under z test+write must equal FB_ALT = A
 // alone, framebuffer and z-buffer.
+// Analytic distant triangle: zi=4, u/v range .25..7.25 over 96 pixels.
+// Flooring the unnormalized gradient to zero used to repeat one texel across
+// most of the triangle. The oracle is the affine UV equation at pixel centers.
+#ifndef GPU_TEST_NO_MAC
+static void test_xform_scalar_depth_scale() {
+    const char *name = "xform_scalar_depth_scale";
+    xform_preload();
+    const uint32_t ZA = 0x00200000u, ZB = 0x00240000u;
+    sdram_fill(ZA,640u*200u,0); sdram_fill(ZB,640u*200u,0);
+    emit_identity_object_state(0,0,0);
+    auto p=make_xform_surface(FB_BASE_BYTE);
+    p.tex_width=1; p.tex_w_mask=p.tex_h_mask=0;
+    sdram_write_u16_le(TEX_BASE_BYTE,0xffff);
+    p.z_mode=3; p.z_base=ZA; p.z_major_step=640; p.z_minor_step=2;
+    emit_set_tri_state_raw(p,0,320,0,200);
+    ring_cmd(0x51,16);
+    for(int i=0;i<9;i++) ring_write((uint32_t)XFT_CLIP_V[i]);
+    for(int i=0;i<6;i++) ring_write(0);
+    ring_write(63u|(63u<<6)|(63u<<12));
+    p.fb_base=FB_ALT_BASE_BYTE; p.z_base=ZB;
+    emit_set_tri_state_raw(p,0,320,0,200);
+    const int16_t x[3]={110*16,210*16,160*16}, y[3]={132,132,65};
+    const int32_t uv[3]={0,0,0}, zi[3]={32768,32768,32768};
+    const uint8_t light[3]={63,63,63};
+    emit_draw_vert_tri_raw(x,y,uv,uv,zi,light);
+    if(!submit_and_wait()){check_fail(name,"timeout");return;}
+    xform_ab_match(name,ZA,ZB,120,200,80,125,500,0);
+}
+#endif
+
+static void test_vtx_cache_distant_texture_precision() {
+    const char *name = "vtx_cache_distant_texture_precision";
+    xform_preload();
+    int32_t M[20] = {};
+    emit_set_object_state_raw(M, 64, 64*16, 64, 64*16, 256, 3);
+    auto p = make_xform_surface(FB_BASE_BYTE);
+    p.subpix_y = 1;
+    emit_set_tri_state_raw(p, 0, 320, 0, 200);
+    const int32_t w = 1 << 30, c = 3 * (1 << 28);
+    emit_load_vert_clip_raw(0, -c, c, w, 1<<14, 1<<14, 0xffff, 100);
+    emit_load_vert_clip_raw(1, c, c, w, 29<<14, 1<<14, 0xffff, 100);
+    emit_load_vert_clip_raw(2, -c, -c, w, 1<<14, 29<<14, 0xffff, 100);
+    emit_draw_indexed_tri_raw(0 | (1<<5) | (2<<10));
+    if (!submit_and_wait()) { check_fail(name, "timeout"); return; }
+    int bad = 0, checked = 0;
+    for (int y = 24; y < 88; y += 3) for (int x = 24; x < 112-y; x += 3) {
+        int u = (int)(.25 + 7.0 * (x + .5 - 16) / 96);
+        int v = (int)(.25 + 7.0 * (y + .5 - 16) / 96);
+        uint16_t want = sdram_read_u16_le(TEX_BASE_BYTE + (v*8+u)*2);
+        uint16_t got = sdram_read_u16_le(FB_BASE_BYTE + y*640+x*2);
+        bad += got != want; checked++;
+    }
+    if (!bad && checked > 100) check_pass(name);
+    else { char m[96]; snprintf(m, sizeof m, "%d/%d pixels differ from analytic UV", bad, checked); check_fail(name, m); }
+}
+
 static void test_vtx_cache_clip_depth_override() {
     printf("TEST vtx_cache_clip_depth_override\n");
     xform_preload();
@@ -11719,7 +12009,7 @@ int main(int argc, char **argv) {
     test_batch_dma_equals_inline();
     test_command_stream_dma_mixed_affine_groups();
     test_command_stream_dma_mixed_persp_span_group();
-    test_dma_descriptor_queue_two_streams();
+    if (!cpu_transport) test_dma_descriptor_queue_two_streams();
 #endif
 #if GPU_TEST_ENABLE_TRIANGLES
     test_triangle_uses_colormap_slot_zero();
@@ -11753,6 +12043,10 @@ int main(int argc, char **argv) {
 #ifdef GPU_TEST_TRUECOLOR
     test_vert_tri_rgb_pack_depth();
     test_vert_tri_rgb_pack_depth_subpix_y();
+    test_small_triangle_depth_plane();
+    test_vert_tri_fractional_plane_anchor();
+    test_truecolor_blend_same_pixel();
+    test_truecolor_clamp_mirror();
     test_truecolor_blend();
     test_truecolor_blend_full();
     test_truecolor_blend_overlap();
@@ -11769,6 +12063,7 @@ int main(int argc, char **argv) {
 #ifdef GPU_TEST_XFORM
     // ---- 0x50/0x52/0x53/0x54/0x56 transform + vertex-cache functional tests ----
 #ifndef GPU_TEST_NO_MAC
+    test_xform_scalar_depth_scale();
     test_vtx_cache_mac_load_matches_xform_rgb();        // TEST A (matrix path, fb+z)
 #endif
 #ifndef GPU_TEST_NO_CLIP_TRI
@@ -11783,6 +12078,7 @@ int main(int argc, char **argv) {
     test_xform_matrix_cmds_drain_no_mac();              // TEST C (MAC-gate drains)
 #endif
     test_load_vert_clip_wrong_size_drains();            // TEST C (6w + legacy-7w drains)
+    test_vtx_cache_distant_texture_precision();
     test_vtx_cache_clip_depth_override();               // explicit w7 depth is the one used
     test_vtx_cache_slot_reuse_and_wrap();               // TEST D
 #endif

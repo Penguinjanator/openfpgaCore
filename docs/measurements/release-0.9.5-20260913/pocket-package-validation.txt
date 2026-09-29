@@ -1,1 +1,0 @@
-PASS: ZIP CRC, exactly the Cores/Assets/Platforms/INSTALL.txt SD-root layout, version 1.2.0, exact normal optimized ELF and paired runtime, no WAD payloads, and explicit 100 MHz timing notice.

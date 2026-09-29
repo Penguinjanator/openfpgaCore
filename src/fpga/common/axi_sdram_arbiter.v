@@ -185,6 +185,7 @@ reg [1:0] grant;  // 0=GPU, 1=CPU, 2=Bridge, 3=AudioMix
 reg       active_wr_gpuq;
 reg [2:0] active_gpuq_awlen;   // beats-1 of the GPU write burst currently draining (0..7)
 reg [2:0] gpuq_w_idx;          // beat index within that burst
+reg       gpuq_w_done;         // final W accepted; hold idle until B
 
 // Fairness: deficit counter prevents GPU (and technically Audio, but
 // it's below CPU anyway) from starving the CPU.  Increments each time
@@ -337,6 +338,7 @@ always @(posedge clk or posedge reset) begin
         active_wr_gpuq <= 1'b0;
         active_gpuq_awlen <= 3'd0;
         gpuq_w_idx <= 3'd0;
+        gpuq_w_done <= 1'b0;
         gpu_deficit <= 4'd0;
         brg_deficit <= 4'd0;
         gpu_wq_rd_ptr <= {GPU_WQ_PTR_W{1'b0}};
@@ -382,6 +384,8 @@ always @(posedge clk or posedge reset) begin
 
         if (active_wr && active_wr_gpuq && s_wvalid && s_wready && !active_gpuq_wlast)
             gpuq_w_idx <= gpuq_w_idx + 3'd1;
+        if (active_wr && active_wr_gpuq && s_wvalid && s_wready && active_gpuq_wlast)
+            gpuq_w_done <= 1'b1;
 
         if (gpu_wq_empty)
             gpu_reads_since_write <= 4'd0;
@@ -437,6 +441,7 @@ always @(posedge clk or posedge reset) begin
                 active_wr_gpuq <= 1'b1;
                 active_gpuq_awlen <= gpu_wq_drain_awlen;
                 gpuq_w_idx <= 3'd0;
+                gpuq_w_done <= 1'b0;
                 arb_state <= ST_WR;
                 gpu_reads_since_write <= 4'd0;
                 if (cpu_pending) gpu_deficit <= gpu_deficit + 4'd1;
@@ -531,7 +536,7 @@ assign s_awlen   = active_wr_gpuq ? {5'b0, active_gpuq_awlen} :
                    grant_m1       ? m1_awlen : m2_awlen;
 
 assign s_wvalid  = (active_wr && !wr_completing)
-                 ? (active_wr_gpuq ? 1'b1 :
+                 ? (active_wr_gpuq ? !gpuq_w_done :
                     grant_m1       ? m1_wvalid :
                     grant_m2       ? m2_wvalid : 1'b0)
                  : 1'b0;

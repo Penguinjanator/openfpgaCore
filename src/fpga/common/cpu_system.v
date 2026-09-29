@@ -618,13 +618,20 @@ VexiiRiscv cpu (
 // ============================================================
 
 // ---- i_axi (read-only) ----
-//   AR payload = {araddr[31:0], arid[0], arlen[7:0]} = 41 bits
-axi_register_slice #(.W(41)) i_ar_slice (
+//   AR payload = {target[1:0], araddr[31:0], arid[0], arlen[7:0]} = 43 bits
+// The AR/AW/W slices use FIFO_OUT so the target ports' grant (m_ready) only
+// advances a read pointer.  The I$ target is decoded on the slice's input
+// side and travels with the beat, so the grant cone starts at a stored
+// target instead of re-decoding the registered address (decode_target is a
+// pure function of araddr: identical selects, identical cycles).
+wire [1:0] i_ar_target_cpu;
+wire [1:0] i_ar_target_q;
+axi_register_slice #(.W(43), .FIFO_OUT(1)) i_ar_slice (
     .clk(clk), .reset_n(reset_n),
     .s_valid (i_arvalid_cpu),  .s_ready (i_arready_cpu),
-    .s_payload({i_araddr_cpu, i_arid_cpu, i_arlen_cpu}),
+    .s_payload({i_ar_target_cpu, i_araddr_cpu, i_arid_cpu, i_arlen_cpu}),
     .m_valid (i_arvalid),      .m_ready (i_arready),
-    .m_payload({i_araddr,     i_arid,     i_arlen})
+    .m_payload({i_ar_target_q,   i_araddr,     i_arid,     i_arlen})
 );
 //   R payload = {rdata[31:0], rid[0], rresp[1:0], rlast} = 36 bits
 axi_register_slice #(.W(36)) i_r_slice (
@@ -637,7 +644,7 @@ axi_register_slice #(.W(36)) i_r_slice (
 
 // ---- mem_axi (D$ R/W) ----
 //   AR = {araddr[31:0], arid[1:0], arlen[7:0]} = 42 bits
-axi_register_slice #(.W(42)) mem_ar_slice (
+axi_register_slice #(.W(42), .FIFO_OUT(1)) mem_ar_slice (
     .clk(clk), .reset_n(reset_n),
     .s_valid (mem_arvalid_cpu),.s_ready (mem_arready_cpu),
     .s_payload({mem_araddr_cpu, mem_arid_cpu, mem_arlen_cpu}),
@@ -653,7 +660,7 @@ axi_register_slice #(.W(37)) mem_r_slice (
     .m_payload({mem_rdata_cpu, mem_rid_cpu, mem_rresp_cpu, mem_rlast_cpu})
 );
 //   AW = {awaddr[31:0], awid[1:0], awlen[7:0], awburst[1:0]} = 44 bits
-axi_register_slice #(.W(44)) mem_aw_slice (
+axi_register_slice #(.W(44), .FIFO_OUT(1)) mem_aw_slice (
     .clk(clk), .reset_n(reset_n),
     .s_valid (mem_awvalid_cpu),.s_ready (mem_awready_cpu),
     .s_payload({mem_awaddr_cpu, mem_awid_cpu, mem_awlen_cpu, mem_awburst_cpu}),
@@ -661,7 +668,7 @@ axi_register_slice #(.W(44)) mem_aw_slice (
     .m_payload({mem_awaddr,     mem_awid,     mem_awlen,     mem_awburst})
 );
 //   W = {wdata[31:0], wstrb[3:0], wlast} = 37 bits
-axi_register_slice #(.W(37)) mem_w_slice (
+axi_register_slice #(.W(37), .FIFO_OUT(1)) mem_w_slice (
     .clk(clk), .reset_n(reset_n),
     .s_valid (mem_wvalid_cpu), .s_ready (mem_wready_cpu),
     .s_payload({mem_wdata_cpu, mem_wstrb_cpu, mem_wlast_cpu}),
@@ -748,9 +755,8 @@ function [2:0] decode_target;
     end
 endfunction
 
-wire [2:0] i_ar_target   = decode_target(i_araddr);
-wire [2:0] mem_ar_target = decode_target(mem_araddr);
-wire [2:0] mem_aw_target = decode_target(mem_awaddr);
+assign i_ar_target_cpu = decode_target(i_araddr_cpu);
+wire [2:0] i_ar_target   = {1'b0, i_ar_target_q};
 wire [2:0] per_ar_target = decode_target(per_araddr);
 wire [2:0] per_aw_target = decode_target(per_awaddr);
 
@@ -777,10 +783,16 @@ wire global_per_wr_busy = sdram_per_wr_busy | cram0_per_wr_busy | local_per_wr_b
 wire i_ar_is_sdram = i_arvalid && (i_ar_target == 3'd0) && !global_i_rd_busy;
 wire i_ar_is_local = i_arvalid && (i_ar_target == 3'd2) && !global_i_rd_busy;
 
-wire mem_ar_is_sdram = mem_arvalid && (mem_ar_target == 3'd0) && !global_mem_rd_busy;
-wire mem_ar_is_local = mem_arvalid && (mem_ar_target == 3'd2) && !global_mem_rd_busy;
-wire mem_aw_is_sdram = mem_awvalid && (mem_aw_target == 3'd0) && !global_mem_wr_busy;
-wire mem_aw_is_local = mem_awvalid && (mem_aw_target == 3'd2) && !global_mem_wr_busy;
+// The D$ only refills/writes back the main=1 region (0x10000000, always
+// decode target 0), so the mem channels need no address decode at all.
+wire mem_ar_is_sdram = mem_arvalid && !global_mem_rd_busy;
+// mem_axi -> LOCAL is PMA-dead for the same reason: the only main=1
+// (cacheable) region is 0x10000000 (SDRAM), so the D$ never refills or
+// writes back to BRAM/IO — those go uncached over per_axi.  Tying the
+// selects low lets port_local's mem branch and its busy terms fold away.
+wire mem_ar_is_local = 1'b0;
+wire mem_aw_is_sdram = mem_awvalid && !global_mem_wr_busy;
+wire mem_aw_is_local = 1'b0;
 
 wire per_ar_is_sdram = per_arvalid && (per_ar_target == 3'd0) && !global_per_rd_busy;
 wire per_ar_is_cram0 = per_arvalid && (per_ar_target == 3'd1) && !global_per_rd_busy;

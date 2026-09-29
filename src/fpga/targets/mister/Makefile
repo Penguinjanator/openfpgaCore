@@ -32,27 +32,31 @@ ROOT_DIR   = ../../../..
 # swept on so `build` can warn when it goes stale (tools/netlist_hash.sh).
 # Falls back to the qsf's own seed when the file is absent.
 SEED_FILE  = seeds/$(VARIANT).seed
-NETLIST_EXTRA_FILES = build_id.v variants/$(VARIANT).mk $(PROJECT).sdc files.qip
+NETLIST_EXTRA_FILES = build_id.v $(VARIANT_CONFIG) variants/features.inc $(PROJECT).sdc files.qip
 SEED       = $(shell [ -f $(SEED_FILE) ] && cat $(SEED_FILE) || \
                      awk '/^set_global_assignment -name SEED /{print $$NF}' $(PROJECT).qsf)
 
 # ── Variant registry + resolution (same model as the pocket target) ──
-# MiSTer currently has ONE variant ("mister", the default) — but it uses
-# the same auto-discovered variants/<name>.mk registry, so VARIANT= is
-# validated instead of silently ignored, and a future variant is a file
-# drop.  The sticky root .variant is SOFT (applies only when it names one
-# of THIS target's variants — a sticky pocket os30 never breaks a mister
+# Maintained variants live in variants/*.mk; diagnostic/ requires an explicit
+# VARIANT= or INCLUDE_DIAGNOSTICS=1 for an all-variant goal. VARIANT= is validated
+# instead of silently ignored. The sticky root .variant is SOFT (applies only
+# when it names one of THIS target's variants — a sticky pocket os30 never breaks a mister
 # build); an explicit unknown VARIANT= is a hard error.
 # NOTE: unlike pocket, mister builds in place (no bld/<job>/ isolation —
 # a Quartus 17 / sys-framework constraint), so its variants cannot build
 # in parallel; one at a time.
 VARIANTS := $(sort $(patsubst variants/%.mk,%,$(wildcard variants/*.mk)))
+DIAGNOSTIC_VARIANTS := $(sort $(patsubst variants/diagnostic/%.mk,%,$(wildcard variants/diagnostic/*.mk)))
+KNOWN_VARIANTS := $(sort $(VARIANTS) $(DIAGNOSTIC_VARIANTS))
+INCLUDE_DIAGNOSTICS ?= 0
+BATCH_VARIANTS := $(if $(filter 1,$(INCLUDE_DIAGNOSTICS)),$(KNOWN_VARIANTS),$(VARIANTS))
 DEFAULT_VARIANT := mister
 STICKY_VARIANT := $(strip $(shell cat $(ROOT_DIR)/.variant 2>/dev/null))
 ifeq ($(strip $(VARIANT)),)
 override VARIANT := $(if $(filter $(STICKY_VARIANT),$(VARIANTS)),$(STICKY_VARIANT),$(DEFAULT_VARIANT))
 endif
-$(if $(filter $(VARIANT),$(VARIANTS)),,$(error Unknown VARIANT '$(VARIANT)' — known mister variants: $(VARIANTS)))
+$(if $(filter $(VARIANT),$(KNOWN_VARIANTS)),,$(error Unknown VARIANT '$(VARIANT)' — known mister variants: $(KNOWN_VARIANTS)))
+VARIANT_CONFIG := $(if $(filter $(VARIANT),$(DIAGNOSTIC_VARIANTS)),variants/diagnostic/$(VARIANT).mk,variants/$(VARIANT).mk)
 
 # Per-variant CPU netlist — the mister config is DUAL-ISSUE (--decoders=2
 # --lanes=2): the DE10-Nano's A6/I7 part has the area and speed-grade
@@ -138,7 +142,7 @@ MISTER_DB_URL      ?= https://github.com/openfpgaOS/openfpgaCore/releases/latest
 # its INCLUDE_* macro is listed) — see variants/mister.mk for the full
 # rationale.  Forwarded to quartus_map as --verilog_macro=<NAME>.
 DEFS :=
-include variants/$(VARIANT).mk
+include $(VARIANT_CONFIG)
 INCLUDE_DEFS := $(DEFS)
 VERILOG_MACROS = $(foreach d,$(INCLUDE_DEFS),--verilog_macro="$(d)")
 
@@ -181,6 +185,8 @@ help:
 	@printf "    $(C_CMD)make $(C_CMD)os$(C_RESET)                Builds os.bin (= boot.rom)\n"
 	@printf "    $(C_CMD)make $(C_CMD)clean$(C_RESET)             Remove all build artifacts\n"
 	@echo ""
+	@printf "  $(C_HEAD)Variants:$(C_RESET) $(VARIANTS)\n"
+	@printf "    Diagnostics: explicit VARIANT= or INCLUDE_DIAGNOSTICS=1 for build-all/sweep-all\n"
 	@printf "  $(C_HEAD)Development:$(C_RESET)\n"
 	@printf "    $(C_CMD)make $(C_CMD)test$(C_RESET)              Run Verilator test suite\n"
 	@printf "    $(C_CMD)make $(C_CMD)check$(C_RESET)             RTL check (Analysis & Synthesis)\n"
@@ -192,7 +198,11 @@ help:
 # ── CPU generation (file target — MiSTer dual-issue variant) ─────────
 $(VEXII_OUT): $(VEXII_DIR)/../generate_vexii.sh \
               $(VEXII_DIR)/../retime_fetch_reads.pl \
+              $(VEXII_DIR)/../retime_aligner_pc.pl \
+              $(VEXII_DIR)/../factor_fetch_ready.pl \
+              $(VEXII_DIR)/../retime_dcache_writes.pl \
               $(VEXII_DIR)/../configs/$(VARIANT).cfg \
+              $(VEXII_DIR)/../configs/mister-common.inc \
               $(wildcard $(VEXII_DIR)/../patches/*.patch)
 	@printf "$(C_HEAD)[cpu]$(C_RESET) Generating VexiiRiscv ($(VARIANT))...\n"
 ifeq ($(USE_VEXII_CONTAINER),1)
@@ -202,7 +212,16 @@ else
 endif
 	@printf "$(C_OK)[cpu] Done$(C_RESET)\n"
 
-cpu: $(VEXII_OUT)
+cpu: $(VEXII_OUT) variant-config
+
+# The project is shared by the variants, but each has its own generated CPU.
+# Refresh on every explicit build/check/sweep so switching variants cannot use
+# the previous selection. A fresh QSF selects the default mister CPU.
+.PHONY: variant-config
+variant-config: $(VEXII_OUT)
+	@python3 $(ROOT_DIR)/tools/prepare_mister_variant.py \
+		--project $(PROJECT).qsf --cpu $(VEXII_OUT) \
+		--macros $(INCLUDE_DEFS)
 
 # ── Bootloader / OS / Firmware ──────────────────────────────────────
 #
@@ -230,10 +249,19 @@ firmware: bootloader os
 # ── FPGA compile ─────────────────────────────────────────────────────
 compile: build
 
-# Root-delegated aliases: mister has a single variant and no bld/<job>/
-# isolation, so "all variants" degenerates to the one build/sweep.
-build-all: build
-sweep-all: sweep
+# The in-place Quartus project must switch variants serially. Preserve each
+# build's files before the next one replaces output_files.
+build-all:
+	@failed=0; for v in $(BATCH_VARIANTS); do \
+		if $(MAKE) --no-print-directory build VARIANT=$$v; then \
+			(mkdir -p bld/$$v && cp -a output_files bld/$$v/) || failed=1; \
+		else failed=1; fi; \
+	done; exit $$failed
+
+sweep-all:
+	@failed=0; for v in $(BATCH_VARIANTS); do \
+		$(MAKE) --no-print-directory sweep VARIANT=$$v || failed=1; \
+	done; exit $$failed
 
 # Full compile with fresh placement.  Quartus emits output_files/mister.rbf
 # directly (GENERATE_RBF_FILE ON) — no reverse_bits step; MiSTer loads a
@@ -243,7 +271,7 @@ sweep-all: sweep
 # include-list reaches synthesis: --verilog_macro is only valid on
 # quartus_map. Explicit tool invocations do not run the framework's PRE_FLOW
 # hook, so build_id.v is refreshed here; quartus_asm emits the .rbf.
-build: $(VEXII_OUT) bootloader build_id.v
+build: $(VEXII_OUT) bootloader build_id.v variant-config
 	@# Apply the persisted seed.  Only rewrite on a real difference — unlike
 	@# the Pocket's generated qsf, mister.qsf is tracked.
 	@if [ -f "$(SEED_FILE)" ]; then \
@@ -301,7 +329,7 @@ build_id.v:
 	@printf '`define BUILD_DATE "%s"' '$(BUILD_DATE)' > $@.tmp
 	@if cmp -s $@.tmp $@; then rm $@.tmp; else mv $@.tmp $@; fi
 
-check: $(VEXII_OUT) bootloader build_id.v
+check: $(VEXII_OUT) bootloader build_id.v variant-config
 	@printf "$(C_HEAD)[check]$(C_RESET) Analysis & Synthesis...\n"
 	@$(Q) quartus_map $(PROJECT) $(VERILOG_MACROS)
 	@printf "$(C_OK)[check] Done$(C_RESET)\n"
@@ -399,6 +427,9 @@ endif
 # on-disk os.bin is not a MiSTer build, so a release can't ship a Pocket
 # kernel as boot.rom.
 package:
+ifneq ($(filter $(VARIANT),$(DIAGNOSTIC_VARIANTS)),)
+	$(error $(VARIANT) is diagnostic-only; use make build VARIANT=$(VARIANT), not package/release)
+endif
 	@mkdir -p $(BUILD_OUT)
 	@cp output_files/$(PROJECT).rbf $(BUILD_OUT)/openfpgaOS.rbf
 	@if [ ! -f $(FW_DIR)/bld/mister/os.bin ]; then \
@@ -523,7 +554,7 @@ SWEEP_MAX ?= 30
 # the headroom to pass; the Pocket variants never do.  Set 0 for the full range.
 SWEEP_STOP_ON_PASS ?= 1
 
-sweep: $(VEXII_OUT) firmware build_id.v
+sweep: $(VEXII_OUT) firmware build_id.v variant-config
 	@USE_CONTAINER=0 MAXJOBS=1 PROJECT=$(PROJECT) \
 		CLOCK_RE='^emu[|]pll[|]pll_inst.*(general\[0\]|counter\[0\])' \
 		VARIANT_DEFS="$(INCLUDE_DEFS)" \

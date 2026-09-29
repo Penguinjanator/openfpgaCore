@@ -18,6 +18,7 @@
 #include "verilated.h"
 #include <cstdio>
 #include <cstdint>
+#include <algorithm>
 
 static Vtb_ddr3_fb* tb;
 static vluint64_t ticks = 0;
@@ -39,6 +40,18 @@ static void steps(int n) { while (n--) step(); }
 // must match tb_ddr3_fb.v::sdram_word
 static uint32_t sdram_word(uint32_t byte_addr) {
     return ((byte_addr >> 2) * 0x9E3779B9u) ^ 0xC0FFEE00u;
+}
+
+// ascal.vhd shift_opix: the first little-endian byte carries low R bits;
+// format[4] swaps R/B after unpacking. Check emitted colors, not only a
+// hard-coded format number, so RGB/BGR mistakes cannot pass unnoticed.
+static uint32_t scaler_rgb(uint16_t pixel, unsigned format) {
+    unsigned r=pixel&31, g, b;
+    if(format&8) { g=(pixel>>5)&31; b=(pixel>>10)&31; g=(g<<3)|(g>>2); }
+    else { g=(pixel>>5)&63; b=(pixel>>11)&31; g=(g<<2)|(g>>4); }
+    r=(r<<3)|(r>>2); b=(b<<3)|(b>>2);
+    if(format&16)std::swap(r,b);
+    return (r<<16)|(g<<8)|b;
 }
 
 static const uint32_t SLOT0 = 0x22000000u;
@@ -152,9 +165,21 @@ int main(int argc, char** argv) {
     steps(10);
     frame_vsync(12000);
     CHECK(tb->FB_EN == 1, "FB_EN stays up in RGB565");
-    CHECK(tb->FB_FORMAT == 0x04, "565 format code");
+    CHECK(tb->FB_FORMAT == 0x14, "565 format code");
+    CHECK(scaler_rgb(0xf800,tb->FB_FORMAT)==0xff0000, "565 red displays red");
+    CHECK(scaler_rgb(0x07e0,tb->FB_FORMAT)==0x00ff00, "565 green displays green");
+    CHECK(scaler_rgb(0x001f,tb->FB_FORMAT)==0x0000ff, "565 blue displays blue");
+    CHECK(scaler_rgb(0xfe10,tb->FB_FORMAT)==0xffc384, "565 skin tone keeps RGB order");
     CHECK(tb->FB_STRIDE == 128, "565 stride published");
     CHECK(frame_matches(SRC_BYTE, SLOT1, 128, 32), "565 frame pattern exact");
+
+    tb->color_mode = 4;
+    steps(10);
+    frame_vsync(12000);
+    CHECK(tb->FB_FORMAT == 0x1c, "555 format code");
+    CHECK(scaler_rgb(0x7c00,tb->FB_FORMAT)==0xff0000, "555 red displays red");
+    CHECK(scaler_rgb(0x03e0,tb->FB_FORMAT)==0x00ff00, "555 green displays green");
+    CHECK(scaler_rgb(0x001f,tb->FB_FORMAT)==0x0000ff, "555 blue displays blue");
 
     // ---- scenario 4: unsupported modes gate FB_EN -----------------------
     tb->color_mode = 1;                    // 4bpp

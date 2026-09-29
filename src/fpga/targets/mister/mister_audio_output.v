@@ -29,9 +29,10 @@ wire pop = pace_tick && !empty && (playing || count >= 5'd8);
 assign fifo_full = (count >= 5'd8);
 assign fifo_level = fifo_full ? 10'd1023 : 10'd0;
 
-// At most nine entries are occupied, so a valid pop never collides with a
-// write to the same address. Suppress unnecessary RAM bypass logic in Q17.
-sync_fifo #(.WIDTH(32), .DEPTH(16), .ADDR_WIDTH(4), .RAMSTYLE("MLAB, no_rw_check")) samples (
+// Keep this small fall-through FIFO in registers. Its MLAB write-address
+// hold path can fail after unrelated placement changes; registers preserve
+// the same read latency without that memory hold constraint.
+sync_fifo #(.WIDTH(32), .DEPTH(16), .ADDR_WIDTH(4), .RAMSTYLE("logic")) samples (
     .clk(clk), .reset(!reset_n), .clear(!mixer_enable),
     .push(sample_wr), .din(sample_data), .pop(pop), .dout(head),
     .empty(empty), .full(), .count(count)

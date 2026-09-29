@@ -2608,7 +2608,9 @@ assign video_hs = vidout_hs;
         // (combine / xform imply truecolor) so the caps word tracks what is built.
         .INCLUDE_DIRECT_COLOR(`ifdef INCLUDE_DIRECT_COLOR 1 `elsif INCLUDE_COMBINE 1 `elsif INCLUDE_XFORM 1 `else 0 `endif),
         // XFORM bundle cap (bit 26): tracks the gpu_core transform front-end.
-        .INCLUDE_XFORM_RGB(`ifdef INCLUDE_XFORM 1 `else 0 `endif),
+        // 0x51/0x52/0x53 all need the matrix MAC, so a MAC-less build clears it
+        // (bit 29 still advertises the 0x56/0x54 clip-space cache).
+        .INCLUDE_XFORM_RGB(`ifdef INCLUDE_XFORM `ifdef EXCLUDE_GPU_XFORM_MAC 0 `else 1 `endif `else 0 `endif),
         .INCLUDE_GPU_CLIP_LOAD(`ifdef INCLUDE_XFORM 1 `else 0 `endif),
         .INCLUDE_GPU_LIGHT(`ifdef INCLUDE_XFORM `ifdef EXCLUDE_GPU_LIGHT 0 `else 1 `endif `else 0 `endif),
         // GPU texel*C+D combiner cap (bit 27, OF_HW_GPU_COMBINE), additive —
@@ -2862,16 +2864,16 @@ assign video_hs = vidout_hs;
         .clk(clk_cpu),
         .reset_n(1'b1),
         // M0: GPU (merged read + write)
-        .m0_arvalid(gpu_rd_arvalid), .m0_arready(gpu_rd_arready),
-        .m0_araddr(gpu_rd_araddr),   .m0_arlen(gpu_rd_arlen),
-        .m0_rvalid(gpu_rd_rvalid),   .m0_rdata(gpu_rd_rdata),
-        .m0_rresp(),                 .m0_rlast(gpu_rd_rlast),
-        .m0_awvalid(gpu_wr_awvalid), .m0_awready(gpu_wr_awready),
-        .m0_awaddr(gpu_wr_awaddr),   .m0_awlen(gpu_wr_awlen),
-        .m0_wvalid(gpu_wr_wvalid),   .m0_wready(gpu_wr_wready),
-        .m0_wdata(gpu_wr_wdata),     .m0_wstrb(gpu_wr_wstrb),
-        .m0_wlast(gpu_wr_wlast),
-        .m0_bvalid(gpu_wr_bvalid),   .m0_bresp(),
+        .m0_arvalid(gpu_mem_rd_arvalid), .m0_arready(gpu_mem_rd_arready),
+        .m0_araddr(gpu_mem_rd_araddr),   .m0_arlen(gpu_mem_rd_arlen),
+        .m0_rvalid(gpu_mem_rd_rvalid),   .m0_rdata(gpu_mem_rd_rdata),
+        .m0_rresp(),                 .m0_rlast(gpu_mem_rd_rlast),
+        .m0_awvalid(gpu_mem_wr_awvalid), .m0_awready(gpu_mem_wr_awready),
+        .m0_awaddr(gpu_mem_wr_awaddr),   .m0_awlen(gpu_mem_wr_awlen),
+        .m0_wvalid(gpu_mem_wr_wvalid),   .m0_wready(gpu_mem_wr_wready),
+        .m0_wdata(gpu_mem_wr_wdata),     .m0_wstrb(gpu_mem_wr_wstrb),
+        .m0_wlast(gpu_mem_wr_wlast),
+        .m0_bvalid(gpu_mem_wr_bvalid),   .m0_bresp(),
         // M1: CPU
         .m1_arvalid(cpu_sdram_bus_arvalid), .m1_arready(cpu_sdram_bus_arready),
         .m1_araddr(cpu_sdram_bus_araddr),   .m1_arlen(cpu_sdram_bus_arlen),
@@ -3558,6 +3560,15 @@ gpu_core #(
     // (Quake perspective); os30 omits it so the Q29 z-step cone + perspective
     // branches fold — removes the GPU's #1 critical path + frees ~150-220 ALM.
     .INCLUDE_PARAM_SPAN_Q29(`ifdef INCLUDE_PARAM_SPAN_Q29 1 `else 0 `endif),
+    // Optional CPU command uploads reuse the ring RAM. Status advertises this
+    // transport; DMA-free variants require applications that select it.
+    .INCLUDE_CPU_RING(`ifdef INCLUDE_CPU_RING 1 `else 0 `endif),
+    .INCLUDE_COMMAND_DMA(`ifdef EXCLUDE_GPU_COMMAND_DMA 0 `else 1 `endif),
+    // Gather adjacent masked framebuffer words before requesting SDRAM.
+    // Keep these independently selectable from the triangle/depth features.
+    .GPU_WRITE_COMBINE_FAST_FLUSH(`ifdef INCLUDE_GPU_WRITE_BURSTS 1 `else 0 `endif),
+    .GPU_WRITE_GATHER(`ifdef INCLUDE_GPU_WRITE_BURSTS 1 `else 0 `endif),
+    .GPU_MASKED_WRITE_BURSTS(`ifdef INCLUDE_GPU_WRITE_BURSTS 1 `else 0 `endif),
     // Numeric tuning (not feature gates).  The z read window is 4 on the
     // triangle-heavy variants and degenerates to 1 on OS25 (single-word z fill,
     // sweeps the window logic).  Keyed off INCLUDE_Z_BURST (NOT INCLUDE_TEX_MEM)
@@ -3567,7 +3578,9 @@ gpu_core #(
     // ~87 serial), cutting triangle setup ~30% with bit-identical quotients.
     // BOTH pocket variants currently ship 0 — no variant defines
     // INCLUDE_PARALLEL_DIVS (os30 lists it among its cuts) — on ALM budget.
-    .GPU_Z_READ_WINDOW(`ifdef INCLUDE_Z_BURST 4 `else 1 `endif),
+    // INCLUDE_Z_WINDOW16/8 widen it to a 64/32-byte line (SM64 castle: fewer
+    // depth-line refills; pairs with INCLUDE_GPU_SELECTIVE_READ_WAIT).
+    .GPU_Z_READ_WINDOW(`ifdef INCLUDE_Z_WINDOW16 16 `elsif INCLUDE_Z_WINDOW8 8 `elsif INCLUDE_Z_BURST 4 `else 1 `endif),
     // Truecolor-blend dst read window: 4-word default; INCLUDE_CB_WINDOW2
     // halves it for ALM-pressed variants; INCLUDE_CB_WINDOW1 compiles the
     // window out (legacy per-pixel blend reads — measurement/fallback).
@@ -3577,7 +3590,10 @@ gpu_core #(
     // slope dividers.  Neither pocket variant lists it today (both = 0), which is
     // bit-identical to the old EXCLUDE_PARALLEL_DIVS/DIRECT_COLOR derivation and
     // removes that load-bearing ifdef ordering.
-    .GPU_EW_PARALLEL_DIVS(`ifdef INCLUDE_PARALLEL_DIVS 1 `else 0 `endif)
+    .GPU_EW_PARALLEL_DIVS(`ifdef INCLUDE_PARALLEL_DIVS 1 `else 0 `endif),
+    // The render cache gathers and merges framebuffer/depth writes itself;
+    // the internal write combiner in front of it only costs time and RAM.
+    .GPU_WRITE_COMBINE(`ifdef INCLUDE_GPU_RENDER_CACHE 0 `else 1 `endif)
 ) gpu (
     .clk(clk_cpu),
     .reset_n(reset_n_cpu_media),
@@ -3631,13 +3647,26 @@ gpu_core #(
     .reg_wr(gpu_reg_wr),
     .reg_addr(gpu_reg_addr),
     .reg_wdata(gpu_reg_wdata),
+`ifdef INCLUDE_GPU_RENDER_CACHE
+    .reg_rdata(gpu_reg_rdata_core),
+`else
     .reg_rdata(gpu_reg_rdata),
+`endif
     // CMD_FLIP side-port → axi_periph_slave's swap mux
     .gpu_swap_req(gpu_swap_req),
     .gpu_swap_idx(gpu_swap_idx),
     .slave_swap_pending(slave_swap_pending),
+`ifdef INCLUDE_GPU_RENDER_CACHE
+    .memory_barrier_done(gpu_cache_barrier_done),
+    .memory_barrier_req(gpu_cache_barrier_req),
+    .cache_clear_bypass(gpu_cache_clear_bypass),
+    .cache_soft_reset(gpu_cache_soft_reset),
+    .cache_tex_flush(gpu_cache_tex_flush),
+    .busy(gpu_busy_core),
+`else
     // Status
     .busy(gpu_busy),
+`endif
     .fence_reached(gpu_fence_reached)
 );
 `else
@@ -3669,6 +3698,93 @@ assign sram_word_rd_hi = 1'b0;
 assign sram_word_addr  = 22'b0;
 assign sram_word_wdata = 32'b0;
 assign sram_word_wstrb = 4'b0;
+`endif
+
+// ============================================================
+// GPU render cache (INCLUDE_GPU_RENDER_CACHE, os30): an 8 KiB, 2-way,
+// 64-byte-line write-back cache for every GPU SDRAM access, between
+// gpu_core's m_rd/m_wr ports and arbiter M0.  gpu_core flushes it (write
+// back + invalidate) before fences, flips and clears and on GPU_TEX_FLUSH;
+// it is also flushed when the GPU goes idle, and GPU_STATUS.busy stays set
+// until then, so every CPU ownership point sees memory.  Clears bypass it.
+// SM64 model (tools/experiments/sm64_cache_20260924): castle +2%, Bowser
+// +9%, castle under CPU memory traffic +17% FPS, frames byte-identical.
+// ============================================================
+wire        gpu_mem_rd_arvalid, gpu_mem_rd_arready, gpu_mem_rd_rvalid, gpu_mem_rd_rlast;
+wire [31:0] gpu_mem_rd_araddr, gpu_mem_rd_rdata;
+wire [7:0]  gpu_mem_rd_arlen;
+wire        gpu_mem_wr_awvalid, gpu_mem_wr_awready, gpu_mem_wr_wvalid, gpu_mem_wr_wready;
+wire        gpu_mem_wr_wlast, gpu_mem_wr_bvalid;
+wire [31:0] gpu_mem_wr_awaddr, gpu_mem_wr_wdata;
+wire [7:0]  gpu_mem_wr_awlen;
+wire [3:0]  gpu_mem_wr_wstrb;
+`ifdef INCLUDE_GPU_RENDER_CACHE
+wire        gpu_busy_core;
+wire [31:0] gpu_reg_rdata_core;
+wire        gpu_cache_barrier_done, gpu_cache_barrier_req, gpu_cache_clear_bypass;
+wire        gpu_cache_soft_reset, gpu_cache_tex_flush;
+wire        gpu_cache_busy, gpu_cache_has_lines, gpu_cache_flush_done;
+wire [25:0] gpu_cache_m_araddr, gpu_cache_m_awaddr;
+reg         gpu_cache_idle_flush;
+reg         gpu_cache_tex_flush_pending;
+always @(posedge clk_cpu) begin
+    if (!reset_n_cpu_media || gpu_cache_soft_reset) begin
+        gpu_cache_idle_flush <= 1'b0;
+        gpu_cache_tex_flush_pending <= 1'b0;
+    end else begin
+        if (gpu_cache_flush_done) gpu_cache_idle_flush <= 1'b0;
+        else if (!gpu_busy_core && gpu_cache_has_lines) gpu_cache_idle_flush <= 1'b1;
+        if (gpu_cache_flush_done) gpu_cache_tex_flush_pending <= 1'b0;
+        else if (gpu_cache_tex_flush && gpu_cache_has_lines) gpu_cache_tex_flush_pending <= 1'b1;
+    end
+end
+assign gpu_cache_barrier_done = gpu_cache_flush_done || (!gpu_cache_has_lines && !gpu_cache_busy);
+assign gpu_busy = gpu_busy_core || gpu_cache_busy || gpu_cache_has_lines || gpu_cache_idle_flush;
+assign gpu_reg_rdata = gpu_reg_rdata_core
+                     | ((gpu_reg_addr == 4'd5 && gpu_busy) ? 32'd1 : 32'd0);
+assign gpu_mem_rd_araddr = {6'd0, gpu_cache_m_araddr};
+assign gpu_mem_wr_awaddr = {6'd0, gpu_cache_m_awaddr};
+gpu_color_depth_cache #(
+    .ADDR_W(26), .CACHE_ALL(1), .WAYS(2), .SET_BITS(6), .WORD_BITS(4)
+) gpu_render_cache (
+    .clk(clk_cpu), .reset_n(reset_n_cpu_media && !gpu_cache_soft_reset), .bus_reset_n(reset_n_cpu_media),
+    .range0_lo(26'd0), .range0_hi(26'd0), .range1_lo(26'd0), .range1_hi(26'd0),
+    .write_no_allocate(gpu_cache_clear_bypass),
+    .flush_req((gpu_cache_barrier_req && gpu_cache_has_lines) || gpu_cache_idle_flush
+               || gpu_cache_tex_flush_pending),
+    .flush_done(gpu_cache_flush_done), .busy(gpu_cache_busy), .has_lines(gpu_cache_has_lines),
+    .s_arvalid(gpu_rd_arvalid), .s_arready(gpu_rd_arready), .s_araddr(gpu_rd_araddr[25:0]),
+    .s_arlen(gpu_rd_arlen), .s_rvalid(gpu_rd_rvalid), .s_rdata(gpu_rd_rdata), .s_rlast(gpu_rd_rlast),
+    .s_awvalid(gpu_wr_awvalid), .s_awready(gpu_wr_awready), .s_awaddr(gpu_wr_awaddr[25:0]),
+    .s_awlen(gpu_wr_awlen), .s_wvalid(gpu_wr_wvalid), .s_wready(gpu_wr_wready),
+    .s_wdata(gpu_wr_wdata), .s_wstrb(gpu_wr_wstrb), .s_wlast(gpu_wr_wlast), .s_bvalid(gpu_wr_bvalid),
+    .m_arvalid(gpu_mem_rd_arvalid), .m_arready(gpu_mem_rd_arready), .m_araddr(gpu_cache_m_araddr),
+    .m_arlen(gpu_mem_rd_arlen), .m_rvalid(gpu_mem_rd_rvalid), .m_rdata(gpu_mem_rd_rdata),
+    .m_rlast(gpu_mem_rd_rlast),
+    .m_awvalid(gpu_mem_wr_awvalid), .m_awready(gpu_mem_wr_awready), .m_awaddr(gpu_cache_m_awaddr),
+    .m_awlen(gpu_mem_wr_awlen), .m_wvalid(gpu_mem_wr_wvalid), .m_wready(gpu_mem_wr_wready),
+    .m_wdata(gpu_mem_wr_wdata), .m_wstrb(gpu_mem_wr_wstrb), .m_wlast(gpu_mem_wr_wlast),
+    .m_bvalid(gpu_mem_wr_bvalid),
+    .hits(), .misses(), .writebacks(), .protocol_error()
+);
+`else
+assign gpu_mem_rd_arvalid = gpu_rd_arvalid;
+assign gpu_rd_arready     = gpu_mem_rd_arready;
+assign gpu_mem_rd_araddr  = gpu_rd_araddr;
+assign gpu_mem_rd_arlen   = gpu_rd_arlen;
+assign gpu_rd_rvalid      = gpu_mem_rd_rvalid;
+assign gpu_rd_rdata       = gpu_mem_rd_rdata;
+assign gpu_rd_rlast       = gpu_mem_rd_rlast;
+assign gpu_mem_wr_awvalid = gpu_wr_awvalid;
+assign gpu_wr_awready     = gpu_mem_wr_awready;
+assign gpu_mem_wr_awaddr  = gpu_wr_awaddr;
+assign gpu_mem_wr_awlen   = gpu_wr_awlen;
+assign gpu_mem_wr_wvalid  = gpu_wr_wvalid;
+assign gpu_wr_wready      = gpu_mem_wr_wready;
+assign gpu_mem_wr_wdata   = gpu_wr_wdata;
+assign gpu_mem_wr_wstrb   = gpu_wr_wstrb;
+assign gpu_mem_wr_wlast   = gpu_wr_wlast;
+assign gpu_wr_bvalid      = gpu_mem_wr_bvalid;
 `endif
 
 

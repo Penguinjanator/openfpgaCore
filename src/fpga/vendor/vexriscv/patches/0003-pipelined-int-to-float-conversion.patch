@@ -1,0 +1,155 @@
+diff --git a/src/main/scala/vexiiriscv/Param.scala b/src/main/scala/vexiiriscv/Param.scala
+index 32eb57a..62657c1 100644
+--- a/src/main/scala/vexiiriscv/Param.scala
++++ b/src/main/scala/vexiiriscv/Param.scala
+@@ -124,6 +124,7 @@ class ParamSimple() {
+   var gshareBanks = 1
+   var btbDualPortRam = true
+   var fpuIgnoreSubnormal = false
++  var fpuI2fPipelined = false
+   var fpuWbAt = 2
+   var fpuWbWriteAt = 9
+   var fpuBypassFrom = -1 // -1 => allowBypassFrom.max(2)
+@@ -657,6 +658,7 @@ class ParamSimple() {
+     opt[Unit]("with-hart-id-input-defaulted") action { (v, c) => privParam.withHartIdInputDefaulted = true }
+     opt[Unit]("fma-reduced-accuracy") action { (v, c) => fpuMulParam.fmaFullAccuracy = false }
+     opt[Unit]("fpu-ignore-subnormal") action { (v, c) => fpuIgnoreSubnormal = true }
++    opt[Unit]("fpu-i2f-pipelined") action { (v, c) => fpuI2fPipelined = true }
+     opt[Int]("fpu-wb-at") action { (v, c) => fpuWbAt = v }
+     opt[Int]("fpu-wb-write-at") action { (v, c) => fpuWbWriteAt = v }
+     opt[Int]("fpu-bypass-from") action { (v, c) => fpuBypassFrom = v }
+@@ -1226,7 +1228,7 @@ class ParamSimple() {
+       plugins += new WriteBackPlugin(lane0, FloatRegFile, writeAt = fpuWbWriteAt, allowBypassFrom = if(fpuBypassFrom >= 0) fpuBypassFrom else allowBypassFrom.max(2)) //Max 2 to save area on not so important instructions
+       plugins += new execute.fpu.FpuFlagsWritebackPlugin(lane0, pipTo = intWritebackAt)
+       plugins += new execute.fpu.FpuCsrPlugin(List(lane0), intWritebackAt)
+-      plugins += new execute.fpu.FpuUnpackerPlugin(early0, ignoreSubnormal = fpuIgnoreSubnormal)
++      plugins += new execute.fpu.FpuUnpackerPlugin(early0, ignoreSubnormal = fpuIgnoreSubnormal, pipelinedI2f = fpuI2fPipelined)
+       plugins += new execute.fpu.FpuAddSharedPlugin(lane0, p = fpuAddSharedParam)
+       plugins += new execute.fpu.FpuAddPlugin(early0)
+       plugins += new execute.fpu.FpuMulPlugin(early0, p = fpuMulParam)
+diff --git a/src/main/scala/vexiiriscv/execute/fpu/FpuUnpackerPlugin.scala b/src/main/scala/vexiiriscv/execute/fpu/FpuUnpackerPlugin.scala
+index 46c49fb..6f0e8d3 100644
+--- a/src/main/scala/vexiiriscv/execute/fpu/FpuUnpackerPlugin.scala
++++ b/src/main/scala/vexiiriscv/execute/fpu/FpuUnpackerPlugin.scala
+@@ -24,7 +24,7 @@ import scala.collection.mutable.ArrayBuffer
+ class FpuUnpackerPlugin(val layer : LaneLayer,
+                         var ignoreSubnormal : Boolean = false,
+                         unpackAt : Int = 0,
+-                        packAt : Int = 0) extends FiberPlugin{
++                        packAt : Int = 0, pipelinedI2f : Boolean = false) extends FiberPlugin{
+   val p = FpuUtils
+ 
+   val elaborationLock = Retainer()
+@@ -65,7 +65,7 @@ class FpuUnpackerPlugin(val layer : LaneLayer,
+       exponentMin = 0,
+       mantissaWidth = p.mantissaWidth + 2
+     )
+-    val packPort = fpp.createPort(List(packAt), packParam)
++    val i2fPackAt = if (pipelinedI2f) packAt + 3 else packAt; val packPort = fpp.createPort(List(i2fPackAt), packParam)
+ 
+     elaborationLock.await()
+ 
+@@ -74,7 +74,7 @@ class FpuUnpackerPlugin(val layer : LaneLayer,
+       val spec = layer.add(uop)
+       spec.addDecoding(decodings)
+       spec.addDecoding(SEL_I2F -> True)
+-      packPort.uopsAt += spec -> packAt
++      packPort.uopsAt += spec -> i2fPackAt
+       spec.addDecoding(size match {
+         case 32 => RsUnsignedPlugin.IS_W -> True
+         case 64 => RsUnsignedPlugin.IS_W -> False
+@@ -105,9 +105,9 @@ class FpuUnpackerPlugin(val layer : LaneLayer,
+ 
+     val rsList = unpackSpec.keys.toArray
+ 
+-    val withRsUnpack = !ignoreSubnormal
++    val withRsUnpack = !ignoreSubnormal; val cvtWidth = p.rsIntWidth max Riscv.fpuMantissaWidth; val needFsm = withRsUnpack || !pipelinedI2f
+ 
+-    val unpacker = new StagePipeline { //TODO this kinda bloated now that all unpack are unified
++    val unpacker = needFsm generate new StagePipeline { //TODO this kinda bloated now that all unpack are unified
+       val ohInputWidth = p.rsIntWidth max Riscv.fpuMantissaWidth
+ 
+       case class Request() extends Bundle {
+@@ -119,7 +119,7 @@ class FpuUnpackerPlugin(val layer : LaneLayer,
+         val data = Bits(ohInputWidth bits)
+       }
+ 
+-      val portCount = 1+withRsUnpack.toInt
++      val portCount = (!pipelinedI2f).toInt + withRsUnpack.toInt
+       val arbiter = StreamArbiterFactory().noLock.lowerFirst.build(Request(), portCount)
+       val results = Vec.fill(portCount)(Flow(Result()))
+ 
+@@ -269,7 +269,7 @@ class FpuUnpackerPlugin(val layer : LaneLayer,
+     val unpackDone = withRsUnpack.mux(!onUnpack.rs.map(_.normalizer.freezeIt).toList.orR, True)
+ 
+ 
+-    val onCvt = new layer.lane.Execute(unpackAt){ //TODO fmax
++    val onCvt = !pipelinedI2f generate new layer.lane.Execute(unpackAt){ //TODO fmax
+       val rs1 = up(layer.lane(IntRegFile, RS1))
+       val rs1Zero = Riscv.XLEN.get match {
+         case 32 => rs1(31 downto 0) === 0
+@@ -299,7 +299,7 @@ class FpuUnpackerPlugin(val layer : LaneLayer,
+ 
+       packPort.cmd.value.quiet := False
+       packPort.cmd.value.sign := RsUnsignedPlugin.RS1_REVERT
+-      packPort.cmd.value.exponent := unpacker.ohInputWidth - fsmResult.shift
++      packPort.cmd.value.exponent := cvtWidth - fsmResult.shift
+       if (widthOf(fsmResult.data) > widthOf(packPort.cmd.value.mantissa.raw)) {
+         packPort.cmd.value.mantissa.raw := fsmResult.data.takeHigh(p.mantissaWidth + 1) ## fsmResult.data.dropHigh(p.mantissaWidth + 1).orR
+       } else {
+@@ -310,7 +310,54 @@ class FpuUnpackerPlugin(val layer : LaneLayer,
+         packPort.cmd.value.setZero
+       }
+     }
++    // pipelinedI2f (--fpu-i2f-pipelined): the int->float normalization
++    // (leading-zero count, then shift) runs in the lane's own stages instead
++    // of the shared unpacker side-pipeline, so fcvt.s.w[u] no longer freezes
++    // the lane.  The packer is fed three stages later from registered values;
++    // the arithmetic is the same expressions as the side-pipeline's.  (Kept
++    // below the original code so the default netlist stays byte-identical:
++    // SpinalHDL names some signals after source line numbers.)
++    val onCvtPiped = pipelinedI2f generate new Area {
++      val shiftWidth = log2Up(cvtWidth + 1)
++      val s0 = new layer.lane.Execute(unpackAt) {
++        val rs1 = up(layer.lane(IntRegFile, RS1))
++        val rs1Zero = Riscv.XLEN.get match {
++          case 32 => rs1(31 downto 0) === 0
++          case 64 => rs1(31 downto 0) === 0 && (RsUnsignedPlugin.IS_W || rs1(63 downto 32) === 0)
++        }
++        val DATA = insert(RsUnsignedPlugin.RS1_UNSIGNED.asBits.resize(cvtWidth))
++        val ZERO = insert(rs1Zero)
++      }
++      val s1 = new layer.lane.Execute(unpackAt + 1) {
++        val SHIFT = insert(OHToUInt(OHMasking.firstV2(apply(s0.DATA).reversed << 1)).resize(shiftWidth))
++      }
++      val s2 = new layer.lane.Execute(unpackAt + 2) {
++        val SHIFTED = insert(apply(s0.DATA) |<< apply(s1.SHIFT))
++      }
++      val s3 = new layer.lane.Execute(i2fPackAt) {
++        packPort.cmd.at(0) := isValid && SEL_I2F
++        packPort.cmd.flags.clearAll()
++        packPort.cmd.format := FORMAT
++        packPort.cmd.roundMode := FpuUtils.ROUNDING
++        packPort.cmd.hartId := Global.HART_ID
++        packPort.cmd.uopId := Decode.UOP_ID
++
++        packPort.cmd.value.quiet := False
++        packPort.cmd.value.sign := RsUnsignedPlugin.RS1_REVERT
++        packPort.cmd.value.exponent := cvtWidth - apply(s1.SHIFT)
++        val data = apply(s2.SHIFTED)
++        if (widthOf(data) > widthOf(packPort.cmd.value.mantissa.raw)) {
++          packPort.cmd.value.mantissa.raw := data.takeHigh(p.mantissaWidth + 1) ## data.dropHigh(p.mantissaWidth + 1).orR
++        } else {
++          packPort.cmd.value.mantissa.raw := data << widthOf(packPort.cmd.value.mantissa.raw) - widthOf(data)
++        }
++        packPort.cmd.value.setNormal
++        when(apply(s0.ZERO)) {
++          packPort.cmd.value.setZero
++        }
++      }
++    }
+     buildBefore.release()
+-    unpacker.build()
++    if (needFsm) unpacker.build()
+   }
+ }

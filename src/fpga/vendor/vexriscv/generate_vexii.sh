@@ -101,9 +101,17 @@ FPU_WB_AT=1              # FPU→int writeback stage (upstream default 2; we
 LSU_L1_WAYS=2            # D$ associativity (sets x ways x 64 B line)
 LSU_SB_SLOTS=2           # D$ store-buffer line slots
 LSU_SB_OPS=16            # D$ store-buffer op capacity
+DIV_RADIX=2             # Integer and FP divider radix; qualified per variant.
 EXTRA_FLAGS=""
 MAXFAN_HINT=0
 FETCH_READ_HOLD=0        # Preserve stalled reads using a registered selector.
+ALIGNER_PC_HOLD=0        # Preserve the buffered PC with a registered enable.
+FETCH_READY_FACTOR=0     # Factor the late dispatch hazard out of fetch control.
+FETCH_L1_PREFETCH=nl     # I$ hardware prefetch: nl (next line) or none.
+RELAXED_LEARN=0          # 1 = register the branch-predictor update (+1 cycle).
+NO_SHIFT_TAPS=0          # 1 = keep Quartus from packing CPU pipeline FFs into RAM.
+FPU_I2F_PIPELINED=0      # 1 = fcvt.s.w[u] normalizes in-lane (no freeze, patch 0003).
+LSU_WRITE_REG=0          # 1 = register D$ bank writes, bypass them into reads.
 
 CONFIG="$SCRIPT_DIR/configs/$VARIANT.cfg"
 if [ ! -f "$CONFIG" ]; then
@@ -120,6 +128,9 @@ OUTPUT_NAME="VexiiRiscv_$VARIANT.v"
 
 LSU_SW_PREFETCH_FLAG="--lsu-software-prefetch"
 [ "$LSU_SW_PREFETCH" = 0 ] && LSU_SW_PREFETCH_FLAG=""
+RELAXED_LEARN_FLAG=""
+[ "$RELAXED_LEARN" = 1 ] && RELAXED_LEARN_FLAG="--relaxed-learn"
+[ "$FPU_I2F_PIPELINED" = 1 ] && RELAXED_LEARN_FLAG="$RELAXED_LEARN_FLAG --fpu-i2f-pipelined"
 
 if [ ! -d "$VEXII_DIR" ]; then
     echo "Error: VexiiRiscv directory not found at $VEXII_DIR"
@@ -153,7 +164,7 @@ sbt -Dsbt.server.forcestart=true --batch "Test/runMain vexiiriscv.Generate \
       --fetch-l1-mem-data-width-min=64 \
       --fetch-l1-read-at=1 --fetch-l1-hits-at=2 --fetch-l1-hit-at=2 \
       --fetch-l1-bank-muxes-at=2 --fetch-l1-bank-mux-at=3 --fetch-l1-ctrl-at=3 \
-      --fetch-l1-hardware-prefetch=nl --fetch-axi4 \
+      --fetch-l1-hardware-prefetch=$FETCH_L1_PREFETCH --fetch-axi4 \
       --with-lsu-l1 --lsu-l1-sets=$DCACHE_SETS --lsu-l1-ways=$LSU_L1_WAYS \
       --lsu-l1-refill-count=2 --lsu-l1-writeback-count=2 \
       --lsu-l1-store-buffer-slots=$LSU_SB_SLOTS --lsu-l1-store-buffer-ops=$LSU_SB_OPS \
@@ -167,7 +178,7 @@ sbt -Dsbt.server.forcestart=true --batch "Test/runMain vexiiriscv.Generate \
       --fpu-add-preshift-stage=1 --fpu-add-shifter-stage=2 \
       --fpu-add-math-stage=3 --fpu-add-norm-stage=4 --fpu-add-pack-at=5 \
       --relaxed-src --relaxed-branch --relaxed-div --relaxed-shift \
-      --div-radix=2 --with-store-rs2-late \
+      --div-radix=$DIV_RADIX --with-store-rs2-late \
       --dispatcher-at=2 \
       --reset-vector=0 \
       --region base=0,size=8000,main=0,exe=1 \
@@ -175,17 +186,18 @@ sbt -Dsbt.server.forcestart=true --batch "Test/runMain vexiiriscv.Generate \
       --region base=20000000,size=10000000,main=0,exe=0 \
       --region base=30000000,size=1000000,main=0,exe=0 \
       --region base=40000000,size=40000000,main=0,exe=0 \
-      $EXTRA_FLAGS"
+      $RELAXED_LEARN_FLAG $EXTRA_FLAGS"
 
 GENERATED="$VEXII_DIR/VexiiRiscv.v"
-OUTPUT="$VEXII_DIR/$OUTPUT_NAME"
+FINAL_OUTPUT="$VEXII_DIR/$OUTPUT_NAME"
 if [ ! -f "$GENERATED" ]; then
     echo "ERROR: VexiiRiscv.v not found after generation"
     exit 1
 fi
-# The module inside stays named VexiiRiscv (cpu_system.v instantiates it by
-# name); only the file is per-variant.  Rename the bare sbt output.
-mv -f "$GENERATED" "$OUTPUT"
+# Transform the staging file first. A failed post-processing check must not
+# replace a previously built CPU or leave an invalid netlist newer than its
+# configuration, which would let the next make invocation reuse it.
+OUTPUT="$GENERATED"
 
 if [ "${MAXFAN_HINT:-0}" != 0 ]; then
 # The generated execute_freeze_valid cone fans into the whole CPU
@@ -225,12 +237,37 @@ if grep -q '\$urandom' "$OUTPUT"; then
     exit 1
 fi
 
+# Quartus' automatic shift-register replacement packs runs of same-shape
+# pipeline control flops (FPU/int writeback selects, format ids) into
+# altshift_taps M10Ks; the RAM output then sits on writeback/bypass paths
+# (-0.83 ns on os30).  A module-level logic option keeps them as flops.
+if [ "$NO_SHIFT_TAPS" = 1 ]; then
+    perl -0pi -e 's/^module VexiiRiscv \(/(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)\nmodule VexiiRiscv (/m' "$OUTPUT"
+    if ! grep -q 'AUTO_SHIFT_REGISTER_RECOGNITION OFF' "$OUTPUT"; then
+        echo "ERROR: failed to annotate VexiiRiscv shift-register recognition"
+        exit 1
+    fi
+fi
+
 # Keep late fetch-ready signals off the MiSTer RAM read-enable ports.
 # The generated read and stall behavior remains cycle-for-cycle identical.
 if [ "$FETCH_READ_HOLD" = 1 ]; then
     perl "$SCRIPT_DIR/retime_fetch_reads.pl" "$OUTPUT"
 fi
+if [ "$ALIGNER_PC_HOLD" = 1 ]; then
+    perl "$SCRIPT_DIR/retime_aligner_pc.pl" "$OUTPUT"
+fi
+if [ "$FETCH_READY_FACTOR" = 1 ]; then
+    perl "$SCRIPT_DIR/factor_fetch_ready.pl" "$OUTPUT"
+fi
+# Take the store hit/redo cone off the D$ M10K write enables; reads bypass the
+# pending write, so every load and victim read returns the same data.
+if [ "$LSU_WRITE_REG" = 1 ]; then
+    perl "$SCRIPT_DIR/retime_dcache_writes.pl" "$OUTPUT"
+fi
 
+mv -f "$OUTPUT" "$FINAL_OUTPUT"
+OUTPUT="$FINAL_OUTPUT"
 echo ""
 echo "Done! Generated $OUTPUT ($VARIANT)"
 echo "Top module: VexiiRiscv"

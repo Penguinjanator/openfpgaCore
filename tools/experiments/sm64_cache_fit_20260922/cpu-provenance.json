@@ -1,0 +1,7 @@
+{
+  "source": "/home/alberto/.cache/os30-experimental-config-20260915/before/src/fpga/vendor/vexriscv/VexiiRiscv/VexiiRiscv_os30.v",
+  "source_sha256": "ae5f5b5ede1280f1c1fdc66d027d2e1697dd847e4fd915445d9489ef04611436",
+  "transformation": "src/fpga/vendor/vexriscv/factor_fetch_ready.pl",
+  "result_sha256": "806fb2bdb3a79c89a12ec836cfa42310d88f7e75a33741e8f20cb026ec2683fd",
+  "rationale": "Saved config and generator differ only by the FETCH_READY_FACTOR addition; apply that exact guarded transformation for the current os30 config."
+}

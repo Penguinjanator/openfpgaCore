@@ -41,7 +41,11 @@ def main():
             "-GGPU_EW_PARALLEL_DIVS=0": "-GGPU_EW_PARALLEL_DIVS=1",
             "-GINCLUDE_CLIP_TRI=0": "-GINCLUDE_CLIP_TRI=1",
             "-GINCLUDE_GPU_XFORM_MAC=0": "-GINCLUDE_GPU_XFORM_MAC=1",
-            "-GINCLUDE_COMBINE=0": "-GINCLUDE_COMBINE=1"}
+            "-GINCLUDE_COMBINE=0": "-GINCLUDE_COMBINE=1",
+            "-GINCLUDE_DIRECT_COLOR=0": "-GINCLUDE_DIRECT_COLOR=1",
+            "-GINCLUDE_XFORM_RGB=0": "-GINCLUDE_XFORM_RGB=1",
+            "-GINCLUDE_VTX_CACHE=0": "-GINCLUDE_VTX_CACHE=1",
+            "-GINCLUDE_GPU_LIGHT=0": "-GINCLUDE_GPU_LIGHT=1"}
         flags = [replacements.get(flag, flag) for flag in flags]
         flags += ["-GGPU_TEX_CACHE_SET_BITS=11", "+define+INCLUDE_EARLY_Z_CAPTURE"]
     sources = [test / "tb_gpu.v", common / "gpu_core.v", common / "gpu_edge_walker.v",

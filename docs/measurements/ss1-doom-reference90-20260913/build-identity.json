@@ -1,7 +1,0 @@
-{
-  "diagnostic_sha256": "bee6bc35d6757d8cfd63e3b5294fa4285b203cf315abf5e856fa3d84993d4d79",
-  "changed_from_100mhz_diagnostic": [
-    "src/doom/shim/i_main.c"
-  ],
-  "core_sha256": "b066853ef62bf227c60c6d1fba3333eb1e1fb397b4d1907955991b77ca4e063f"
-}

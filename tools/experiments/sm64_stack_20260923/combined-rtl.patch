@@ -1,0 +1,325 @@
+--- a/src/fpga/common/gpu_core.v
++++ b/src/fpga/common/gpu_core.v
+@@ -1416,6 +1416,7 @@
+ localparam CMD_DRAW_INDEXED_TRI       = 8'h54;  // T3: 3 cache indices -> derive (draw-many)
+ localparam CMD_SET_LIGHT_STATE        = 8'h55;  // T4: sticky light dir/colour/ambient
+ localparam CMD_LOAD_VERT_LIT          = 8'h57;  // T4: transform+light one vert -> cache
++localparam CMD_LOAD_SCREEN_VERT = 8'h58; // private six-word screen-space cache load
+ localparam CMD_LOAD_VERT_CLIP         = 8'h56;  // T3: park ONE pre-transformed clip-space
+                                                 //   vert {x,y,w} in the cache (XF_CLIP_FEED,
+                                                 //   skips the MAC entirely) -- the cache-load
+@@ -3173,6 +3174,7 @@
+ localparam [4:0] CMDCLS_INDEXED_TRI      = 5'd16;  // 0x54
+ localparam [4:0] CMDCLS_SET_LIGHT_STATE  = 5'd17;  // 0x55
+ localparam [4:0] CMDCLS_LOAD_VERT_LIT    = 5'd18;  // 0x57
++localparam [4:0] CMDCLS_LOAD_SCREEN_VERT = 5'd20;
+ localparam [4:0] CMDCLS_LOAD_VERT_CLIP   = 5'd19;  // 0x56
+ reg [4:0] cmd_class;
+ 
+@@ -3862,7 +3864,7 @@
+ // Single write port (0x53/0x57) + single registered read port (0x54 reads the
+ // 3 indices SEQUENTIALLY over 3 cycles in S_VCREAD), so it must infer as RAM
+ // rather than a register file either way.
+-localparam VC_W = 176;
++localparam VC_W = 192; // extra 16-bit additive RGB565 per slot
+ // M10K, not MLAB.  The original choice was MLAB to protect the near-full
+ // M10K budget, but on a design this close to the LAB ceiling that is the
+ // wrong resource to economise: an MLAB is a WHOLE LAB switched to memory
+@@ -3882,6 +3884,7 @@
+ reg        xf_to_cache;        // T3: this S_XFORM run writes the cache (0x53/0x57)
+ reg [1:0]  xf_last_vtx;        // T3: last vert index (0 for load, 2 for tri)
+ reg [4:0]  xf_load_slot;       // T3: destination cache slot for 0x53/0x57
++reg [15:0] xf_load_cd;
+ reg [31:0] xf_load_depth;         // 0x56 w7: explicit slot depth (see payload arm)
+ reg [4:0]  vc_i0, vc_i1, vc_i2; // T3: 0x54 indexed-draw cache indices
+ 
+@@ -4643,6 +4646,53 @@
+                              && !z_src_pending_valid
+                              && !wc_busy && !fbwq_req_valid && !fbwq_stage_valid && fbwq_empty
+                              && (m_wr_inflight == 4'b0) && !m_wr_chan_busy;
++
++// PRIVATE EXPERIMENT: scoreboard every accepted AW until its ordered B.
++// Bursts contain at most eight words and can cross one 64-byte boundary.
++// Preserve both boundary tags so a crossing write cannot evade the check.
++reg [GPU_ADDR_W-7:0] raw_aw_first[0:15], raw_aw_last[0:15];
++reg [15:0] raw_aw_valid;
++reg [3:0] raw_aw_head, raw_aw_tail;
++wire [GPU_ADDR_W-1:0] raw_aw_end = m_wr_awaddr + (m_wr_awlen << 2);
++always @(posedge clk) begin
++    if (!reset_n || soft_reset) begin
++        raw_aw_valid <= 0;
++        raw_aw_head <= 0;
++        raw_aw_tail <= 0;
++    end else begin
++        if (m_wr_bvalid) begin
++            raw_aw_valid[raw_aw_head] <= 0;
++            raw_aw_head <= raw_aw_head + 1'b1;
++        end
++        if (m_wr_awvalid && m_wr_awready) begin
++            raw_aw_valid[raw_aw_tail] <= 1;
++            raw_aw_first[raw_aw_tail] <= m_wr_awaddr[GPU_ADDR_W-1:6];
++            raw_aw_last[raw_aw_tail] <= raw_aw_end[GPU_ADDR_W-1:6];
++            raw_aw_tail <= raw_aw_tail + 1'b1;
++        end
++    end
++end
++wire [GPU_ADDR_W-1:0] raw_read_addr = (fbss == FBSS_CB_REQ) ? p3_fb_word_addr_w
++    : (fbss == FBSS_BLEND_REQ) ? blend_group_word_addr : p3_z_addr;
++wire [GPU_ADDR_W-7:0] raw_read_line = raw_read_addr[GPU_ADDR_W-1:6];
++reg raw_conflict;
++integer raw_i;
++reg [3:0] raw_qi;
++always @* begin
++    raw_conflict = m_wr_awvalid
++        && ((raw_read_line == m_wr_awaddr[GPU_ADDR_W-1:6])
++            || (raw_read_line == raw_aw_end[GPU_ADDR_W-1:6]));
++    raw_qi = 0;
++    for (raw_i=0; raw_i<16; raw_i=raw_i+1) begin
++        raw_qi = fbwq_rd_ptr + raw_i;
++        if ((raw_i < fbwq_count) && (fbwq_addr[raw_qi][GPU_ADDR_W-1:6] == raw_read_line))
++            raw_conflict = 1;
++        if (raw_aw_valid[raw_i] && ((raw_aw_first[raw_i] == raw_read_line)
++            || (raw_aw_last[raw_i] == raw_read_line))) raw_conflict = 1;
++    end
++end
++wire raw_read_safe = !z_flush_valid && !z_src_pending_valid && !wc_busy
++    && !fbwq_req_valid && !fbwq_stage_valid && !raw_conflict;
+ wire fbwq_output_idle = !m_wr_awvalid && !m_wr_wvalid;
+ wire fbwq_drain_can_load = !m_wr_inflight_near_full && fbwq_output_idle;
+ wire [3:0] fbwq_rd_ptr_1 = fbwq_rd_ptr + 4'd1;
+@@ -6233,6 +6283,12 @@
+         // IDLE — wait for commands in ring BRAM
+         // ============================================================
+         S_IDLE: begin
++            // Also preserve clients that wait for a completely idle GPU before
++            // CPU writes, without issuing an explicit fence.
++            if ((!active) || (ring_empty && !dma_pull_busy && fb_write_drain_complete)) begin
++                zw_valid <= 0;
++                cbw_valid <= 0;
++            end
+             if (active && !ring_empty) begin
+                 // BRAM read initiated by ring_rdptr (port B, 1-cycle latency)
+                 // Advance rdptr; data available next cycle in ring_rd_data
+@@ -6258,6 +6314,7 @@
+         // Decode — start reading payload words from BRAM
+         // ============================================================
+         S_DECODE: begin
++            xf_load_cd <= 0; // legacy loads cannot inherit additive color
+             // Pre-decode cmd_type into one-hot dispatch flags. The case
+             // expression in S_EXECUTE used to compare cmd_type directly,
+             // which built a long combinational chain into the per-command
+@@ -6268,8 +6325,20 @@
+             // command boundary so CPU z-buffer/framebuffer writes between
+             // commands (fence-synchronised) can never be shadowed by stale
+             // window contents.  The blend dst window follows the same rule.
+-            zw_valid  <= 4'b0;
+-            cbw_valid <= 4'b0;
++            // Retain only across known GPU drawing/state commands. Fences,
++            // flips, clears, target changes and unknown commands invalidate.
++            if (!((cmd_type == CMD_SET_TEXTURE) || (cmd_type == CMD_SET_TRI_STATE)
++                || (cmd_type == CMD_SET_OBJECT_STATE) || (cmd_type == CMD_SET_LIGHT_STATE)
++                || (cmd_type == CMD_LOAD_VERTS) || (cmd_type == CMD_LOAD_VERT_LIT)
++                || (cmd_type == CMD_LOAD_VERT_CLIP) || (cmd_type == CMD_DRAW_INDEXED_TRI)
++                || (cmd_type == CMD_DRAW_CLIP_TRI) || (cmd_type == CMD_DRAW_VERT_TRI)
++                || (cmd_type == CMD_DRAW_VERT_TRI_RGB) || (cmd_type == CMD_DRAW_XFORM_TRI)
++                || (cmd_type == CMD_DRAW_XFORM_TRI_RGB) || (cmd_type == CMD_DRAW_PARAM_TRI)
++                || (cmd_type == CMD_DRAW_PARAM_TRI_RECS) || (cmd_type == CMD_DRAW_PARAM_SPAN_LIST)
++                || (cmd_type == CMD_DRAW_COLUMN_LIST))) begin
++                zw_valid <= 0;
++                cbw_valid <= 0;
++            end
+             cmd_is_fence          <= (cmd_type == CMD_FENCE);
+             cmd_is_clear_rect     <= (cmd_type == CMD_CLEAR_RECT);
+             cmd_is_set_fb         <= (cmd_type == CMD_SET_FB);
+@@ -6425,9 +6494,9 @@
+             // MAC term: it is the load path for MAC-less configs and for hosts
+             // that pre-transform (Quake2 CPU geometry).
+             cmd_is_load_vert_clip <= (INCLUDE_VTX_CACHE != 0) && (INCLUDE_XFORM_RGB != 0) &&
+-                (cmd_type == CMD_LOAD_VERT_CLIP && cmd_payload_words == 13'd8);
++                (cmd_type == CMD_LOAD_VERT_CLIP && (cmd_payload_words == 13'd8 || cmd_payload_words == 13'd9));
+             cmd_is_draw_indexed_tri <= (INCLUDE_VTX_CACHE != 0) && (INCLUDE_XFORM_RGB != 0) &&
+-                (cmd_type == CMD_DRAW_INDEXED_TRI && cmd_payload_words == 13'd1);
++                (cmd_type == CMD_DRAW_INDEXED_TRI && (cmd_payload_words == 13'd1 || cmd_payload_words == 13'd4));
+             // T4: 0x55 SET_LIGHT_STATE sticky (6 words: dir x/y/z, light RGB565,
+             // ambient RGB565, enable/count).
+             cmd_is_set_light_state <= (INCLUDE_GPU_LIGHT != 0) && (INCLUDE_XFORM_RGB != 0) &&
+@@ -6509,11 +6578,15 @@
+                                ? CMDCLS_LOAD_VERTS : CMDCLS_NONE;
+                 CMD_LOAD_VERT_CLIP:
+                     cmd_class <= ((INCLUDE_VTX_CACHE != 0) && (INCLUDE_XFORM_RGB != 0)
+-                                  && cmd_payload_words == 13'd8)
++                                  && (cmd_payload_words == 13'd8 || cmd_payload_words == 13'd9))
+                                ? CMDCLS_LOAD_VERT_CLIP : CMDCLS_NONE;
++                CMD_LOAD_SCREEN_VERT:
++                    cmd_class <= ((INCLUDE_VTX_CACHE != 0) && (INCLUDE_XFORM_RGB != 0)
++                                  && cmd_payload_words == 13'd6)
++                               ? CMDCLS_LOAD_SCREEN_VERT : CMDCLS_NONE;
+                 CMD_DRAW_INDEXED_TRI:
+                     cmd_class <= ((INCLUDE_VTX_CACHE != 0) && (INCLUDE_XFORM_RGB != 0)
+-                                  && cmd_payload_words == 13'd1)
++                                  && (cmd_payload_words == 13'd1 || cmd_payload_words == 13'd4))
+                                ? CMDCLS_INDEXED_TRI : CMDCLS_NONE;
+                 CMD_SET_LIGHT_STATE:
+                     cmd_class <= ((INCLUDE_GPU_LIGHT != 0) && (INCLUDE_XFORM_RGB != 0)
+@@ -6936,6 +7009,21 @@
+                     // legacy 0x4E precision and supplies it directly.  Consumed
+                     // at the cache write only when xf_clip && xf_to_cache.
+                     6'd7: xf_load_depth <= ring_rd_data;
++                    6'd8: xf_load_cd <= ring_rd_data[15:0];
++                    default: ;
++                endcase
++            end
++            CMDCLS_LOAD_SCREEN_VERT: begin
++                case(pay_idx)
++                    6'd0: xf_load_slot <= ring_rd_data[4:0];
++                    6'd1: begin tri_v0_x <= ring_rd_data[15:0]; tri_v0_y <= ring_rd_data[31:16]; end
++                    6'd2: dv_szi[0] <= ring_rd_data;
++                    6'd3: dv_tzi[0] <= ring_rd_data;
++                    6'd4: begin
++                        vt_rrow[0] <= ring_rd_data[15:11]; vt_lrow[0] <= ring_rd_data[10:5];
++                        vt_brow[0] <= ring_rd_data[4:0]; xf_load_cd <= ring_rd_data[31:16];
++                    end
++                    6'd5: xf_load_depth <= ring_rd_data;
+                     default: ;
+                 endcase
+             end
+@@ -6946,6 +7034,9 @@
+                     vc_i1 <= ring_rd_data[9:5];
+                     vc_i2 <= ring_rd_data[14:10];
+                 end
++                if(pay_idx == 6'd1) vt_zi[0] <= ring_rd_data;
++                if(pay_idx == 6'd2) vt_zi[1] <= ring_rd_data;
++                if(pay_idx == 6'd3) vt_zi[2] <= ring_rd_data;
+             end
+             CMDCLS_SET_LIGHT_STATE: begin
+                 // T4 0x55 sticky: light dir (Q16.16), light colour + ambient
+@@ -7300,6 +7391,12 @@
+                     state <= S_IDLE;
+                 end
+             end
++            CMDCLS_LOAD_SCREEN_VERT: begin
++                if ((INCLUDE_VTX_CACHE != 0) && tri_state_valid)
++                    vc_mem[xf_load_slot] <= {xf_load_cd, vt_brow[0], vt_lrow[0], vt_rrow[0],
++                        xf_load_depth, dv_tzi[0], dv_szi[0], 32'd0, tri_v0_y, tri_v0_x};
++                state <= S_IDLE;
++            end
+             CMDCLS_INDEXED_TRI: begin
+                 // T3 0x54: read 3 cached verts SEQUENTIALLY (single M10K read port)
+                 // in S_VCREAD, then launch the derive.  Issue the vert-0 read addr
+@@ -7446,7 +7543,7 @@
+                     dv_szi[2] <= dsp_p[47:16];
+                     dv_tzi[2] <= dsp2_p[47:16];
+                     if ((INCLUDE_XFORM_RGB != 0) && !vt_q29_en &&
+-                        (cmd_is_draw_indexed_tri || cmd_is_draw_clip_tri ||
++                        ((cmd_is_draw_indexed_tri && cmd_payload_words == 13'd1) || cmd_is_draw_clip_tri ||
+                          cmd_is_draw_xform_tri_rgb)) begin
+                         norm_shift <= 0;
+                         dstate <= DRV_NORMALIZE;
+@@ -8087,7 +8184,7 @@
+                         // Depth field: 0x56 (xf_clip) supplies it explicitly
+                         // (w7, full app float precision); matrix loads keep the
+                         // divider-derived value (= zi).
+-                        vc_mem[xf_load_slot] <= { vt_brow[0], vt_lrow[0], vt_rrow[0],
++                        vc_mem[xf_load_slot] <= { xf_load_cd, vt_brow[0], vt_lrow[0], vt_rrow[0],
+                                                   (xf_clip ? xf_load_depth : vt_depth[0]),
+                                                   dv_tzi[0], dv_szi[0],
+                                                   vt_zi[0], xf_sy[0], xf_sx[0] };
+@@ -8193,27 +8290,36 @@
+                 end
+                 2'd1: begin   // vc_q = cache[i0]
+                     tri_v0_x <= vc_q[15:0];   tri_v0_y <= vc_q[31:16];
+-                    vt_zi[0] <= vc_q[63:32];  dv_szi[0] <= vc_q[95:64];
++                    if(cmd_payload_words == 13'd1) vt_zi[0] <= vc_q[63:32];  dv_szi[0] <= vc_q[95:64];
+                     dv_tzi[0] <= vc_q[127:96]; vt_depth[0] <= vc_q[159:128];
+                     vt_rrow[0] <= vc_q[164:160]; vt_lrow[0] <= vc_q[170:165];
+                     vt_brow[0] <= vc_q[175:171];
++                    vt_Drrow[0] <= vc_q[191:187];
++                    vt_Dgrow[0] <= vc_q[186:181];
++                    vt_Dbrow[0] <= vc_q[180:176];
+                     vc_raddr <= vc_i2;
+                     vcr_cnt  <= 2'd2;
+                 end
+                 2'd2: begin   // vc_q = cache[i1]
+                     tri_v1_x <= vc_q[15:0];   tri_v1_y <= vc_q[31:16];
+-                    vt_zi[1] <= vc_q[63:32];  dv_szi[1] <= vc_q[95:64];
++                    if(cmd_payload_words == 13'd1) vt_zi[1] <= vc_q[63:32];  dv_szi[1] <= vc_q[95:64];
+                     dv_tzi[1] <= vc_q[127:96]; vt_depth[1] <= vc_q[159:128];
+                     vt_rrow[1] <= vc_q[164:160]; vt_lrow[1] <= vc_q[170:165];
+                     vt_brow[1] <= vc_q[175:171];
++                    vt_Drrow[1] <= vc_q[191:187];
++                    vt_Dgrow[1] <= vc_q[186:181];
++                    vt_Dbrow[1] <= vc_q[180:176];
+                     vcr_cnt  <= 2'd3;
+                 end
+                 default: begin   // cnt3: vc_q = cache[i2]; capture + launch derive
+                     tri_v2_x <= vc_q[15:0];   tri_v2_y <= vc_q[31:16];
+-                    vt_zi[2] <= vc_q[63:32];  dv_szi[2] <= vc_q[95:64];
++                    if(cmd_payload_words == 13'd1) vt_zi[2] <= vc_q[63:32];  dv_szi[2] <= vc_q[95:64];
+                     dv_tzi[2] <= vc_q[127:96]; vt_depth[2] <= vc_q[159:128];
+                     vt_rrow[2] <= vc_q[164:160]; vt_lrow[2] <= vc_q[170:165];
+                     vt_brow[2] <= vc_q[175:171];
++                    vt_Drrow[2] <= vc_q[191:187];
++                    vt_Dgrow[2] <= vc_q[186:181];
++                    vt_Dbrow[2] <= vc_q[180:176];
+                     spanprod_idx       <= 2'd0;
+                     spanprod_calc_step <= 3'd0;
+                     src_done           <= 1'b0;
+@@ -9100,7 +9206,7 @@
+                             ztest_cap_word = zw_word[p3_z_word_addr[ZW_LOW-1:2]];
+                             fbss               <= FBSS_ZTEST_ACC_EVAL;
+                         end else if (!tex_axi_arvalid && !tex_m0_in_flight
+-                                  && fb_write_drain_complete) begin
++                                  && raw_read_safe) begin
+                             // Z-window fill: burst read of the whole aligned
+                             // depth line.  The drain barrier is the
+                             // conservative fb_write_drain_complete: the whole
+@@ -9300,7 +9406,7 @@
+                             fbss <= FBSS_FLUSH_W_RSP;   // queue full: drain, retry
+                         end
+                     end else if (!tex_axi_arvalid && !tex_m0_in_flight
+-                              && fb_write_drain_complete) begin
++                              && raw_read_safe) begin
+                         // All writes drained: fill the dst window with one
+                         // aligned burst (the requested word feeds this pixel;
+                         // the siblings serve the following pixels' p2b
+@@ -9398,7 +9504,7 @@
+                     if (!blend_group_active) begin
+                         fbss <= FBSS_IDLE;
+                     end else if (!tex_axi_arvalid && !tex_m0_in_flight
+-                              && fb_write_drain_complete) begin
++                              && raw_read_safe) begin
+                         blend_arvalid <= 1;
+                         blend_araddr  <= blend_group_word_addr;
+                         blend_arlen_r <= 2'd0;
+@@ -10539,7 +10645,14 @@
+                               && fbwq_push_req && fbwq_can_push;
+             if ((GPU_Z_READ_WINDOW > 1) && zw_snoop_pending
+                 && (fbwq_req_addr[GPU_ADDR_W-1:ZW_LOW] == zw_base))
+-                zw_valid[fbwq_req_addr[ZW_LOW-1:2]] <= 1'b0;
++                if (zw_valid[fbwq_req_addr[ZW_LOW-1:2]]) begin
++                    // Keep only previously valid words; invalid byte lanes are
++                    // never invented. The existing one-cycle hit interlock stays.
++                    if (fbwq_req_strb[0]) zw_word[fbwq_req_addr[ZW_LOW-1:2]][7:0] <= fbwq_req_data[7:0];
++                    if (fbwq_req_strb[1]) zw_word[fbwq_req_addr[ZW_LOW-1:2]][15:8] <= fbwq_req_data[15:8];
++                    if (fbwq_req_strb[2]) zw_word[fbwq_req_addr[ZW_LOW-1:2]][23:16] <= fbwq_req_data[23:16];
++                    if (fbwq_req_strb[3]) zw_word[fbwq_req_addr[ZW_LOW-1:2]][31:24] <= fbwq_req_data[31:24];
++                end
+             // Blend-dst window snoop: identical contract, own pending bit.
+             // Sweeps with the window when INCLUDE_DIRECT_COLOR is absent OR
+             // the window is 1 word (cbw_valid is never set either way, so
+@@ -10548,9 +10661,12 @@
+                               && fbwq_push_req && fbwq_can_push;
+             if ((CBW_WORDS > 1) && cbw_snoop_pending
+                 && (fbwq_req_addr[GPU_ADDR_W-1:CBW_LOW] == cbw_base))
+-                cbw_valid[(CBW_LG == 2) ? fbwq_req_addr[3:2]
+-                         : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]}
+-                         : 2'd0] <= 1'b0;
++                if (cbw_valid[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)]) begin
++                    if (fbwq_req_strb[0]) cbw_word[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)][7:0] <= fbwq_req_data[7:0];
++                    if (fbwq_req_strb[1]) cbw_word[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)][15:8] <= fbwq_req_data[15:8];
++                    if (fbwq_req_strb[2]) cbw_word[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)][23:16] <= fbwq_req_data[23:16];
++                    if (fbwq_req_strb[3]) cbw_word[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)][31:24] <= fbwq_req_data[31:24];
++                end
+         end  // closes the housekeeping `begin` introduced for m_wr_inflight + gpu_swap_req auto-clear
+     end
+     if (spanprod_pl_origin_we)

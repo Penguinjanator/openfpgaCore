@@ -11,6 +11,7 @@ static Vwc_protocol d;
 static std::unordered_map<uint32_t, uint32_t> actual, expected;
 static uint64_t cycles=0, accepted=0, emitted=0;
 static bool was_stalled=false;
+static bool mixed_hash=false;
 static uint32_t held_addr, held_data, held_strb;
 static void require(bool ok, const char* why) {
     if (!ok) { std::fprintf(stderr,"FAIL cycle %llu: %s\n", (unsigned long long)cycles, why); std::exit(1); }
@@ -55,6 +56,7 @@ static void drain(std::mt19937& rng, bool pulse=false) {
 static void send(std::mt19937& rng,uint32_t addr,uint32_t data,unsigned mask,bool cacheable) {
     d.fbwq_req_valid=1;d.fbwq_req_addr=addr;d.fbwq_req_data=data;
     d.fbwq_req_strb=mask;d.fbwq_req_combine=cacheable;
+    d.fbwq_req_z_combine=mixed_hash && cacheable && ((data>>5)&1);
     for(unsigned n=0;;n++) {
         require(n<100000,"input timeout");
         d.fbwq_stage_can_load=(rng()%4)==0;
@@ -102,6 +104,7 @@ int main(int argc,char** argv) {
         send(rng,0x100000+320*y,0x11223344u*(lane+1),1u<<lane,true);
     drain(rng,true);
     require(emitted-old_emitted==200,"strided writes did not combine to one word per row");
+    mixed_hash=!Verilated::commandArgsPlusMatch("wc_legacy")[0];
     // Pending inputs must still drain while a level barrier stays asserted.
     d.wc_flush=1;
     send(rng,0x1200,0xabcdef,5,true);

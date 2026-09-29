@@ -1,0 +1,151 @@
+--- a/src/fpga/common/gpu_core.v
++++ b/src/fpga/common/gpu_core.v
+@@ -4643,6 +4643,53 @@
+                              && !z_src_pending_valid
+                              && !wc_busy && !fbwq_req_valid && !fbwq_stage_valid && fbwq_empty
+                              && (m_wr_inflight == 4'b0) && !m_wr_chan_busy;
++
++// PRIVATE EXPERIMENT: scoreboard every accepted AW until its ordered B.
++// Bursts contain at most eight words and can cross one 64-byte boundary.
++// Preserve both boundary tags so a crossing write cannot evade the check.
++reg [GPU_ADDR_W-7:0] raw_aw_first[0:15], raw_aw_last[0:15];
++reg [15:0] raw_aw_valid;
++reg [3:0] raw_aw_head, raw_aw_tail;
++wire [GPU_ADDR_W-1:0] raw_aw_end = m_wr_awaddr + (m_wr_awlen << 2);
++always @(posedge clk) begin
++    if (!reset_n || soft_reset) begin
++        raw_aw_valid <= 0;
++        raw_aw_head <= 0;
++        raw_aw_tail <= 0;
++    end else begin
++        if (m_wr_bvalid) begin
++            raw_aw_valid[raw_aw_head] <= 0;
++            raw_aw_head <= raw_aw_head + 1'b1;
++        end
++        if (m_wr_awvalid && m_wr_awready) begin
++            raw_aw_valid[raw_aw_tail] <= 1;
++            raw_aw_first[raw_aw_tail] <= m_wr_awaddr[GPU_ADDR_W-1:6];
++            raw_aw_last[raw_aw_tail] <= raw_aw_end[GPU_ADDR_W-1:6];
++            raw_aw_tail <= raw_aw_tail + 1'b1;
++        end
++    end
++end
++wire [GPU_ADDR_W-1:0] raw_read_addr = (fbss == FBSS_CB_REQ) ? p3_fb_word_addr_w
++    : (fbss == FBSS_BLEND_REQ) ? blend_group_word_addr : p3_z_addr;
++wire [GPU_ADDR_W-7:0] raw_read_line = raw_read_addr[GPU_ADDR_W-1:6];
++reg raw_conflict;
++integer raw_i;
++reg [3:0] raw_qi;
++always @* begin
++    raw_conflict = m_wr_awvalid
++        && ((raw_read_line == m_wr_awaddr[GPU_ADDR_W-1:6])
++            || (raw_read_line == raw_aw_end[GPU_ADDR_W-1:6]));
++    raw_qi = 0;
++    for (raw_i=0; raw_i<16; raw_i=raw_i+1) begin
++        raw_qi = fbwq_rd_ptr + raw_i;
++        if ((raw_i < fbwq_count) && (fbwq_addr[raw_qi][GPU_ADDR_W-1:6] == raw_read_line))
++            raw_conflict = 1;
++        if (raw_aw_valid[raw_i] && ((raw_aw_first[raw_i] == raw_read_line)
++            || (raw_aw_last[raw_i] == raw_read_line))) raw_conflict = 1;
++    end
++end
++wire raw_read_safe = !z_flush_valid && !z_src_pending_valid && !wc_busy
++    && !fbwq_req_valid && !fbwq_stage_valid && !raw_conflict;
+ wire fbwq_output_idle = !m_wr_awvalid && !m_wr_wvalid;
+ wire fbwq_drain_can_load = !m_wr_inflight_near_full && fbwq_output_idle;
+ wire [3:0] fbwq_rd_ptr_1 = fbwq_rd_ptr + 4'd1;
+@@ -6233,6 +6280,12 @@
+         // IDLE — wait for commands in ring BRAM
+         // ============================================================
+         S_IDLE: begin
++            // Also preserve clients that wait for a completely idle GPU before
++            // CPU writes, without issuing an explicit fence.
++            if ((!active) || (ring_empty && !dma_pull_busy && fb_write_drain_complete)) begin
++                zw_valid <= 0;
++                cbw_valid <= 0;
++            end
+             if (active && !ring_empty) begin
+                 // BRAM read initiated by ring_rdptr (port B, 1-cycle latency)
+                 // Advance rdptr; data available next cycle in ring_rd_data
+@@ -6268,8 +6321,20 @@
+             // command boundary so CPU z-buffer/framebuffer writes between
+             // commands (fence-synchronised) can never be shadowed by stale
+             // window contents.  The blend dst window follows the same rule.
+-            zw_valid  <= 4'b0;
+-            cbw_valid <= 4'b0;
++            // Retain only across known GPU drawing/state commands. Fences,
++            // flips, clears, target changes and unknown commands invalidate.
++            if (!((cmd_type == CMD_SET_TEXTURE) || (cmd_type == CMD_SET_TRI_STATE)
++                || (cmd_type == CMD_SET_OBJECT_STATE) || (cmd_type == CMD_SET_LIGHT_STATE)
++                || (cmd_type == CMD_LOAD_VERTS) || (cmd_type == CMD_LOAD_VERT_LIT)
++                || (cmd_type == CMD_LOAD_VERT_CLIP) || (cmd_type == CMD_DRAW_INDEXED_TRI)
++                || (cmd_type == CMD_DRAW_CLIP_TRI) || (cmd_type == CMD_DRAW_VERT_TRI)
++                || (cmd_type == CMD_DRAW_VERT_TRI_RGB) || (cmd_type == CMD_DRAW_XFORM_TRI)
++                || (cmd_type == CMD_DRAW_XFORM_TRI_RGB) || (cmd_type == CMD_DRAW_PARAM_TRI)
++                || (cmd_type == CMD_DRAW_PARAM_TRI_RECS) || (cmd_type == CMD_DRAW_PARAM_SPAN_LIST)
++                || (cmd_type == CMD_DRAW_COLUMN_LIST))) begin
++                zw_valid <= 0;
++                cbw_valid <= 0;
++            end
+             cmd_is_fence          <= (cmd_type == CMD_FENCE);
+             cmd_is_clear_rect     <= (cmd_type == CMD_CLEAR_RECT);
+             cmd_is_set_fb         <= (cmd_type == CMD_SET_FB);
+@@ -9100,7 +9165,7 @@
+                             ztest_cap_word = zw_word[p3_z_word_addr[ZW_LOW-1:2]];
+                             fbss               <= FBSS_ZTEST_ACC_EVAL;
+                         end else if (!tex_axi_arvalid && !tex_m0_in_flight
+-                                  && fb_write_drain_complete) begin
++                                  && raw_read_safe) begin
+                             // Z-window fill: burst read of the whole aligned
+                             // depth line.  The drain barrier is the
+                             // conservative fb_write_drain_complete: the whole
+@@ -9300,7 +9365,7 @@
+                             fbss <= FBSS_FLUSH_W_RSP;   // queue full: drain, retry
+                         end
+                     end else if (!tex_axi_arvalid && !tex_m0_in_flight
+-                              && fb_write_drain_complete) begin
++                              && raw_read_safe) begin
+                         // All writes drained: fill the dst window with one
+                         // aligned burst (the requested word feeds this pixel;
+                         // the siblings serve the following pixels' p2b
+@@ -9398,7 +9463,7 @@
+                     if (!blend_group_active) begin
+                         fbss <= FBSS_IDLE;
+                     end else if (!tex_axi_arvalid && !tex_m0_in_flight
+-                              && fb_write_drain_complete) begin
++                              && raw_read_safe) begin
+                         blend_arvalid <= 1;
+                         blend_araddr  <= blend_group_word_addr;
+                         blend_arlen_r <= 2'd0;
+@@ -10539,7 +10604,14 @@
+                               && fbwq_push_req && fbwq_can_push;
+             if ((GPU_Z_READ_WINDOW > 1) && zw_snoop_pending
+                 && (fbwq_req_addr[GPU_ADDR_W-1:ZW_LOW] == zw_base))
+-                zw_valid[fbwq_req_addr[ZW_LOW-1:2]] <= 1'b0;
++                if (zw_valid[fbwq_req_addr[ZW_LOW-1:2]]) begin
++                    // Keep only previously valid words; invalid byte lanes are
++                    // never invented. The existing one-cycle hit interlock stays.
++                    if (fbwq_req_strb[0]) zw_word[fbwq_req_addr[ZW_LOW-1:2]][7:0] <= fbwq_req_data[7:0];
++                    if (fbwq_req_strb[1]) zw_word[fbwq_req_addr[ZW_LOW-1:2]][15:8] <= fbwq_req_data[15:8];
++                    if (fbwq_req_strb[2]) zw_word[fbwq_req_addr[ZW_LOW-1:2]][23:16] <= fbwq_req_data[23:16];
++                    if (fbwq_req_strb[3]) zw_word[fbwq_req_addr[ZW_LOW-1:2]][31:24] <= fbwq_req_data[31:24];
++                end
+             // Blend-dst window snoop: identical contract, own pending bit.
+             // Sweeps with the window when INCLUDE_DIRECT_COLOR is absent OR
+             // the window is 1 word (cbw_valid is never set either way, so
+@@ -10548,9 +10620,12 @@
+                               && fbwq_push_req && fbwq_can_push;
+             if ((CBW_WORDS > 1) && cbw_snoop_pending
+                 && (fbwq_req_addr[GPU_ADDR_W-1:CBW_LOW] == cbw_base))
+-                cbw_valid[(CBW_LG == 2) ? fbwq_req_addr[3:2]
+-                         : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]}
+-                         : 2'd0] <= 1'b0;
++                if (cbw_valid[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)]) begin
++                    if (fbwq_req_strb[0]) cbw_word[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)][7:0] <= fbwq_req_data[7:0];
++                    if (fbwq_req_strb[1]) cbw_word[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)][15:8] <= fbwq_req_data[15:8];
++                    if (fbwq_req_strb[2]) cbw_word[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)][23:16] <= fbwq_req_data[23:16];
++                    if (fbwq_req_strb[3]) cbw_word[((CBW_LG == 2) ? fbwq_req_addr[3:2] : (CBW_LG == 1) ? {1'b0, fbwq_req_addr[2]} : 2'd0)][31:24] <= fbwq_req_data[31:24];
++                end
+         end  // closes the housekeeping `begin` introduced for m_wr_inflight + gpu_swap_req auto-clear
+     end
+     if (spanprod_pl_origin_we)

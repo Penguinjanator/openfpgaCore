@@ -24,8 +24,9 @@ ifeq ($(TARGET),)
 override TARGET := pocket
 endif
 TARGET_DIR = src/fpga/targets/$(TARGET)
-# Directories only (trailing-slash glob) so a stray file never reads as a target.
-TARGETS = $(notdir $(patsubst %/,%,$(wildcard src/fpga/targets/*/)))
+# A build target implements a Makefile. Firmware-only output directories
+# (such as sim/firmware.mif) must not become selectable FPGA targets.
+TARGETS = $(patsubst src/fpga/targets/%/Makefile,%,$(wildcard src/fpga/targets/*/Makefile))
 
 # ── Variant (sticky display only — resolution lives in each target) ──
 # `make use-<variant>` (e.g. use-os30) writes .variant; each target Makefile
@@ -122,14 +123,14 @@ help:
 
 # ── Sticky default target / variant ──────────────────────────────────
 # `make use-<name>` resolves <name> against BOTH registries:
-#   a target dir  (src/fpga/targets/<name>/)             → written to .target
+#   a target Makefile (src/fpga/targets/<name>/Makefile) → written to .target
 #   a variant     (src/fpga/targets/*/variants/<name>.mk) → written to .variant
 # Both files are gitignored, per-checkout sticky.  Target and variant are
 # independent — `make use-mister` then `make use-os30` keeps both settings
 # (the variant applies whenever the selected target has it).
 # `make use-default` removes both (back to pocket / os25).
 use-%:
-	@if [ -d src/fpga/targets/$* ]; then \
+	@if [ -f src/fpga/targets/$*/Makefile ]; then \
 		echo $* > .target; \
 		printf "  $(C_OK)default target$(C_RESET) → $(C_CMD)$*$(C_RESET) (stored in .target)\n"; \
 	elif ls src/fpga/targets/*/variants/$*.mk >/dev/null 2>&1; then \
@@ -149,7 +150,7 @@ use-default:
 
 # ── Target validation ────────────────────────────────────────────────
 check-target:
-	@test -d $(TARGET_DIR) || { \
+	@test -f $(TARGET_DIR)/Makefile || { \
 		printf "$(C_ERR)Error: unknown target '$(TARGET)'$(C_RESET)\n"; \
 		printf "Available: $(TARGETS)\n"; \
 		exit 1; \

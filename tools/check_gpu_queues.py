@@ -31,25 +31,41 @@ def main():
     manifest = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in [*sources, reset_source, test/'tb_gpu_acceptance_main.cpp']}
     modes = {'serial': (0, 0), 'stream': (1, 0), 'combined': (1, 1)}
+    if args.profile == 'pocket':
+        modes['legacy'] = (1, 1)
     flags = list(FLAGS)
     pipeline = args.write_pipeline if args.write_pipeline is not None else 0
     flags += ['-GGPU_WRITE_COMBINE_PIPE='+str(pipeline)]
     if args.profile == 'mister':
         enabled = ('INCLUDE_PARAM_TRI', 'INCLUDE_VERT_TRI', 'INCLUDE_PARAM_TRI_RECS',
-                   'GPU_EW_PARALLEL_DIVS', 'INCLUDE_CLIP_TRI', 'INCLUDE_GPU_XFORM_MAC', 'INCLUDE_COMBINE')
+                   'GPU_EW_PARALLEL_DIVS', 'INCLUDE_CLIP_TRI', 'INCLUDE_GPU_XFORM_MAC', 'INCLUDE_COMBINE',
+                   'INCLUDE_DIRECT_COLOR', 'INCLUDE_XFORM_RGB', 'INCLUDE_VTX_CACHE', 'INCLUDE_GPU_LIGHT')
         replacements = {'-G'+key+'=0': '-G'+key+'=1' for key in enabled}
         flags = [replacements.get(flag, flag) for flag in flags]
-        flags = ['-GGPU_Z_READ_WINDOW=4' if f == '-GGPU_Z_READ_WINDOW=1' else f for f in flags]
+        flags = ['-GGPU_Z_READ_WINDOW=16' if f == '-GGPU_Z_READ_WINDOW=1' else f for f in flags]
         flags += ['-GGPU_TEX_CACHE_SET_BITS=11', '+define+INCLUDE_EARLY_Z_CAPTURE']
+        flags += ['-GINCLUDE_CPU_RING=1', '-GGPU_WRITE_COMBINE_FAST_FLUSH=1',
+                  '-GGPU_WRITE_COMBINE_Z=1', '-GGPU_WRITE_GATHER=1',
+                  '-GGPU_WRITE_COMBINE_BURST_HASH=1', '-GGPU_MASKED_WRITE_BURSTS=1']
+    else:
+        flags += ['-GINCLUDE_CPU_RING=1', '-GGPU_WRITE_COMBINE_FAST_FLUSH=1',
+                  '-GGPU_WRITE_GATHER=1', '-GGPU_MASKED_WRITE_BURSTS=1']
 
     def build(name):
         stream, combine = (1, 1) if name == 'reset' else modes[name]
         build_sources = [*sources[:-1], reset_source] if name == 'reset' else sources
+        build_flags = flags
+        if name == 'legacy':
+            old = ('INCLUDE_CPU_RING', 'GPU_WRITE_COMBINE_FAST_FLUSH',
+                   'GPU_WRITE_GATHER', 'GPU_MASKED_WRITE_BURSTS')
+            build_flags = list(flags)
+            for key in old:
+                build_flags = [f.replace('-G'+key+'=1', '-G'+key+'=0') for f in build_flags]
         cmd = ['verilator', '--cc', '--exe', '--build', '--trace', '-j', str(args.jobs),
                '-Wall', '-Wno-fatal', '-Wno-BADVLTPRAGMA', '--top-module', 'tb_gpu',
                '--Mdir', str(out/name), '-I'+str(common), '-CFLAGS', '-std=c++17 -O2 -I'+str(test),
                '-GGPU_STREAM_PIPE='+str(stream), '-GGPU_WRITE_COMBINE='+str(combine),
-               *flags, *map(str, build_sources)]
+               *build_flags, *map(str, build_sources)]
         with (out/f'build-{name}.log').open('w') as log:
             subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=True)
         return out/name/'Vtb_gpu'
@@ -80,13 +96,17 @@ def main():
                         requests=int(requests), hits=int(hits), arithmetic=arithmetic, changed=int(changed))
             assert len(rows) == 394, (mode, len(rows))
             runs[mode] = rows
-        for mode in ('stream', 'combined'):
+        for mode in (m for m in modes if m != 'serial'):
             for key, before in runs['serial'].items():
                 after = runs[mode][key]
                 for field in ('pixels', 'arithmetic', 'changed'):
                     assert before[field] == after[field], (label, mode, key, field, before, after)
             totals = [sum(row['cycles'] for row in runs[m].values()) for m in ('serial', mode)]
             print(label, mode, *totals, f'{100*(totals[0]-totals[1])/totals[0]:.2f}% fewer cycles', flush=True)
+        if 'legacy' in runs:
+            totals = [sum(row['cycles'] for row in runs[m].values()) for m in ('legacy', 'combined')]
+            print(label, 'new versus previous Pocket write path:', *totals,
+                  f'{100*(totals[0]-totals[1])/totals[0]:.2f}% fewer cycles', flush=True)
     (out/'results.json').write_text(json.dumps(dict(sources=manifest, profile=args.profile, flags=flags,
         modes=modes, results=results), indent=2)+'\n')
     print('PASS: reset recovery' if args.reset_only else

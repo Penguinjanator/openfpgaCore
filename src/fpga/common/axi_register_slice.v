@@ -34,7 +34,17 @@
 
 `default_nettype none
 
-module axi_register_slice #(parameter W = 32) (
+module axi_register_slice #(
+    parameter W = 32,
+    // FIFO_OUT=1: same 2-entry, full-throughput behaviour (s_ready while at
+    // most one beat is held, m_valid while any is), but each beat is written
+    // once from s_payload into one of two slots and m_payload is selected by
+    // a read pointer.  m_ready then clocks two pointer/count flops instead of
+    // reloading W payload flops (the skid form's head enable), taking the
+    // downstream grant cone off a high-fanout enable.  Costs a W-bit 2:1 mux
+    // on m_payload and saves the one on the head's input.
+    parameter FIFO_OUT = 0
+) (
     input  wire         clk,
     input  wire         reset_n,
 
@@ -49,6 +59,36 @@ module axi_register_slice #(parameter W = 32) (
     output wire [W-1:0] m_payload
 );
 
+generate if (FIFO_OUT) begin : g_fifo
+    reg [W-1:0] slot0, slot1;
+    reg         wr_sel, rd_sel;
+    reg [1:0]   count;
+
+    assign s_ready   = (count != 2'd2);
+    assign m_valid   = (count != 2'd0);
+    assign m_payload = rd_sel ? slot1 : slot0;
+
+    wire upstream_xfer   = s_valid && (count != 2'd2);
+    wire downstream_xfer = (count != 2'd0) && m_ready;
+
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            slot0  <= {W{1'b0}};
+            slot1  <= {W{1'b0}};
+            wr_sel <= 1'b0;
+            rd_sel <= 1'b0;
+            count  <= 2'd0;
+        end else begin
+            if (upstream_xfer) begin
+                if (wr_sel) slot1 <= s_payload;
+                else        slot0 <= s_payload;
+                wr_sel <= ~wr_sel;
+            end
+            if (downstream_xfer) rd_sel <= ~rd_sel;
+            count <= count + {1'b0, upstream_xfer} - {1'b0, downstream_xfer};
+        end
+    end
+end else begin : g_skid
     reg         out_valid;
     reg [W-1:0] out_data;
     reg         skid_valid;
@@ -99,6 +139,7 @@ module axi_register_slice #(parameter W = 32) (
             end
         end
     end
+end endgenerate
 
 endmodule
 

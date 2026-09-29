@@ -138,6 +138,12 @@ static void ring_cmd(uint8_t cmd, uint32_t pw) {
 static void gpu_kick() {
     if (pending_stream.empty()) return;
     wait_for_dma_idle();
+    if (mmio_read(REG_STATUS) & 0x100) {
+        for (uint32_t x : pending_stream) mmio_write(REG_RING_WRPTR, x);
+        mmio_write(REG_CTRL, 8);
+        pending_stream.clear();
+        return;
+    }
     uint32_t addr_word = BATCH_BUF_BYTE >> 2;
     for (uint32_t x : pending_stream) sdram_write(addr_word++, x);
     uint32_t words = (uint32_t)pending_stream.size();
@@ -153,6 +159,7 @@ static void gpu_init() {
     mmio_write(REG_CTRL, 4);
     mmio_write(REG_PALOOKUP_BASE, PALOOKUP_BASE_BYTE);
     mmio_write(REG_RING_WRPTR, 0);
+    if (mmio_read(REG_STATUS) & 0x80) mmio_write(REG_CTRL, 16);
 }
 
 static uint32_t next_fence_token = 1;
